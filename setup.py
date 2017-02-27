@@ -9,6 +9,9 @@ setup(
     version = VERSION,
     author = "David Eyk",
     author_email = "david.eyk@gmail.com",
+    description = ("SYML (Simple YAML-like Markup Language) is a simple markup "
+                   "language with similar structure to YAML, but without all the gewgaws "
+                   "and folderol."),
     modules = [PROJECT_NAME],
     install_requires = [
         'attrs==16.2.0',
