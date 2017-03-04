@@ -211,3 +211,28 @@ class SimpleParserFunctionTests(TestCase):
             'yes',
             'false',
         ])
+
+    def test_it_should_parse_whats_in_the_readme(self):
+        text = textwrap.dedent("""
+            foo:
+              - bar
+              - baz
+              - blah
+                boo
+
+            booleans?:
+              - yes
+              - no
+        """)
+        result = parser.parse(text)
+        ensure(result).equals({
+            'foo': [
+                'bar',
+                'baz',
+                'blah\nboo',
+            ],
+            'booleans?': [
+                'yes',
+                'no',
+            ]
+        })
