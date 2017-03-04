@@ -25,14 +25,5 @@ And the resulting data structure::
 
   >>> import syml
   >>> syml.parse(document)
-  {
-    'foo': [
-      'bar',
-      'baz',
-      'blah\nboo',
-    ],
-    'booleans?': [
-      'yes',
-      'no',
-    ]
-  }
+  OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
+               ('booleans?', ['yes', 'no'])])
