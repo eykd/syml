@@ -96,5 +96,6 @@ class BooleanSymlParser(TextOnlySymlParser):
         return nodes.RawValueLeafNode(node, node.text, value=False)
 
 
-def parse(source_syml, filename='', raw=True, parser=TextOnlySymlParser):
+def parse(source_syml, filename='', raw=True, booleans=False):
+    parser = BooleanSymlParser if booleans else TextOnlySymlParser
     return parser().parse(source_syml).as_data(filename, raw=raw)

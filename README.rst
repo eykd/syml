@@ -27,3 +27,12 @@ And the resulting data structure::
   >>> syml.parse(document)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
                ('booleans?', ['yes', 'no'])])
+
+
+All values in SYML are just plain ol' text. But let's face it, sometimes you
+really do want YAML-like booleans::
+
+  >>> import syml
+  >>> syml.parse(document, booleans=True)
+  OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
+               ('booleans?', [True, False])])
