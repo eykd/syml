@@ -9,17 +9,22 @@ setup(
     version = VERSION,
     author = "David Eyk",
     author_email = "david.eyk@gmail.com",
-    description = ("SYML (Simple YAML-like Markup Language) is a simple markup "
-                   "language with similar structure to YAML, but without all the gewgaws "
-                   "and folderol."),
+    description = (
+        "SYML (Simple YAML-like Markup Language) is a simple markup "
+        "language with similar structure to YAML, but without all the gewgaws "
+        "and folderol."
+    ),
     modules = [PROJECT_NAME],
     install_requires = [
-        'attrs==16.2.0',
-        'parsimonious==0.7.0',
+        'attrs<17',
+        'parsimonious<0.8',
     ],
-    entry_points = dict(
-        console_scripts = [
-            'ravel = ravel.cli:main',
-        ]
-    ),
+    keywords = ['yaml', 'markup', 'syml'],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Developers',
+        'Programming Language :: Python :: 3.5',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+        'Topic :: Text Processing :: Markup',
+    ],
 )
