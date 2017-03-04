@@ -5,7 +5,7 @@ from . import nodes
 from .exceptions import OutOfContextNodeError
 
 
-class TextOnlySlymlParser(NodeVisitor):
+class TextOnlySymlParser(NodeVisitor):
     grammar = Grammar(grammars.text_only_syml_grammar)
 
     def reduce_children(self, children):
@@ -41,10 +41,9 @@ class TextOnlySlymlParser(NodeVisitor):
         return len(node.text.replace('\t', ' ' * 4).strip('\n'))
 
     def visit_key_value(self, node, children):
-        key, _, _, value = children
-        kv = nodes.KeyValue(node, key)
-        kv.incorporate_node(value)
-        return kv
+        section, _, value = children
+        section.incorporate_node(value)
+        return section
 
     def visit_section(self, node, children):
         key, _ = children
@@ -85,7 +84,7 @@ class TextOnlySlymlParser(NodeVisitor):
                 raise  # pragma: no cover
 
 
-class BooleanSlymlParser(TextOnlySlymlParser):
+class BooleanSymlParser(TextOnlySymlParser):
     """Syml with support for YAML-like boolean values.
     """
     grammar = Grammar(grammars.boolean_syml_grammar)
@@ -97,5 +96,5 @@ class BooleanSlymlParser(TextOnlySlymlParser):
         return nodes.RawValueLeafNode(node, node.text, value=False)
 
 
-def parse(source_syml, filename='', raw=True, parser=TextOnlySlymlParser):
+def parse(source_syml, filename='', raw=True, parser=TextOnlySymlParser):
     return parser().parse(source_syml).as_data(filename, raw=raw)

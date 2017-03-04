@@ -14,9 +14,9 @@ ensure.unittest_case.maxDiff = None
 ensure = ensure.ensure
 
 
-class TextOnlySlymlParserTests(TestCase):
+class TextOnlySymlParserTests(TestCase):
     def setUp(self):
-        self.parser = parser.TextOnlySlymlParser()
+        self.parser = parser.TextOnlySymlParser()
 
     def test_it_should_parse_a_simple_text_value(self):
         text = textwrap.dedent("yes")
@@ -50,6 +50,21 @@ class TextOnlySlymlParserTests(TestCase):
             get_text_source(text, 'bar\n  baz', 'bar', 'bar\nbaz')
         ])
 
+    def test_it_should_parse_a_list_with_embedded_mappings_values(self):
+        text = textwrap.dedent("""
+            - foo:
+                bar
+            - baz: boo
+              blah:
+                baloon
+        """)
+        result = self.parser.parse(text)
+        ensure(result.as_data()).equals([
+            {get_text_source(text, 'foo'): get_text_source(text, 'bar')},
+            {get_text_source(text, 'baz'): get_text_source(text, 'boo'),
+             get_text_source(text, 'blah'): get_text_source(text, 'baloon')},
+        ])
+
     def test_it_should_parse_a_simple_mapping(self):
         text = textwrap.dedent("""
             foo: bar
@@ -58,6 +73,17 @@ class TextOnlySlymlParserTests(TestCase):
         result = self.parser.parse(text)
         ensure(result.as_data()).equals(OrderedDict([
             (get_text_source(text, 'foo'), get_text_source(text, 'bar')),
+            (get_text_source(text, 'baz'), get_text_source(text, 'boo')),
+        ]))
+
+    def test_it_should_parse_a_weirdly_nested_mapping(self):
+        text = textwrap.dedent("""
+            foo: bar: blah
+            baz: boo
+        """)
+        result = self.parser.parse(text)
+        ensure(result.as_data()).equals(OrderedDict([
+            (get_text_source(text, 'foo'), get_text_source(text, 'bar: blah')),
             (get_text_source(text, 'baz'), get_text_source(text, 'boo')),
         ]))
 
@@ -74,6 +100,17 @@ class TextOnlySlymlParserTests(TestCase):
                 get_text_source(text, 'bar'),
                 get_text_source(text, 'baz'),
             ]),
+            (get_text_source(text, 'blah'), get_text_source(text, 'boo')),
+        ]))
+
+    def test_it_should_parse_a_nested_mapping_with_weirdly_nested_list(self):
+        text = textwrap.dedent("""
+            foo: - bar
+            blah: boo
+        """)
+        result = self.parser.parse(text)
+        ensure(result.as_data()).equals(OrderedDict([
+            (get_text_source(text, 'foo'), get_text_source(text, '- bar')),
             (get_text_source(text, 'blah'), get_text_source(text, 'boo')),
         ]))
 
@@ -136,9 +173,9 @@ class TextOnlySlymlParserTests(TestCase):
          )
 
 
-class BooleanSlymlParserTests(TestCase):
+class BooleanSymlParserTests(TestCase):
     def setUp(self):
-        self.parser = parser.BooleanSlymlParser()
+        self.parser = parser.BooleanSymlParser()
 
     def test_it_should_parse_a_simple_boolean_value(self):
         text = textwrap.dedent("yes")

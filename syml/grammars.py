@@ -3,7 +3,8 @@ import textwrap
 
 syml_base_grammar = textwrap.dedent("""
     lines       = line*
-    line        = indent (comment / blank / value) &eol
+    line        = indent (comment / blank / structure / value) &eol
+    structure   = list_item / key_value / section
 
     indent      = ~"\\s*"
 
@@ -12,7 +13,7 @@ syml_base_grammar = textwrap.dedent("""
 
     list_item   = "-" ws value
 
-    key_value   = key ":" ws value
+    key_value   = section ws data
     section     = key ":"
     key         = ~"[^\\s:]+"
 
@@ -20,11 +21,13 @@ syml_base_grammar = textwrap.dedent("""
     ws          = ~"[ \\t]+"
     text        = ~".+"
 
+    value       = structure / data
+
 """)
 
 
 text_only_syml_grammar = syml_base_grammar + textwrap.dedent("""
-    value       = list_item / key_value / section / text
+    data        = text
 """)
 
 # If we want mare YAML-like booleans:
@@ -33,5 +36,5 @@ boolean_syml_grammar = syml_base_grammar + textwrap.dedent("""
     falsey      = "no" / "No" / "NO" / "N" / "n" / "false" / "False" / "FALSE" / "off" / "Off" / "OFF"
     bool        = truthy / falsey
 
-    value       = list_item / key_value / section / bool / text
+    data        = bool / text
 """)
