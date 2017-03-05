@@ -11,6 +11,7 @@ Example
 
 Here's a simple SYML document::
 
+  >>> document = """
   foo:
     - bar
     - baz
@@ -20,13 +21,18 @@ Here's a simple SYML document::
   booleans?:
     - yes
     - no
+    - true
+    - false
+    - on
+    - off
+  """
 
 And the resulting data structure::
 
   >>> import syml
   >>> syml.parse(document)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
-               ('booleans?', ['yes', 'no'])])
+               ('booleans?', ['yes', 'no', 'true', 'false', 'on', 'off'])])
 
 
 All values in SYML are just plain ol' text. But let's face it, sometimes you
@@ -35,4 +41,4 @@ really do want YAML-like booleans::
   >>> import syml
   >>> syml.parse(document, booleans=True)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
-               ('booleans?', [True, False])])
+               ('booleans?', [True, False, True, False, True, False])])

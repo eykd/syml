@@ -223,6 +223,10 @@ class SimpleParserFunctionTests(TestCase):
             booleans?:
               - yes
               - no
+              - true
+              - false
+              - on
+              - off
         """)
         result = parser.parse(text)
         ensure(result).equals({
@@ -234,6 +238,10 @@ class SimpleParserFunctionTests(TestCase):
             'booleans?': [
                 'yes',
                 'no',
+                'true',
+                'false',
+                'on',
+                'off',
             ]
         })
 
@@ -248,6 +256,10 @@ class SimpleParserFunctionTests(TestCase):
             booleans?:
               - yes
               - no
+              - true
+              - false
+              - on
+              - off
         """)
         result = parser.parse(text, booleans=True)
         ensure(result).equals({
@@ -257,6 +269,10 @@ class SimpleParserFunctionTests(TestCase):
                 'blah\nboo',
             ],
             'booleans?': [
+                True,
+                False,
+                True,
+                False,
                 True,
                 False,
             ]
