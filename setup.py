@@ -17,6 +17,7 @@ with open('README.rst') as README:
         ),
         long_description = README.read(),
         url = 'https://github.com/eykd/syml',
+        license = 'MIT',
         packages = find_packages(),
         install_requires = [
             'attrs<17',
