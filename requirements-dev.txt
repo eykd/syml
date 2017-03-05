@@ -3,4 +3,5 @@ green==2.6.3
 coverage==4.3.4
 ipython==5.3.0
 ipdb==0.10.2
+versioneer==0.18
 -e .

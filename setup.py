@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-from setuptools import setup
+from setuptools import setup, find_packages
+import versioneer
 
-PROJECT_NAME = 'syml'
-VERSION = '0.1.dev0'
 
 setup(
-    name = PROJECT_NAME,
-    version = VERSION,
+    name = 'syml',
+    version=versioneer.get_version(),
     author = "David Eyk",
     author_email = "david.eyk@gmail.com",
+    cmdclass=versioneer.get_cmdclass(),
     description = (
         "SYML (Simple YAML-like Markup Language) is a simple markup "
         "language with similar structure to YAML, but without all the gewgaws "
         "and folderol."
     ),
-    modules = [PROJECT_NAME],
+    packages = find_packages(),
     install_requires = [
         'attrs<17',
         'parsimonious<0.8',
