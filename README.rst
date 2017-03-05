@@ -8,6 +8,10 @@ similar structure to YAML, but without all the gewgaws and folderol.
 .. image:: https://travis-ci.org/eykd/syml.svg?branch=master
     :target: https://travis-ci.org/eykd/syml
 
+.. image:: https://coveralls.io/repos/github/eykd/syml/badge.svg?branch=master
+    :target: https://coveralls.io/github/eykd/syml?branch=master
+
+
 Example
 =======
 
