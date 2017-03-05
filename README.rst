@@ -30,7 +30,7 @@ Here's a simple SYML document::
 And the resulting data structure::
 
   >>> import syml
-  >>> syml.parse(document)
+  >>> syml.loads(document)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
                ('booleans?', ['yes', 'no', 'true', 'false', 'on', 'off'])])
 
@@ -39,6 +39,6 @@ All values in SYML are just plain ol' text. But let's face it, sometimes you
 really do want YAML-like booleans::
 
   >>> import syml
-  >>> syml.parse(document, booleans=True)
+  >>> syml.loads(document, booleans=True)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
                ('booleans?', [True, False, True, False, True, False])])

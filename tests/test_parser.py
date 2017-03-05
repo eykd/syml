@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 from collections import OrderedDict
 from unittest import TestCase
+from io import StringIO
 import textwrap
 
 import ensure
 
+import syml
 from syml import exceptions
 from syml import parser
 from syml.utils import get_text_source
@@ -228,7 +230,7 @@ class SimpleParserFunctionTests(TestCase):
               - on
               - off
         """)
-        result = parser.parse(text)
+        result = syml.loads(text)
         ensure(result).equals({
             'foo': [
                 'bar',
@@ -261,7 +263,8 @@ class SimpleParserFunctionTests(TestCase):
               - on
               - off
         """)
-        result = parser.parse(text, booleans=True)
+        buf = StringIO(text)
+        result = syml.load(buf, booleans=True)
         ensure(result).equals({
             'foo': [
                 'bar',
