@@ -202,9 +202,6 @@ class LeafNode(YamlNode):
         self.value = [(pnode, value)] if value is not None else [(pnode, source_text)]
         super().__init__(pnode, **kwargs)
 
-    def get_value(self):
-        return '\n'.join([v[1] for v in self.value])
-
     def as_data(self, filename='', raw=False):
         if raw:
             return self.get_value()
@@ -232,10 +229,16 @@ class LeafNode(YamlNode):
             )
         )
 
+
+class TextLeafNode(LeafNode):
     def add_node(self, node):
+        self.source_text += '\n' + node.get_value()
         self.value.extend(node.value)
         node.parent = self
         return self.get_tip()
+
+    def get_value(self):
+        return '\n'.join([v[1] for v in self.value])
 
 
 class RawValueLeafNode(LeafNode):

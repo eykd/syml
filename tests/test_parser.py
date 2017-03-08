@@ -49,7 +49,7 @@ class TextOnlySymlParserTests(TestCase):
         result = self.parser.parse(text)
         ensure(result.as_data()).equals([
             get_text_source(text, 'foo'),
-            get_text_source(text, 'bar\n  baz', 'bar', 'bar\nbaz')
+            get_text_source(text, 'bar\n  baz', 'bar\nbaz', 'bar\nbaz')
         ])
 
     def test_it_should_parse_a_list_with_embedded_mappings_values(self):

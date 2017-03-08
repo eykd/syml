@@ -28,7 +28,7 @@ class TextOnlySymlParser(NodeVisitor):
         return self.reduce_children(children)
 
     def get_text(self, node, children):
-        return nodes.LeafNode(node, node.text)
+        return nodes.TextLeafNode(node, node.text)
 
     def visit_comment(self, node, children):
         _, text = children
