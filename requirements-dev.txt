@@ -4,6 +4,7 @@ green
 ipython
 pdbpp
 pytest
+pytest-cov
 twine
 versioneer
 -e .
