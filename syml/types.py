@@ -1,14 +1,14 @@
 import attr
 
 
-@attr.s(slots=True)
+@attr.s(slots=True, frozen=True)
 class Pos:
     index = attr.ib()
     line = attr.ib()
     column = attr.ib()
 
 
-@attr.s(slots=True, repr=False)
+@attr.s(slots=True, repr=False, frozen=True)
 class Source:
     filename = attr.ib()
     start = attr.ib()

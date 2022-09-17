@@ -20,8 +20,8 @@ with open('README.rst') as README:
         license = 'MIT',
         packages = find_packages(),
         install_requires = [
-            'attrs<17',
-            'parsimonious<0.8',
+            'attrs',
+            'parsimonious',
         ],
         keywords = ['yaml', 'markup', 'syml'],
         classifiers=[

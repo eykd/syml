@@ -7,8 +7,6 @@ import ensure
 from syml import exceptions
 from syml import nodes
 
-ensure.unittest_case.maxDiff = None
-
 ensure = ensure.ensure
 
 

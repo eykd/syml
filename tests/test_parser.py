@@ -11,8 +11,6 @@ from syml import exceptions
 from syml import parser
 from syml.utils import get_text_source
 
-ensure.unittest_case.maxDiff = None
-
 ensure = ensure.ensure
 
 
@@ -27,7 +25,7 @@ class TextOnlySymlParserTests(TestCase):
             get_text_source(text, 'yes'),
         )
 
-    def test_it_should_parse_a_simple_list(self):
+    def test_it_should_parse_a_simple_multiline_list(self):
         text = textwrap.dedent("""
             - foo
             - bar
@@ -38,6 +36,15 @@ class TextOnlySymlParserTests(TestCase):
             get_text_source(text, 'foo'),
             get_text_source(text, 'bar'),
             get_text_source(text, 'baz'),
+        ])
+
+    def test_it_should_parse_a_simple_single_line_list(self):
+        text = textwrap.dedent("""
+            - foo
+        """)
+        result = self.parser.parse(text)
+        ensure(result.as_data()).equals([
+            get_text_source(text, 'foo'),
         ])
 
     def test_it_should_parse_a_list_with_multiline_values(self):
@@ -67,7 +74,16 @@ class TextOnlySymlParserTests(TestCase):
              get_text_source(text, 'blah'): get_text_source(text, 'baloon')},
         ])
 
-    def test_it_should_parse_a_simple_mapping(self):
+    def test_it_should_parse_a_simple_single_line_mapping(self):
+        text = textwrap.dedent("""
+            foo: bar
+        """)
+        result = self.parser.parse(text)
+        ensure(result.as_data()).equals(OrderedDict([
+            (get_text_source(text, 'foo'), get_text_source(text, 'bar')),
+        ]))
+
+    def test_it_should_parse_a_simple_multiline_mapping(self):
         text = textwrap.dedent("""
             foo: bar
             baz: boo

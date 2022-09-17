@@ -60,7 +60,7 @@ class TextOnlySymlParser(NodeVisitor):
         current = root
 
         children = self.reduce_children(children)
-        if isinstance(children, nodes.LeafNode):
+        if isinstance(children, nodes.YamlNode):
             children = [children]
 
         for child in children:

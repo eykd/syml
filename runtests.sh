@@ -1,1 +1,7 @@
-green -r -o syml/_version.py
+#!/bin/sh
+set -e
+set -x
+pytest \
+    --failed-first \
+    --exitfirst \
+    $@
