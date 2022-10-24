@@ -1,20 +1,28 @@
-import attr
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Union
+
+from attrs import define
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
-@attr.s(slots=True, frozen=True)
+@define(slots=True, frozen=True)
 class Pos:
-    index = attr.ib()
-    line = attr.ib()
-    column = attr.ib()
+    index: int
+    line: int
+    column: int
 
 
-@attr.s(slots=True, repr=False, frozen=True)
+@define(slots=True, repr=False, frozen=True)
 class Source:
-    filename = attr.ib()
-    start = attr.ib()
-    end = attr.ib()
-    text = attr.ib()
-    value = attr.ib()
+    filename: Union[str, Path]
+    start: Pos
+    end: Pos
+    text: str
+    # value corresponds to a line of text
+    value: str
 
     def __repr__(self):
         return "%sLine %s, Column %s (index %s): %r (%r)" % (
