@@ -8,6 +8,7 @@ flake8-simplify
 hypothesis[cli]
 isort[requirements]
 mypy
+types-parsimonious
 pdbpp
 pip-tools
 pre-commit

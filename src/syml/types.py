@@ -8,6 +8,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+StrPath = Union[str, Path]
+
+StrBool = Union[str, bool]
+
+
 @define(slots=True, frozen=True)
 class Pos:
     index: int
@@ -33,3 +38,9 @@ class Source:
             self.text,
             self.value,
         )
+
+
+SourceStr = Union[Source, str]
+
+
+SourceStrBool = Union[SourceStr, bool]

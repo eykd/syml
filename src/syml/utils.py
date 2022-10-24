@@ -29,6 +29,8 @@ def get_text_source(
     text: str, substring: str, source_text: Optional[str] = None, value: Optional[str] = None, filename: str = ""
 ) -> Source:
     match = re.search(substring, text)
+    if match is None:
+        raise ValueError(f"No match found for {substring!r}")
     source_text = match.group() if source_text is None else source_text
     return Source(
         filename=filename,
