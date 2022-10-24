@@ -18,10 +18,10 @@ class TextOnlySymlParserTests(TestCase):
         self.parser = parser.TextOnlySymlParser()
 
     def test_it_should_parse_a_simple_text_value(self):
-        text = textwrap.dedent("yes")
+        text = textwrap.dedent("true")
         result = self.parser.parse(text)
         ensure(result.as_data()).equals(
-            get_text_source(text, "yes"),
+            get_text_source(text, "true"),
         )
 
     def test_it_should_parse_a_simple_multiline_list(self):
@@ -269,17 +269,17 @@ class BooleanSymlParserTests(TestCase):
         self.parser = parser.BooleanSymlParser()
 
     def test_it_should_parse_a_simple_boolean_value(self):
-        text = textwrap.dedent("yes")
+        text = textwrap.dedent("true")
         result = self.parser.parse(text)
         ensure(result.as_data()).equals(
-            get_text_source(text, "yes", value=True),
+            get_text_source(text, "true", value=True),
         )
 
     def test_it_should_parse_mixed_boolean_values(self):
         text = textwrap.dedent(
             """
             - foo
-            - yes
+            - true
             - false
         """
         )
@@ -287,7 +287,7 @@ class BooleanSymlParserTests(TestCase):
         ensure(result.as_data()).equals(
             [
                 get_text_source(text, "foo"),
-                get_text_source(text, "yes", value=True),
+                get_text_source(text, "true", value=True),
                 get_text_source(text, "false", value=False),
             ]
         )
@@ -298,7 +298,7 @@ class SimpleParserFunctionTests(TestCase):
         text = textwrap.dedent(
             """
             - foo
-            - yes
+            - true
             - false
         """
         )
@@ -306,7 +306,7 @@ class SimpleParserFunctionTests(TestCase):
         ensure(result).equals(
             [
                 "foo",
-                "yes",
+                "true",
                 "false",
             ]
         )
@@ -321,12 +321,12 @@ class SimpleParserFunctionTests(TestCase):
                 boo
 
             booleans?:
-              - yes
-              - no
+              - True
+              - False
               - true
               - false
-              - on
-              - off
+              - TRUE
+              - FALSE
         """
         )
         result = syml.loads(text)
@@ -338,12 +338,12 @@ class SimpleParserFunctionTests(TestCase):
                     "blah\nboo",
                 ],
                 "booleans?": [
-                    "yes",
-                    "no",
+                    "True",
+                    "False",
                     "true",
                     "false",
-                    "on",
-                    "off",
+                    "TRUE",
+                    "FALSE",
                 ],
             }
         )
@@ -358,12 +358,12 @@ class SimpleParserFunctionTests(TestCase):
                 boo
 
             booleans?:
-              - yes
-              - no
+              - True
+              - False
               - true
               - false
-              - on
-              - off
+              - TRUE
+              - FALSE
         """
         )
         buf = StringIO(text)

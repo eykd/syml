@@ -25,12 +25,12 @@ Here's a simple SYML document::
       boo
 
   booleans?:
-    - yes
-    - no
+    - True
+    - False
     - true
     - false
-    - on
-    - off
+    - TRUE
+    - FALSE
   """
 
 And the resulting data structure::
@@ -38,7 +38,7 @@ And the resulting data structure::
   >>> import syml
   >>> syml.loads(document)
   OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
-               ('booleans?', ['yes', 'no', 'true', 'false', 'on', 'off'])])
+               ('booleans?', ['True', 'False', 'true', 'false', 'TRUE', 'FALSE'])])
 
 
 All values in SYML are just plain ol' text. But let's face it, sometimes you

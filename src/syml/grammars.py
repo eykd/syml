@@ -36,8 +36,8 @@ text_only_syml_grammar = syml_base_grammar + textwrap.dedent(
 # If we want mare YAML-like booleans:
 boolean_syml_grammar = syml_base_grammar + textwrap.dedent(
     """
-    truthy      = "yes" / "Yes" / "YES" / "y" / "Y" / "true" / "True" / "TRUE" / "on" / "On" / "ON"
-    falsey      = "no" / "No" / "NO" / "N" / "n" / "false" / "False" / "FALSE" / "off" / "Off" / "OFF"
+    truthy      = "true" / "True" / "TRUE"
+    falsey      = "false" / "False" / "FALSE"
     bool        = truthy / falsey
 
     data        = bool / text
