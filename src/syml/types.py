@@ -17,7 +17,11 @@ class Source:
     value = attr.ib()
 
     def __repr__(self):
-        return '%sLine %s, Column %s (index %s): %r (%r)' % (
-            '%s, ' % self.filename if self.filename else '',
-            self.start.line, self.start.column, self.start.index, self.text, self.value,
+        return "%sLine %s, Column %s (index %s): %r (%r)" % (
+            "%s, " % self.filename if self.filename else "",
+            self.start.line,
+            self.start.column,
+            self.start.index,
+            self.text,
+            self.value,
         )

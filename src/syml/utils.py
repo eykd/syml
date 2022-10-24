@@ -21,16 +21,16 @@ def get_line(s, line_number):
     try:
         return s.splitlines(True)[line_number - 1]
     except IndexError:
-        return ''
+        return ""
 
 
-def get_text_source(text, substring, source_text=None, value=None, filename=''):
+def get_text_source(text, substring, source_text=None, value=None, filename=""):
     match = re.search(substring, text)
     source_text = match.group() if source_text is None else source_text
     return Source(
-        filename = filename,
-        start = get_coords_of_str_index(text, match.start()),
-        end = get_coords_of_str_index(text, match.end()),
-        text = source_text,
-        value = value if value is not None else source_text,
+        filename=filename,
+        start=get_coords_of_str_index(text, match.start()),
+        end=get_coords_of_str_index(text, match.end()),
+        text=source_text,
+        value=value if value is not None else source_text,
     )

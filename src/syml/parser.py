@@ -1,7 +1,6 @@
-from parsimonious import NodeVisitor, Grammar, VisitationError
+from parsimonious import Grammar, NodeVisitor, VisitationError
 
-from . import grammars
-from . import nodes
+from . import grammars, nodes
 from .exceptions import OutOfContextNodeError
 
 
@@ -38,7 +37,7 @@ class TextOnlySymlParser(NodeVisitor):
     visit_key = get_text
 
     def visit_indent(self, node, children):
-        return len(node.text.replace('\t', ' ' * 4).strip('\n'))
+        return len(node.text.replace("\t", " " * 4).strip("\n"))
 
     def visit_key_value(self, node, children):
         section, _, value = children
@@ -76,17 +75,17 @@ class TextOnlySymlParser(NodeVisitor):
         except VisitationError as e:
             # Parsimonious swallows errors inside of `visit_` handlers and
             # wraps them in VisitationError cruft.
-            if e.args[0].startswith('OutOfContextNodeError'):
+            if e.args[0].startswith("OutOfContextNodeError"):
                 # Extract the original error message, ignoring the cruft.
-                msg = e.args[0].split('\n\n\n')[0].split(':', 1)[1]
+                msg = e.args[0].split("\n\n\n")[0].split(":", 1)[1]
                 raise OutOfContextNodeError(msg)
             else:
                 raise  # pragma: no cover
 
 
 class BooleanSymlParser(TextOnlySymlParser):
-    """Syml with support for YAML-like boolean values.
-    """
+    """Syml with support for YAML-like boolean values."""
+
     grammar = Grammar(grammars.boolean_syml_grammar)
 
     def visit_truthy(self, node, children):
@@ -96,6 +95,6 @@ class BooleanSymlParser(TextOnlySymlParser):
         return nodes.RawValueLeafNode(node, node.text, value=False)
 
 
-def parse(source_syml, filename='', raw=True, booleans=False):
+def parse(source_syml, filename="", raw=True, booleans=False):
     parser = BooleanSymlParser if booleans else TextOnlySymlParser
     return parser().parse(source_syml).as_data(filename, raw=raw)

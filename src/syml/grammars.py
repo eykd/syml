@@ -1,7 +1,7 @@
 import textwrap
 
-
-syml_base_grammar = textwrap.dedent("""
+syml_base_grammar = textwrap.dedent(
+    """
     lines       = line*
     line        = indent (comment / blank / structure / value) &eol
     structure   = list_item / key_value / section
@@ -23,18 +23,23 @@ syml_base_grammar = textwrap.dedent("""
 
     value       = structure / data
 
-""")
+"""
+)
 
 
-text_only_syml_grammar = syml_base_grammar + textwrap.dedent("""
+text_only_syml_grammar = syml_base_grammar + textwrap.dedent(
+    """
     data        = text
-""")
+"""
+)
 
 # If we want mare YAML-like booleans:
-boolean_syml_grammar = syml_base_grammar + textwrap.dedent("""
+boolean_syml_grammar = syml_base_grammar + textwrap.dedent(
+    """
     truthy      = "yes" / "Yes" / "YES" / "y" / "Y" / "true" / "True" / "TRUE" / "on" / "On" / "ON"
     falsey      = "no" / "No" / "NO" / "N" / "n" / "false" / "False" / "FALSE" / "off" / "Off" / "OFF"
     bool        = truthy / falsey
 
     data        = bool / text
-""")
+"""
+)

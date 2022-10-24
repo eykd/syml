@@ -1,1 +1,2 @@
 syml/_version.py export-subst
+src/syml/_version.py export-subst

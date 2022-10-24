@@ -1,6 +1,6 @@
+class ParseError(ValueError):
+    pass
 
 
-class ParseError(ValueError): pass
-
-
-class OutOfContextNodeError(ParseError): pass
+class OutOfContextNodeError(ParseError):
+    pass

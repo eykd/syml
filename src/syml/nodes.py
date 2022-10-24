@@ -24,7 +24,7 @@ class YamlNode:
     def _set_level(self, level):
         self._level = level
 
-    def as_data(self, filename='', raw=False):
+    def as_data(self, filename="", raw=False):
         raise NotImplementedError()
 
     def get_tip(self):
@@ -63,7 +63,7 @@ class ContainerNode(YamlNode):
         if isinstance(self.value, YamlNode):
             self.value.level = level
 
-    def as_data(self, filename='', raw=False):
+    def as_data(self, filename="", raw=False):
         if isinstance(self.value, YamlNode):
             return self.value.as_data(filename, raw=raw)
         else:
@@ -97,13 +97,7 @@ class ContainerNode(YamlNode):
                 self.fail_to_incorporate_node(node)
 
     def can_add_node(self, node):
-        return (
-            self.value is None
-            and (
-                node.level is None
-                or node.level > self.level
-            )
-        )
+        return self.value is None and (node.level is None or node.level > self.level)
 
     def add_node(self, node):
         self.value = node
@@ -146,13 +140,7 @@ class Root(ContainerNode):
         super().__init__(pnode, level=0)
 
     def can_add_node(self, node):
-        return (
-            self.value is None
-            and (
-                node.level is None
-                or node.level >= self.level
-            )
-        )
+        return self.value is None and (node.level is None or node.level >= self.level)
 
 
 class Comment(ContainerNode):
@@ -161,13 +149,9 @@ class Comment(ContainerNode):
 
 class List(ParentNode):
     def can_add_node(self, node):
-        return (
-            super().can_add_node(node)
-            and
-            isinstance(node, ListItem)
-        )
+        return super().can_add_node(node) and isinstance(node, ListItem)
 
-    def as_data(self, filename='', raw=False):
+    def as_data(self, filename="", raw=False):
         return [c.as_data(filename, raw=raw) for c in self.children]
 
 
@@ -177,17 +161,10 @@ class ListItem(ContainerNode):
 
 class Mapping(ParentNode):
     def can_add_node(self, node):
-        return (
-            super().can_add_node(node)
-            and
-            isinstance(node, KeyValue)
-        )
+        return super().can_add_node(node) and isinstance(node, KeyValue)
 
-    def as_data(self, filename='', raw=False):
-        return OrderedDict([
-            (c.key.as_data(filename, raw=raw), c.as_data(filename, raw=raw))
-            for c in self.children
-        ])
+    def as_data(self, filename="", raw=False):
+        return OrderedDict([(c.key.as_data(filename, raw=raw), c.as_data(filename, raw=raw)) for c in self.children])
 
 
 class KeyValue(ContainerNode):
@@ -202,7 +179,7 @@ class LeafNode(YamlNode):
         self.value = [(pnode, value)] if value is not None else [(pnode, source_text)]
         super().__init__(pnode, **kwargs)
 
-    def as_data(self, filename='', raw=False):
+    def as_data(self, filename="", raw=False):
         if raw:
             return self.get_value()
         else:
@@ -212,33 +189,27 @@ class LeafNode(YamlNode):
             end = get_coords_of_str_index(end_pnode.full_text, end_pnode.end)
 
             return Source(
-                filename = filename,
-                start = start,
-                end = end,
-                text = self.source_text,
+                filename=filename,
+                start=start,
+                end=end,
+                text=self.source_text,
                 # Values correspond to lines of text
-                value = self.get_value(),
+                value=self.get_value(),
             )
 
     def can_add_node(self, node):
-        return (
-            isinstance(node, LeafNode)
-            and (
-                node.level is None
-                or node.level >= self.level
-            )
-        )
+        return isinstance(node, LeafNode) and (node.level is None or node.level >= self.level)
 
 
 class TextLeafNode(LeafNode):
     def add_node(self, node):
-        self.source_text += '\n' + node.get_value()
+        self.source_text += "\n" + node.get_value()
         self.value.extend(node.value)
         node.parent = self
         return self.get_tip()
 
     def get_value(self):
-        return '\n'.join([v[1] for v in self.value])
+        return "\n".join([v[1] for v in self.value])
 
 
 class RawValueLeafNode(LeafNode):
