@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Union
 
 from parsimonious import Grammar, NodeVisitor, VisitationError
 
@@ -10,15 +10,8 @@ from .exceptions import OutOfContextNodeError
 if TYPE_CHECKING:
     from parsimonious.nodes import Node as PNode
 
+    from .nodes import OptionalNodes, YamlNodes
     from .types import StrPath
-
-
-YamlNodes = Iterable[Optional[nodes.YamlNode]]
-
-NodeOrNodes = Union[YamlNodes, nodes.YamlNode]
-
-
-OptionalNodes = Optional[NodeOrNodes]
 
 
 class TextOnlySymlParser(NodeVisitor):
@@ -37,10 +30,11 @@ class TextOnlySymlParser(NodeVisitor):
     def visit_line(self, node: PNode, children: YamlNodes) -> OptionalNodes:
         indent, value, _ = children
         if value is not None:
-            value.level = indent
+            value.level = indent  # type: ignore
             return value
+        return None
 
-    def generic_visit(self, node: PNode, children: YamlNodes) -> OptionalNodes:
+    def generic_visit(self, node: PNode, children: YamlNodes) -> OptionalNodes:  # type: ignore
         return self.reduce_children(children)
 
     def get_text(self, node: PNode, children: YamlNodes) -> nodes.TextLeafNode:
@@ -48,7 +42,7 @@ class TextOnlySymlParser(NodeVisitor):
 
     def visit_comment(self, node: PNode, children: YamlNodes) -> nodes.Comment:
         _, text = children
-        return nodes.Comment(text)
+        return nodes.Comment(pnode=node, value=text)
 
     visit_text = get_text
     visit_key = get_text
@@ -58,17 +52,17 @@ class TextOnlySymlParser(NodeVisitor):
 
     def visit_key_value(self, node: PNode, children: YamlNodes) -> OptionalNodes:
         section, _, value = children
-        section.incorporate_node(value)
+        section.incorporate_node(value)  # type: ignore
         return section
 
     def visit_section(self, node: PNode, children: YamlNodes) -> nodes.KeyValue:
         key, _ = children
-        return nodes.KeyValue(node, key)
+        return nodes.KeyValue(node, key)  # type: ignore
 
     def visit_list_item(self, node: PNode, children: YamlNodes) -> nodes.ListItem:
         _, _, value = children
         li = nodes.ListItem(node)
-        li.incorporate_node(value)
+        li.incorporate_node(value)  # type: ignore
         return li
 
     def visit_lines(self, node: PNode, children: YamlNodes) -> nodes.Root:
@@ -83,7 +77,7 @@ class TextOnlySymlParser(NodeVisitor):
             if isinstance(child, nodes.Comment):
                 current.comments.append(child)
             else:
-                current = current.incorporate_node(child)
+                current = current.incorporate_node(child)  # type: ignore
         return root
 
     def parse(self, *args, **kwargs) -> PNode:

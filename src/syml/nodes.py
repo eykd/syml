@@ -61,6 +61,13 @@ class YamlNode:
         raise OutOfContextNodeError("Line %s, column %s:\n%s" % (pos.line, pos.column, line))
 
 
+YamlNodes = Iterable[Optional[Union[YamlNode, StrBool]]]
+
+NodeOrNodes = Union[YamlNodes, YamlNode, StrBool]
+
+OptionalNodes = Optional[NodeOrNodes]
+
+
 class ContainerNode(YamlNode):
     def __init__(self, pnode: PNode, value: Optional[Union[YamlNode, StrBool]] = None, **kwargs) -> None:
         self.value = value
