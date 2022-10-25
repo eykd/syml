@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from pathlib import Path
+from typing import Union
 
 from attrs import define
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 StrPath = Union[str, Path]
 
