@@ -24,7 +24,7 @@ class Source:
     end: Pos
     text: str
     # value corresponds to a line of text
-    value: str
+    value: StrBool
 
     def __repr__(self):
         return "%sLine %s, Column %s (index %s): %r (%r)" % (
@@ -35,6 +35,18 @@ class Source:
             self.text,
             self.value,
         )
+
+    def __str__(self):
+        return self.text
+
+    # def __add__(self, other):
+    #     if isinstance(other, str):
+    #         lines = other.splitlines()
+    #         return Source(
+    #             filename=self.filename,
+    #             start=self.start,
+    #             end
+    #         )
 
 
 SourceStr = Union[Source, str]

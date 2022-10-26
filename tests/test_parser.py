@@ -4,13 +4,11 @@ from collections import OrderedDict
 from io import StringIO
 from unittest import TestCase
 
-import ensure
+import pytest
 
 import syml
 from syml import exceptions, parser
 from syml.utils import get_text_source
-
-ensure = ensure.ensure
 
 
 class TextOnlySymlParserTests(TestCase):
@@ -20,9 +18,7 @@ class TextOnlySymlParserTests(TestCase):
     def test_it_should_parse_a_simple_text_value(self):
         text = textwrap.dedent("true")
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            get_text_source(text, "true"),
-        )
+        assert result.as_data() == get_text_source(text, "true")
 
     def test_it_should_parse_a_simple_multiline_list(self):
         text = textwrap.dedent(
@@ -33,13 +29,11 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                get_text_source(text, "foo"),
-                get_text_source(text, "bar"),
-                get_text_source(text, "baz"),
-            ]
-        )
+        assert result.as_data() == [
+            get_text_source(text, "foo"),
+            get_text_source(text, "bar"),
+            get_text_source(text, "baz"),
+        ]
 
     def test_it_should_parse_a_simple_single_line_list(self):
         text = textwrap.dedent(
@@ -48,11 +42,9 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                get_text_source(text, "foo"),
-            ]
-        )
+        assert result.as_data() == [
+            get_text_source(text, "foo"),
+        ]
 
     def test_it_should_parse_a_list_with_multiline_values(self):
         text = textwrap.dedent(
@@ -63,12 +55,10 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                get_text_source(text, "foo"),
-                get_text_source(text, "bar\n  baz", "bar\nbaz", "bar\nbaz"),
-            ]
-        )
+        assert result.as_data() == [
+            get_text_source(text, "foo"),
+            get_text_source(text, "bar\n  baz", "bar\nbaz", "bar\nbaz"),
+        ]
 
     def test_it_should_parse_a_list_with_embedded_mappings_values(self):
         text = textwrap.dedent(
@@ -81,15 +71,13 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                {get_text_source(text, "foo"): get_text_source(text, "bar")},
-                {
-                    get_text_source(text, "baz"): get_text_source(text, "boo"),
-                    get_text_source(text, "blah"): get_text_source(text, "baloon"),
-                },
-            ]
-        )
+        assert result.as_data() == [
+            {get_text_source(text, "foo"): get_text_source(text, "bar")},
+            {
+                get_text_source(text, "baz"): get_text_source(text, "boo"),
+                get_text_source(text, "blah"): get_text_source(text, "baloon"),
+            },
+        ]
 
     def test_it_should_parse_a_simple_single_line_mapping(self):
         text = textwrap.dedent(
@@ -98,12 +86,10 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            OrderedDict(
-                [
-                    (get_text_source(text, "foo"), get_text_source(text, "bar")),
-                ]
-            )
+        assert result.as_data() == OrderedDict(
+            [
+                (get_text_source(text, "foo"), get_text_source(text, "bar")),
+            ]
         )
 
     def test_it_should_parse_a_simple_multiline_mapping(self):
@@ -114,13 +100,11 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            OrderedDict(
-                [
-                    (get_text_source(text, "foo"), get_text_source(text, "bar")),
-                    (get_text_source(text, "baz"), get_text_source(text, "boo")),
-                ]
-            )
+        assert result.as_data() == OrderedDict(
+            [
+                (get_text_source(text, "foo"), get_text_source(text, "bar")),
+                (get_text_source(text, "baz"), get_text_source(text, "boo")),
+            ]
         )
 
     def test_it_should_parse_a_weirdly_nested_mapping(self):
@@ -131,13 +115,11 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            OrderedDict(
-                [
-                    (get_text_source(text, "foo"), get_text_source(text, "bar: blah")),
-                    (get_text_source(text, "baz"), get_text_source(text, "boo")),
-                ]
-            )
+        assert result.as_data() == OrderedDict(
+            [
+                (get_text_source(text, "foo"), get_text_source(text, "bar: blah")),
+                (get_text_source(text, "baz"), get_text_source(text, "boo")),
+            ]
         )
 
     def test_it_should_parse_a_nested_mapping_with_list(self):
@@ -150,19 +132,17 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            OrderedDict(
-                [
-                    (
-                        get_text_source(text, "foo"),
-                        [
-                            get_text_source(text, "bar"),
-                            get_text_source(text, "baz"),
-                        ],
-                    ),
-                    (get_text_source(text, "blah"), get_text_source(text, "boo")),
-                ]
-            )
+        assert result.as_data() == OrderedDict(
+            [
+                (
+                    get_text_source(text, "foo"),
+                    [
+                        get_text_source(text, "bar"),
+                        get_text_source(text, "baz"),
+                    ],
+                ),
+                (get_text_source(text, "blah"), get_text_source(text, "boo")),
+            ]
         )
 
     def test_it_should_parse_a_nested_mapping_with_weirdly_nested_list(self):
@@ -173,13 +153,11 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            OrderedDict(
-                [
-                    (get_text_source(text, "foo"), get_text_source(text, "- bar")),
-                    (get_text_source(text, "blah"), get_text_source(text, "boo")),
-                ]
-            )
+        assert result.as_data() == OrderedDict(
+            [
+                (get_text_source(text, "foo"), get_text_source(text, "- bar")),
+                (get_text_source(text, "blah"), get_text_source(text, "boo")),
+            ]
         )
 
     def test_it_should_parse_a_nested_list_with_mapping(self):
@@ -192,26 +170,24 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                OrderedDict(
-                    [
-                        (
-                            get_text_source(text, "foo"),
-                            [
-                                get_text_source(text, "bar"),
-                                get_text_source(text, "baz"),
-                            ],
-                        ),
-                    ]
-                ),
-                OrderedDict(
-                    [
-                        (get_text_source(text, "blah"), get_text_source(text, "boo")),
-                    ]
-                ),
-            ]
-        )
+        assert result.as_data() == [
+            OrderedDict(
+                [
+                    (
+                        get_text_source(text, "foo"),
+                        [
+                            get_text_source(text, "bar"),
+                            get_text_source(text, "baz"),
+                        ],
+                    ),
+                ]
+            ),
+            OrderedDict(
+                [
+                    (get_text_source(text, "blah"), get_text_source(text, "boo")),
+                ]
+            ),
+        ]
 
     def test_it_should_parse_comments_and_blanks(self):
         text = textwrap.dedent(
@@ -228,29 +204,27 @@ class TextOnlySymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                OrderedDict(
-                    [
-                        (
-                            get_text_source(text, "foo"),
-                            [
-                                get_text_source(text, "bar"),
-                                get_text_source(text, "baz"),
-                            ],
-                        ),
-                    ]
-                ),
-                OrderedDict(
-                    [
-                        (
-                            get_text_source(text, "blah"),
-                            get_text_source(text, "boo # not a comment!"),
-                        )
-                    ]
-                ),
-            ]
-        )
+        assert result.as_data() == [
+            OrderedDict(
+                [
+                    (
+                        get_text_source(text, "foo"),
+                        [
+                            get_text_source(text, "bar"),
+                            get_text_source(text, "baz"),
+                        ],
+                    ),
+                ]
+            ),
+            OrderedDict(
+                [
+                    (
+                        get_text_source(text, "blah"),
+                        get_text_source(text, "boo # not a comment!"),
+                    )
+                ]
+            ),
+        ]
 
     def test_it_fails_parsing_weird_indentations(self):
         bad_yaml = textwrap.dedent(
@@ -261,7 +235,8 @@ class TextOnlySymlParserTests(TestCase):
         - blah
         """
         )
-        (ensure(self.parser.parse).called_with(bad_yaml).raises(exceptions.OutOfContextNodeError))
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            self.parser.parse(bad_yaml)
 
 
 class BooleanSymlParserTests(TestCase):
@@ -271,9 +246,7 @@ class BooleanSymlParserTests(TestCase):
     def test_it_should_parse_a_simple_boolean_value(self):
         text = textwrap.dedent("true")
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            get_text_source(text, "true", value=True),
-        )
+        assert result.as_data() == get_text_source(text, "true", value=True)
 
     def test_it_should_parse_mixed_boolean_values(self):
         text = textwrap.dedent(
@@ -284,13 +257,11 @@ class BooleanSymlParserTests(TestCase):
         """
         )
         result = self.parser.parse(text)
-        ensure(result.as_data()).equals(
-            [
-                get_text_source(text, "foo"),
-                get_text_source(text, "true", value=True),
-                get_text_source(text, "false", value=False),
-            ]
-        )
+        assert result.as_data() == [
+            get_text_source(text, "foo"),
+            get_text_source(text, "true", value=True),
+            get_text_source(text, "false", value=False),
+        ]
 
 
 class SimpleParserFunctionTests(TestCase):
@@ -303,13 +274,11 @@ class SimpleParserFunctionTests(TestCase):
         """
         )
         result = parser.parse(text)
-        ensure(result).equals(
-            [
-                "foo",
-                "true",
-                "false",
-            ]
-        )
+        assert result == [
+            "foo",
+            "true",
+            "false",
+        ]
 
     def test_it_should_parse_whats_in_the_readme_text_only(self):
         text = textwrap.dedent(
@@ -330,23 +299,21 @@ class SimpleParserFunctionTests(TestCase):
         """
         )
         result = syml.loads(text)
-        ensure(result).equals(
-            {
-                "foo": [
-                    "bar",
-                    "baz",
-                    "blah\nboo",
-                ],
-                "booleans?": [
-                    "True",
-                    "False",
-                    "true",
-                    "false",
-                    "TRUE",
-                    "FALSE",
-                ],
-            }
-        )
+        assert result == {
+            "foo": [
+                "bar",
+                "baz",
+                "blah\nboo",
+            ],
+            "booleans?": [
+                "True",
+                "False",
+                "true",
+                "false",
+                "TRUE",
+                "FALSE",
+            ],
+        }
 
     def test_it_should_parse_whats_in_the_readme_with_booleans(self):
         text = textwrap.dedent(
@@ -368,20 +335,18 @@ class SimpleParserFunctionTests(TestCase):
         )
         buf = StringIO(text)
         result = syml.load(buf, booleans=True)
-        ensure(result).equals(
-            {
-                "foo": [
-                    "bar",
-                    "baz",
-                    "blah\nboo",
-                ],
-                "booleans?": [
-                    True,
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                ],
-            }
-        )
+        assert result == {
+            "foo": [
+                "bar",
+                "baz",
+                "blah\nboo",
+            ],
+            "booleans?": [
+                True,
+                False,
+                True,
+                False,
+                True,
+                False,
+            ],
+        }

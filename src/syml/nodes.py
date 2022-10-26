@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Iterable
+from typing import Any
+from typing import List as TList
 from typing import Optional, Union
 
 from parsimonious.nodes import Node as PNode
@@ -32,8 +34,11 @@ class YamlNode:
     def _set_level(self, level: int) -> None:
         self._level = level
 
-    def as_data(self, filename: StrPath = "", raw: bool = False) -> StrBool:
+    def as_data(self, filename: StrPath = "", raw: bool = False) -> Any:
         raise NotImplementedError()
+
+    def get_value(self):
+        return None
 
     def get_tip(self) -> YamlNode:
         return self
@@ -41,18 +46,19 @@ class YamlNode:
     def can_add_node(self, node: YamlNode) -> bool:
         return False
 
-    def add_node(self, node: YamlNode) -> None:
+    def add_node(self, node: YamlNode) -> YamlNode:
         raise NotImplementedError()
 
-    def incorporate_node(self, node: YamlNode) -> None:
+    def incorporate_node(self, node: YamlNode) -> YamlNode:
         if self.can_add_node(node):
             return self.add_node(node)
         else:
             if self.parent is not None:
                 return self.parent.incorporate_node(node)
-            else:
+            else:  # pragma: no cover
                 # Shouldn't ever get here:
-                self.fail_to_incorporate_node(node)  # pragma: no cover
+                self.fail_to_incorporate_node(node)
+                return self
 
     def fail_to_incorporate_node(self, node: YamlNode) -> None:
         pnode = node.pnode
@@ -78,12 +84,15 @@ class ContainerNode(YamlNode):
         if isinstance(self.value, YamlNode):
             self.value.level = level
 
-    def as_data(self, filename: StrPath = "", raw: bool = False) -> StrBool:
+    def as_data(self, filename: StrPath = "", raw: bool = False) -> Optional[StrBool]:
         if isinstance(self.value, YamlNode):
             return self.value.as_data(filename, raw=raw)
-        else:
+        else:  # pragma: no cover
             # Shouldn't ever get here.
-            return self.value  # pragma: no cover
+            return self.value
+
+    def get_value(self):
+        return self.value
 
     def get_tip(self) -> YamlNode:
         if self.value is not None and isinstance(self.value, YamlNode):
@@ -91,9 +100,9 @@ class ContainerNode(YamlNode):
         else:
             return self
 
-    def incorporate_node(self, node: YamlNode):
+    def incorporate_node(self, node: YamlNode) -> YamlNode:
         if self.can_add_node(node):
-            intermediary = None
+            intermediary: Optional[YamlNode] = None
             if isinstance(node, KeyValue):
                 intermediary = Mapping(node.pnode)
             elif isinstance(node, ListItem):
@@ -110,9 +119,10 @@ class ContainerNode(YamlNode):
                 return self.parent.incorporate_node(node)
             else:
                 self.fail_to_incorporate_node(node)
+                return self
 
     def can_add_node(self, node: YamlNode):
-        return self.value is None and (node.level is None or node.level > self.level)
+        return self.value is None and (node.level is None or (self.level is not None and node.level > self.level))
 
     def add_node(self, node: YamlNode):
         self.value = node
@@ -140,7 +150,7 @@ class ParentNode(YamlNode):
             return self
 
     def can_add_node(self, node: YamlNode) -> bool:
-        return node.level is None or node.level >= self.level
+        return node.level is None or (self.level is not None and node.level >= self.level)
 
     def add_node(self, node: YamlNode):
         self.children.append(node)
@@ -155,7 +165,7 @@ class Root(ContainerNode):
         super().__init__(pnode, level=0)
 
     def can_add_node(self, node: YamlNode) -> bool:
-        return self.value is None and (node.level is None or node.level >= self.level)
+        return self.value is None and (node.level is None or (self.level is not None and node.level >= self.level))
 
 
 class Comment(ContainerNode):
@@ -166,7 +176,7 @@ class List(ParentNode):
     def can_add_node(self, node: YamlNode) -> bool:
         return super().can_add_node(node) and isinstance(node, ListItem)
 
-    def as_data(self, filename: StrPath = "", raw: bool = False) -> List[StrBool]:
+    def as_data(self, filename: StrPath = "", raw: bool = False) -> TList[StrBool]:
         return [c.as_data(filename, raw=raw) for c in self.children]
 
 
@@ -189,12 +199,15 @@ class KeyValue(ContainerNode):
 
 
 class LeafNode(YamlNode):
-    def __init__(self, pnode: PNode, source_text: SourceStr, value: Optional[StrBool] = None, **kwargs):
+    def __init__(self, pnode: PNode, source_text: SourceStr, value: Optional[SourceStrBool] = None, **kwargs):
         self.source_text = source_text
         self.value = [(pnode, value)] if value is not None else [(pnode, source_text)]
         super().__init__(pnode, **kwargs)
 
-    def as_data(self, filename: StrPath = "", raw: bool = False) -> SourceStrBool:
+    def get_value(self) -> SourceStrBool:
+        return self.value[0][1]
+
+    def as_data(self, filename: StrPath = "", raw: bool = False) -> Optional[SourceStrBool]:
         if raw:
             return self.get_value()
         else:
@@ -203,23 +216,27 @@ class LeafNode(YamlNode):
             start = get_coords_of_str_index(start_pnode.full_text, start_pnode.start)
             end = get_coords_of_str_index(end_pnode.full_text, end_pnode.end)
 
+            value = self.get_value()
+
             return Source(
                 filename=filename,
                 start=start,
                 end=end,
-                text=self.source_text,
+                text=str(self.source_text) if isinstance(self.source_text, Source) else self.source_text,
                 # Values correspond to lines of text
-                value=self.get_value(),
+                value=value.value if isinstance(value, Source) else value,
             )
 
     def can_add_node(self, node: YamlNode) -> bool:
-        return isinstance(node, LeafNode) and (node.level is None or node.level >= self.level)
+        return isinstance(node, LeafNode) and (
+            node.level is None or (self.level is not None and node.level >= self.level)
+        )
 
 
 class TextLeafNode(LeafNode):
     def add_node(self, node: YamlNode) -> YamlNode:
-        self.source_text += "\n" + node.get_value()
-        self.value.extend(node.value)
+        self.source_text += "\n" + str(node.get_value())
+        self.value.append((node.pnode, node.get_value()))
         node.parent = self
         return self.get_tip()
 
