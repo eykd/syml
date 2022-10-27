@@ -9,7 +9,7 @@ from typing import Optional, Union
 from parsimonious.nodes import Node as PNode
 
 from .exceptions import OutOfContextNodeError
-from .types import Source, SourceStr, SourceStrBool, StrBool, StrPath
+from .types import Source, SourceStrBool, StrBool, StrPath
 from .utils import get_coords_of_str_index, get_line
 
 
@@ -199,7 +199,7 @@ class KeyValue(ContainerNode):
 
 
 class LeafNode(YamlNode):
-    def __init__(self, pnode: PNode, source_text: SourceStr, value: Optional[SourceStrBool] = None, **kwargs):
+    def __init__(self, pnode: PNode, source_text: Source, value: Optional[StrBool] = None, **kwargs):
         self.source_text = source_text
         self.value = [(pnode, value)] if value is not None else [(pnode, source_text)]
         super().__init__(pnode, **kwargs)
@@ -241,7 +241,7 @@ class TextLeafNode(LeafNode):
         return self.get_tip()
 
     def get_value(self) -> str:
-        return "\n".join([v[1] for v in self.value])
+        return "\n".join([str(v[1]) for v in self.value])
 
 
 class RawValueLeafNode(LeafNode):

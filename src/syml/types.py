@@ -39,14 +39,18 @@ class Source:
     def __str__(self):
         return self.text
 
-    # def __add__(self, other):
-    #     if isinstance(other, str):
-    #         lines = other.splitlines()
-    #         return Source(
-    #             filename=self.filename,
-    #             start=self.start,
-    #             end
-    #         )
+    def __add__(self, other: SourceStr):
+        if isinstance(other, str):
+            lines = other.splitlines()
+            return Source(
+                filename=self.filename,
+                start=self.start,
+                end=Pos(index=self.end.index + len(other), line=self.end.line + len(lines), column=len(lines[-1])),
+                text=self.text + other,
+                value=str(self.value) + other,
+            )
+        elif isinstance(other, Source):
+            return self + other.text
 
 
 SourceStr = Union[Source, str]
