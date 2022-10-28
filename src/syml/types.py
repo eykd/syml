@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from attrs import define
+from parsimonious.nodes import Node as PNode
 
 StrPath = Union[str, Path]
 
@@ -25,6 +27,43 @@ class Source:
     text: str
     # value corresponds to a line of text
     value: StrBool
+
+    @classmethod
+    def from_node(cls, pnode: PNode, filename: StrPath = "", value: Optional[StrBool] = None) -> Source:
+        from syml import utils
+
+        return cls(
+            filename=filename,
+            start=utils.get_coords_of_str_index(pnode.full_text, pnode.start),
+            end=utils.get_coords_of_str_index(pnode.full_text, pnode.end),
+            text=pnode.text,
+            value=value if value is not None else pnode.text,
+        )
+
+    @classmethod
+    def from_text(
+        cls,
+        text: str,
+        substring: str = None,
+        source_text: Optional[str] = None,
+        value: Optional[str] = None,
+        filename: StrPath = "",
+    ):
+        from syml import utils
+
+        if substring is None:
+            substring = text
+        match = re.search(substring, text)
+        if match is None:
+            raise ValueError(f"No match found for {substring!r}")
+        source_text = match.group() if source_text is None else source_text
+        return Source(
+            filename=filename,
+            start=utils.get_coords_of_str_index(text, match.start()),
+            end=utils.get_coords_of_str_index(text, match.end()),
+            text=source_text,
+            value=value if value is not None else source_text,
+        )
 
     def __repr__(self):
         return "%sLine %s, Column %s (index %s): %r (%r)" % (

@@ -1,4 +1,3 @@
-import re
 from typing import Optional
 
 from .types import Pos, Source
@@ -26,16 +25,6 @@ def get_line(text: str, line_number: int) -> str:
 
 
 def get_text_source(
-    text: str, substring: str, source_text: Optional[str] = None, value: Optional[str] = None, filename: str = ""
+    text: str, substring: str = None, source_text: Optional[str] = None, value: Optional[str] = None, filename: str = ""
 ) -> Source:
-    match = re.search(substring, text)
-    if match is None:
-        raise ValueError(f"No match found for {substring!r}")
-    source_text = match.group() if source_text is None else source_text
-    return Source(
-        filename=filename,
-        start=get_coords_of_str_index(text, match.start()),
-        end=get_coords_of_str_index(text, match.end()),
-        text=source_text,
-        value=value if value is not None else source_text,
-    )
+    return Source.from_text(text, substring, source_text, value, filename)

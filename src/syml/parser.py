@@ -4,25 +4,21 @@ from typing import TYPE_CHECKING, Dict, List, Union
 
 from parsimonious import Grammar, NodeVisitor, VisitationError
 
-from . import grammars, nodes
+from . import grammars, nodes, types
 from .exceptions import OutOfContextNodeError
 
 if TYPE_CHECKING:
     from parsimonious.nodes import Node as PNode
 
-    from .nodes import OptionalNodes, YamlNodes
+    from .nodes import OptionalNodes, YamlNode, YamlNodes
     from .types import StrPath
 
 
 class TextOnlySymlParser(NodeVisitor):
     grammar = Grammar(grammars.text_only_syml_grammar)
 
-    def reduce_children(self, children: YamlNodes) -> OptionalNodes:
-        children = [c for c in children if c is not None]
-        if children:
-            return children if len(children) > 1 else children[0]
-        else:
-            return None
+    def reduce_children(self, children: YamlNodes) -> List[YamlNode]:
+        return [c for c in children if c is not None]
 
     def visit_blank(self, node: PNode, children: YamlNodes) -> None:
         return None
@@ -35,10 +31,16 @@ class TextOnlySymlParser(NodeVisitor):
         return None
 
     def generic_visit(self, node: PNode, children: YamlNodes) -> OptionalNodes:  # type: ignore
-        return self.reduce_children(children)
+        children = self.reduce_children(children)
+        if not children:
+            return None
+        elif len(children) == 1:
+            return children[0]
+        else:
+            return children
 
     def get_text(self, node: PNode, children: YamlNodes) -> nodes.TextLeafNode:
-        return nodes.TextLeafNode(node, node.text)
+        return nodes.TextLeafNode(node, types.Source.from_node(node))
 
     def visit_comment(self, node: PNode, children: YamlNodes) -> nodes.Comment:
         _, text = children
@@ -70,8 +72,6 @@ class TextOnlySymlParser(NodeVisitor):
         current = root
 
         children = self.reduce_children(children)
-        if isinstance(children, nodes.YamlNode):
-            children = [children]
 
         for child in children:
             if isinstance(child, nodes.Comment):
@@ -100,10 +100,10 @@ class BooleanSymlParser(TextOnlySymlParser):
     grammar = Grammar(grammars.boolean_syml_grammar)
 
     def visit_truthy(self, node: PNode, children: YamlNodes) -> nodes.RawValueLeafNode:
-        return nodes.RawValueLeafNode(node, node.text, value=True)
+        return nodes.RawValueLeafNode(node, types.Source.from_node(node), value=True)
 
     def visit_falsey(self, node: PNode, children: YamlNodes) -> nodes.RawValueLeafNode:
-        return nodes.RawValueLeafNode(node, node.text, value=False)
+        return nodes.RawValueLeafNode(node, types.Source.from_node(node), value=False)
 
 
 def parse(

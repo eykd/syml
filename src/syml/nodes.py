@@ -67,7 +67,7 @@ class YamlNode:
         raise OutOfContextNodeError("Line %s, column %s:\n%s" % (pos.line, pos.column, line))
 
 
-YamlNodes = Iterable[Optional[Union[YamlNode, StrBool]]]
+YamlNodes = Iterable[Optional[YamlNode]]
 
 NodeOrNodes = Union[YamlNodes, YamlNode, StrBool]
 
@@ -201,7 +201,7 @@ class KeyValue(ContainerNode):
 class LeafNode(YamlNode):
     def __init__(self, pnode: PNode, source_text: Source, value: Optional[StrBool] = None, **kwargs):
         self.source_text = source_text
-        self.value = [(pnode, value)] if value is not None else [(pnode, source_text)]
+        self.value = [(pnode, value)] if value is not None else [(pnode, source_text.value)]
         super().__init__(pnode, **kwargs)
 
     def get_value(self) -> SourceStrBool:

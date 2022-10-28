@@ -26,7 +26,7 @@ class TextOnlySymlParserTests(TestCase):
             - foo
             - bar
             - baz
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -39,7 +39,7 @@ class TextOnlySymlParserTests(TestCase):
         text = textwrap.dedent(
             """
             - foo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -52,7 +52,7 @@ class TextOnlySymlParserTests(TestCase):
             - foo
             - bar
               baz
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -68,7 +68,7 @@ class TextOnlySymlParserTests(TestCase):
             - baz: boo
               blah:
                 baloon
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -83,7 +83,7 @@ class TextOnlySymlParserTests(TestCase):
         text = textwrap.dedent(
             """
             foo: bar
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
@@ -97,7 +97,7 @@ class TextOnlySymlParserTests(TestCase):
             """
             foo: bar
             baz: boo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
@@ -112,7 +112,7 @@ class TextOnlySymlParserTests(TestCase):
             """
             foo: bar: blah
             baz: boo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
@@ -129,7 +129,7 @@ class TextOnlySymlParserTests(TestCase):
               - bar
               - baz
             blah: boo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
@@ -150,7 +150,7 @@ class TextOnlySymlParserTests(TestCase):
             """
             foo: - bar
             blah: boo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
@@ -167,7 +167,7 @@ class TextOnlySymlParserTests(TestCase):
               - bar
               - baz
             - blah: boo
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -192,16 +192,16 @@ class TextOnlySymlParserTests(TestCase):
     def test_it_should_parse_comments_and_blanks(self):
         text = textwrap.dedent(
             """
-        # A comment
-        - foo:
+            # A comment
+            - foo:
 
-          - bar
-          # Something else entirely
-          - baz
+              - bar
+              # Something else entirely
+              - baz
 
-        - blah: boo # not a comment!
+            - blah: boo # not a comment!
 
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -229,11 +229,11 @@ class TextOnlySymlParserTests(TestCase):
     def test_it_fails_parsing_weird_indentations(self):
         bad_yaml = textwrap.dedent(
             """
-          - foo:
-              - bar
-         - baz
-        - blah
-        """
+              - foo:
+                  - bar
+             - baz
+            - blah
+            """
         )
         with pytest.raises(exceptions.OutOfContextNodeError):
             self.parser.parse(bad_yaml)
@@ -254,7 +254,7 @@ class BooleanSymlParserTests(TestCase):
             - foo
             - true
             - false
-        """
+            """
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
@@ -271,7 +271,7 @@ class SimpleParserFunctionTests(TestCase):
             - foo
             - true
             - false
-        """
+            """
         )
         result = parser.parse(text)
         assert result == [
@@ -296,7 +296,7 @@ class SimpleParserFunctionTests(TestCase):
               - false
               - TRUE
               - FALSE
-        """
+            """
         )
         result = syml.loads(text)
         assert result == {
@@ -331,7 +331,7 @@ class SimpleParserFunctionTests(TestCase):
               - false
               - TRUE
               - FALSE
-        """
+            """
         )
         buf = StringIO(text)
         result = syml.load(buf, booleans=True)
