@@ -23,6 +23,7 @@ Here's a simple SYML document::
     - baz
     - blah
       boo
+      baloon
 
   booleans?:
     - True

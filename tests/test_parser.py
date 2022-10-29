@@ -288,6 +288,7 @@ class SimpleParserFunctionTests(TestCase):
               - baz
               - blah
                 boo
+                baloon
 
             booleans?:
               - True
@@ -303,7 +304,7 @@ class SimpleParserFunctionTests(TestCase):
             "foo": [
                 "bar",
                 "baz",
-                "blah\nboo",
+                "blah\nboo\nbaloon",
             ],
             "booleans?": [
                 "True",

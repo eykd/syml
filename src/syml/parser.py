@@ -7,7 +7,7 @@ from parsimonious import Grammar, NodeVisitor, VisitationError
 from . import grammars, nodes, types
 from .exceptions import OutOfContextNodeError
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
     from .nodes import OptionalNodes, YamlNode, YamlNodes
