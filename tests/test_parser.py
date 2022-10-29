@@ -8,7 +8,7 @@ import pytest
 
 import syml
 from syml import exceptions, parser
-from syml.utils import get_text_source
+from syml.types import Source
 
 
 class TextOnlySymlParserTests(TestCase):
@@ -18,7 +18,7 @@ class TextOnlySymlParserTests(TestCase):
     def test_it_should_parse_a_simple_text_value(self):
         text = textwrap.dedent("true")
         result = self.parser.parse(text)
-        assert result.as_data() == get_text_source(text, "true")
+        assert result.as_data() == Source.from_text(text, "true")
 
     def test_it_should_parse_a_simple_multiline_list(self):
         text = textwrap.dedent(
@@ -30,9 +30,9 @@ class TextOnlySymlParserTests(TestCase):
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
-            get_text_source(text, "foo"),
-            get_text_source(text, "bar"),
-            get_text_source(text, "baz"),
+            Source.from_text(text, "foo"),
+            Source.from_text(text, "bar"),
+            Source.from_text(text, "baz"),
         ]
 
     def test_it_should_parse_a_simple_single_line_list(self):
@@ -43,7 +43,7 @@ class TextOnlySymlParserTests(TestCase):
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
-            get_text_source(text, "foo"),
+            Source.from_text(text, "foo"),
         ]
 
     def test_it_should_parse_a_list_with_multiline_values(self):
@@ -56,8 +56,8 @@ class TextOnlySymlParserTests(TestCase):
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
-            get_text_source(text, "foo"),
-            get_text_source(text, "bar\n  baz", "bar\nbaz", "bar\nbaz"),
+            Source.from_text(text, "foo"),
+            Source.from_text(text, "bar\n  baz", "bar\nbaz", "bar\nbaz"),
         ]
 
     def test_it_should_parse_a_list_with_embedded_mappings_values(self):
@@ -72,10 +72,10 @@ class TextOnlySymlParserTests(TestCase):
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
-            {get_text_source(text, "foo"): get_text_source(text, "bar")},
+            {Source.from_text(text, "foo"): Source.from_text(text, "bar")},
             {
-                get_text_source(text, "baz"): get_text_source(text, "boo"),
-                get_text_source(text, "blah"): get_text_source(text, "baloon"),
+                Source.from_text(text, "baz"): Source.from_text(text, "boo"),
+                Source.from_text(text, "blah"): Source.from_text(text, "baloon"),
             },
         ]
 
@@ -88,7 +88,7 @@ class TextOnlySymlParserTests(TestCase):
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
             [
-                (get_text_source(text, "foo"), get_text_source(text, "bar")),
+                (Source.from_text(text, "foo"), Source.from_text(text, "bar")),
             ]
         )
 
@@ -102,8 +102,8 @@ class TextOnlySymlParserTests(TestCase):
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
             [
-                (get_text_source(text, "foo"), get_text_source(text, "bar")),
-                (get_text_source(text, "baz"), get_text_source(text, "boo")),
+                (Source.from_text(text, "foo"), Source.from_text(text, "bar")),
+                (Source.from_text(text, "baz"), Source.from_text(text, "boo")),
             ]
         )
 
@@ -117,8 +117,8 @@ class TextOnlySymlParserTests(TestCase):
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
             [
-                (get_text_source(text, "foo"), get_text_source(text, "bar: blah")),
-                (get_text_source(text, "baz"), get_text_source(text, "boo")),
+                (Source.from_text(text, "foo"), Source.from_text(text, "bar: blah")),
+                (Source.from_text(text, "baz"), Source.from_text(text, "boo")),
             ]
         )
 
@@ -135,13 +135,13 @@ class TextOnlySymlParserTests(TestCase):
         assert result.as_data() == OrderedDict(
             [
                 (
-                    get_text_source(text, "foo"),
+                    Source.from_text(text, "foo"),
                     [
-                        get_text_source(text, "bar"),
-                        get_text_source(text, "baz"),
+                        Source.from_text(text, "bar"),
+                        Source.from_text(text, "baz"),
                     ],
                 ),
-                (get_text_source(text, "blah"), get_text_source(text, "boo")),
+                (Source.from_text(text, "blah"), Source.from_text(text, "boo")),
             ]
         )
 
@@ -155,8 +155,8 @@ class TextOnlySymlParserTests(TestCase):
         result = self.parser.parse(text)
         assert result.as_data() == OrderedDict(
             [
-                (get_text_source(text, "foo"), get_text_source(text, "- bar")),
-                (get_text_source(text, "blah"), get_text_source(text, "boo")),
+                (Source.from_text(text, "foo"), Source.from_text(text, "- bar")),
+                (Source.from_text(text, "blah"), Source.from_text(text, "boo")),
             ]
         )
 
@@ -174,17 +174,17 @@ class TextOnlySymlParserTests(TestCase):
             OrderedDict(
                 [
                     (
-                        get_text_source(text, "foo"),
+                        Source.from_text(text, "foo"),
                         [
-                            get_text_source(text, "bar"),
-                            get_text_source(text, "baz"),
+                            Source.from_text(text, "bar"),
+                            Source.from_text(text, "baz"),
                         ],
                     ),
                 ]
             ),
             OrderedDict(
                 [
-                    (get_text_source(text, "blah"), get_text_source(text, "boo")),
+                    (Source.from_text(text, "blah"), Source.from_text(text, "boo")),
                 ]
             ),
         ]
@@ -208,10 +208,10 @@ class TextOnlySymlParserTests(TestCase):
             OrderedDict(
                 [
                     (
-                        get_text_source(text, "foo"),
+                        Source.from_text(text, "foo"),
                         [
-                            get_text_source(text, "bar"),
-                            get_text_source(text, "baz"),
+                            Source.from_text(text, "bar"),
+                            Source.from_text(text, "baz"),
                         ],
                     ),
                 ]
@@ -219,8 +219,8 @@ class TextOnlySymlParserTests(TestCase):
             OrderedDict(
                 [
                     (
-                        get_text_source(text, "blah"),
-                        get_text_source(text, "boo # not a comment!"),
+                        Source.from_text(text, "blah"),
+                        Source.from_text(text, "boo # not a comment!"),
                     )
                 ]
             ),
@@ -246,7 +246,7 @@ class BooleanSymlParserTests(TestCase):
     def test_it_should_parse_a_simple_boolean_value(self):
         text = textwrap.dedent("true")
         result = self.parser.parse(text)
-        assert result.as_data() == get_text_source(text, "true", value=True)
+        assert result.as_data() == Source.from_text(text, "true", value=True)
 
     def test_it_should_parse_mixed_boolean_values(self):
         text = textwrap.dedent(
@@ -258,9 +258,9 @@ class BooleanSymlParserTests(TestCase):
         )
         result = self.parser.parse(text)
         assert result.as_data() == [
-            get_text_source(text, "foo"),
-            get_text_source(text, "true", value=True),
-            get_text_source(text, "false", value=False),
+            Source.from_text(text, "foo"),
+            Source.from_text(text, "true", value=True),
+            Source.from_text(text, "false", value=False),
         ]
 
 

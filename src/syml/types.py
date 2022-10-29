@@ -18,6 +18,20 @@ class Pos:
     line: int
     column: int
 
+    @classmethod
+    def from_str_index(cls, text: str, index: int) -> Pos:
+        """Get (line_number, col) of `index` in `string`.
+
+        Based on http://stackoverflow.com/a/24495900
+        """
+        lines = text.splitlines(True)
+        curr_pos = 0
+        for linenum, line in enumerate(lines):
+            if curr_pos + len(line) > index:
+                return cls(index, linenum + 1, index - curr_pos)
+            curr_pos += len(line)
+        return cls(len(text), linenum + 1, 0)
+
 
 @define(slots=True, repr=False, frozen=True)
 class Source:

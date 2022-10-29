@@ -1,7 +1,7 @@
 import textwrap
 from unittest import TestCase
 
-from syml import types, utils
+from syml import types
 
 
 class SourceTests(TestCase):
@@ -13,7 +13,7 @@ class SourceTests(TestCase):
             - baz
         """
         )
-        source = utils.get_text_source(text, "foo", filename="foo.txt")
+        source = types.Source.from_text(text, "foo", filename="foo.txt")
         assert source == types.Source(
             filename="foo.txt",
             start=types.Pos(index=3, line=2, column=2),
@@ -31,7 +31,7 @@ class SourceTests(TestCase):
               baz
         """
         )
-        source = utils.get_text_source(text, "foo", filename="foo.txt")
+        source = types.Source.from_text(text, "foo", filename="foo.txt")
         new_source = source + "\n  baz"
         assert new_source is not source
         assert new_source == types.Source(
@@ -50,8 +50,8 @@ class SourceTests(TestCase):
               baz
         """
         )
-        source = utils.get_text_source(text, "foo", filename="foo.txt")
-        source_2 = utils.get_text_source(text, "\n  baz", filename="foo.txt")
+        source = types.Source.from_text(text, "foo", filename="foo.txt")
+        source_2 = types.Source.from_text(text, "\n  baz", filename="foo.txt")
         new_source = source + source_2
         assert new_source is not source
         assert new_source == types.Source(

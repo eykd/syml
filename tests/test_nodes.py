@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import ensure
 
-from syml import exceptions, nodes, utils
+from syml import exceptions, nodes, types
 
 ensure = ensure.ensure
 
@@ -179,7 +179,7 @@ class ListItemTests(TestCase):
         ensure(self.node.value.parent).is_(self.node)
 
     def test_it_should_add_a_leafnode(self):
-        new_node = nodes.LeafNode(Mock(), utils.get_text_source("foo"))
+        new_node = nodes.LeafNode(Mock(), types.Source.from_text("foo"))
         result = self.node.incorporate_node(new_node)
         ensure(result).is_(new_node)
         ensure(self.node.value).is_(new_node)
@@ -236,7 +236,7 @@ class KeyValueTests(TestCase):
         ensure(self.node.value.parent).is_(self.node)
 
     def test_it_should_add_a_leafnode(self):
-        new_node = nodes.LeafNode(Mock(), utils.get_text_source("foo"))
+        new_node = nodes.LeafNode(Mock(), types.Source.from_text("foo"))
         result = self.node.incorporate_node(new_node)
         ensure(result).is_(new_node)
         ensure(self.node.value).is_(new_node)
