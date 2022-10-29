@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = src/syml/
+
+[report]
+show_missing = True
+skip_covered = True
