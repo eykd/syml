@@ -9,8 +9,8 @@ from typing import Optional, Union
 from parsimonious.nodes import Node as PNode
 
 from .exceptions import OutOfContextNodeError
-from .types import Source, SourceStrBool, StrBool, StrPath
-from .utils import get_coords_of_str_index, get_line
+from .types import Pos, Source, SourceStrBool, StrBool, StrPath
+from .utils import get_line
 
 
 class YamlNode:
@@ -62,7 +62,7 @@ class YamlNode:
 
     def fail_to_incorporate_node(self, node: YamlNode) -> None:
         pnode = node.pnode
-        pos = get_coords_of_str_index(pnode.full_text, pnode.start)
+        pos = Pos.from_str_index(pnode.full_text, pnode.start)
         line = get_line(pnode.full_text, pos.line)
         raise OutOfContextNodeError("Line %s, column %s:\n%s" % (pos.line, pos.column, line))
 
@@ -213,8 +213,8 @@ class LeafNode(YamlNode):
         else:
             start_pnode = self.value[0][0]
             end_pnode = self.value[-1][0]
-            start = get_coords_of_str_index(start_pnode.full_text, start_pnode.start)
-            end = get_coords_of_str_index(end_pnode.full_text, end_pnode.end)
+            start = Pos.from_str_index(start_pnode.full_text, start_pnode.start)
+            end = Pos.from_str_index(end_pnode.full_text, end_pnode.end)
 
             value = self.get_value()
 

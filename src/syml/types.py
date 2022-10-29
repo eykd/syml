@@ -46,12 +46,10 @@ class Source:
 
     @classmethod
     def from_node(cls, pnode: PNode, filename: StrPath = "", value: Optional[StrBool] = None) -> Source:
-        from syml import utils
-
         return cls(
             filename=filename,
-            start=utils.get_coords_of_str_index(pnode.full_text, pnode.start),
-            end=utils.get_coords_of_str_index(pnode.full_text, pnode.end),
+            start=Pos.from_str_index(pnode.full_text, pnode.start),
+            end=Pos.from_str_index(pnode.full_text, pnode.end),
             text=pnode.text,
             value=value if value is not None else pnode.text,
         )
@@ -65,8 +63,6 @@ class Source:
         value: Optional[str] = None,
         filename: StrPath = "",
     ):
-        from syml import utils
-
         if substring is None:
             substring = text
         match = re.search(substring, text)
@@ -75,8 +71,8 @@ class Source:
         source_text = match.group() if source_text is None else source_text
         return Source(
             filename=filename,
-            start=utils.get_coords_of_str_index(text, match.start()),
-            end=utils.get_coords_of_str_index(text, match.end()),
+            start=Pos.from_str_index(text, match.start()),
+            end=Pos.from_str_index(text, match.end()),
             text=source_text,
             value=value if value is not None else source_text,
         )

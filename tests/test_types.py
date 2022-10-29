@@ -1,10 +1,12 @@
+import re
 import textwrap
-from unittest import TestCase
+
+import pytest
 
 from syml import types
 
 
-class SourceTests(TestCase):
+class TestSource:
     def test_it_should_represent_itself_nicely(self):
         text = textwrap.dedent(
             """
@@ -61,3 +63,35 @@ class SourceTests(TestCase):
             text="foo\n  baz",
             value="foo\n  baz",
         )
+
+
+class TestPosFromStrIndex:
+    @pytest.fixture
+    def text(self):
+        return textwrap.dedent(
+            """
+
+        foo
+            bar
+                baz blah blargh
+        boo
+        """
+        )
+
+    def test_returns_line_and_column_at_start_of_line(self, text):
+        match = re.search("foo", text)
+        start = match.start()
+        assert types.Pos.from_str_index(text, start) == types.Pos(start, 3, 0)
+
+    def test_returns_line_and_column_of_indented_text(self, text):
+        match = re.search("bar", text)
+        start = match.start()
+        assert types.Pos.from_str_index(text, start) == types.Pos(start, 4, 4)
+
+    def test_returns_line_and_column_of_midline_text(self, text):
+        match = re.search("blah", text)
+        start = match.start()
+        assert types.Pos.from_str_index(text, start) == types.Pos(start, 5, 12)
+
+    def test_returns_last_line_and_first_column_of_bad_index(self, text):
+        assert types.Pos.from_str_index(text, len(text) + 5) == types.Pos(len(text), 6, 0)
