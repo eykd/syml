@@ -1,4 +1,11 @@
+from funcy import memoize
+
 from .types import Pos
+
+
+@memoize
+def split_lines(text, keepends=False):
+    return text.splitlines(keepends=keepends)
 
 
 def get_coords_of_str_index(text: str, index: int) -> Pos:
@@ -11,6 +18,6 @@ def get_coords_of_str_index(text: str, index: int) -> Pos:
 
 def get_line(text: str, line_number: int) -> str:
     try:
-        return text.splitlines(True)[line_number - 1]
+        return split_lines(text, True)[line_number - 1]
     except IndexError:
         return ""

@@ -7,6 +7,8 @@ from typing import Optional, Union
 from attrs import define
 from parsimonious.nodes import Node as PNode
 
+from syml import utils
+
 StrPath = Union[str, Path]
 
 StrBool = Union[str, bool]
@@ -24,7 +26,7 @@ class Pos:
 
         Based on http://stackoverflow.com/a/24495900
         """
-        lines = text.splitlines(True)
+        lines = utils.split_lines(text, True)
         curr_pos = 0
         for linenum, line in enumerate(lines):
             if curr_pos + len(line) > index:
@@ -94,7 +96,7 @@ class Source:
 
     def __add__(self, other: SourceStr):
         if isinstance(other, str):
-            lines = other.splitlines()
+            lines = utils.split_lines(other, True)
             return Source(
                 filename=self.filename,
                 start=self.start,
