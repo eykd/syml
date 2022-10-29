@@ -80,9 +80,9 @@ class TextOnlySymlParser(NodeVisitor):
                 current = current.incorporate_node(child)  # type: ignore
         return root
 
-    def parse(self, *args, **kwargs) -> PNode:
+    def parse(self, *args, **kwargs) -> YamlNode:  # type: ignore
         try:
-            return super().parse(*args, **kwargs)
+            return super().parse(*args, **kwargs)  # type: ignore
         except VisitationError as e:
             # Parsimonious swallows errors inside of `visit_` handlers and
             # wraps them in VisitationError cruft.
