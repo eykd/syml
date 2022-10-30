@@ -21,4 +21,7 @@ seed-isort-config
 coveralls
 coverage
 ipython
+tox
+wheel
+versioneer
 -e .
