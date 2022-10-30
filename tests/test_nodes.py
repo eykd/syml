@@ -1,243 +1,239 @@
-# -*- coding: utf-8 -*-
-from unittest import TestCase
 from unittest.mock import Mock
 
-import ensure
+import pytest
 
 from syml import exceptions, nodes, types
 
-ensure = ensure.ensure
+
+@pytest.fixture
+def level():
+    return 4
 
 
-class YamlNodeTests(TestCase):
-    def setUp(self):
-        self.node = nodes.YamlNode(Mock())
-
-    def test_as_data_is_not_implemented(self):
-        (ensure(self.node.as_data).called_with("foo.txt").raises(NotImplementedError))
-
-    def test_add_node_is_not_implemented(self):
-        (ensure(self.node.add_node).called_with(Mock()).raises(NotImplementedError))
-
-    def test_it_cant_add_a_node(self):
-        (ensure(self.node.can_add_node).called_with(Mock()).is_false())
+@pytest.fixture
+def root():
+    return nodes.Root(Mock())
 
 
-class RootTests(TestCase):
-    def setUp(self):
-        self.root = nodes.Root(Mock())
+class TestYamlNode:
+    @pytest.fixture
+    def node(self):
+        return nodes.YamlNode(Mock())
 
-    def test_it_should_add_a_list(self):
-        new_node = nodes.List(Mock(), level=4)
-        result = self.root.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.root.value).is_(new_node)
-        ensure(new_node.parent).is_(self.root)
+    def test_as_data_is_not_implemented(self, node):
+        with pytest.raises(NotImplementedError):
+            node.as_data("foo.txt")
 
-    def test_it_should_add_a_list_item_and_create_an_intervening_list(self):
-        new_node = nodes.ListItem(Mock(), "foo", level=4)
-        result = self.root.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.root.value).is_an(nodes.List)
+    def test_add_node_is_not_implemented(self, node):
+        with pytest.raises(NotImplementedError):
+            node.add_node(Mock())
 
-        ensure(result.parent).is_(self.root.value)
-        ensure(self.root.value.parent).is_(self.root)
-
-    def test_it_should_add_a_keyvalue_and_create_an_intervening_mapping(self):
-        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=4)
-        result = self.root.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.root.value).is_an(nodes.Mapping)
-
-        ensure(result.parent).is_(self.root.value)
-        ensure(self.root.value.parent).is_(self.root)
+    def test_it_cant_add_a_node(self, node):
+        assert node.can_add_node(Mock()) is False
 
 
-class ListTests(TestCase):
-    def setUp(self):
-        self.root = nodes.Root(Mock())
-        self.node = self.root.add_node(nodes.List(Mock()))
-        self.node.level = 4
+class TestRoot:
+    def test_it_should_add_a_list(self, root, level):
+        new_node = nodes.List(Mock(), level=level)
+        result = root.incorporate_node(new_node)
+        assert result is new_node
+        assert root.value is new_node
+        assert new_node.parent is root
 
-    def test_it_should_add_a_list_item_at_a_higher_level(self):
-        new_node = nodes.ListItem(Mock(), value="foo", level=8)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(result.parent).is_(self.node)
-        ensure(self.node.children).contains(new_node)
+    def test_it_should_add_a_list_item_and_create_an_intervening_list(self, root, level):
+        new_node = nodes.ListItem(Mock(), "foo", level=level)
+        result = root.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(root.value, nodes.List)
 
-    def test_it_should_not_add_a_list_item_at_a_lower_level(self):
+        assert result.parent is root.value
+        assert root.value.parent is root
+
+    def test_it_should_add_a_keyvalue_and_create_an_intervening_mapping(self, root, level):
+        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=level)
+        result = root.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(root.value, nodes.Mapping)
+
+        assert result.parent is root.value
+        assert root.value.parent is root
+
+
+class TestList:
+    @pytest.fixture
+    def node(self, root, level):
+        node = root.add_node(nodes.List(Mock()))
+        node.level = level
+        return node
+
+    def test_it_should_add_a_list_item_at_a_higher_level(self, node, level):
+        new_node = nodes.ListItem(Mock(), value="foo", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert result.parent is node
+        assert new_node in node.children
+
+    def test_it_should_not_add_a_list_item_at_a_lower_level(self, node, level):
         pnode = Mock(
             full_text="    - bar\n   - foo",
             text="- foo",
             start=16,
         )
-        new_node = nodes.ListItem(pnode, value="foo", level=3)
-        (ensure(self.node.incorporate_node).called_with(new_node).raises(exceptions.OutOfContextNodeError))
+        new_node = nodes.ListItem(pnode, value="foo", level=level - 1)
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            node.incorporate_node(new_node)
 
-    def test_it_should_not_add_a_keyvalue_item_at_a_higher_level(self):
+    def test_it_should_not_add_a_keyvalue_item_at_a_higher_level(self, node, level):
         pnode = Mock(
             full_text="    - bar\n     foo: baz",
             text="foo: baz",
-            start=18,
+            start=level + 4,
         )
-        new_node = nodes.KeyValue(pnode, key="foo", value="bar", level=8)
-        (ensure(self.node.incorporate_node).called_with(new_node).raises(exceptions.OutOfContextNodeError))
+        new_node = nodes.KeyValue(pnode, key="foo", value="bar", level=level + 4)
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            node.incorporate_node(new_node)
 
 
-class MappingTests(TestCase):
-    def setUp(self):
-        self.root = nodes.Root(Mock())
-        self.node = self.root.add_node(nodes.Mapping(Mock()))
-        self.node.level = 4
+class TestMapping:
+    @pytest.fixture
+    def node(self, root, level):
+        node = root.add_node(nodes.Mapping(Mock()))
+        node.level = 4
+        return node
 
-    def test_it_should_add_a_keyvalue_at_a_higher_level(self):
-        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=8)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(result.parent).is_(self.node)
-        ensure(self.node.children).contains(new_node)
+    def test_it_should_add_a_keyvalue_at_a_higher_level(self, node, level):
+        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert result.parent is node
+        assert new_node in node.children
 
-    def test_it_should_not_add_a_keyvalue_at_a_lower_level(self):
+    def test_it_should_not_add_a_keyvalue_at_a_lower_level(self, node, level):
         pnode = Mock(
             full_text="    foo: bar\n   bar: baz",
             text="bar: baz",
             start=14,
         )
-        new_node = nodes.KeyValue(pnode, "foo", value="bar", level=3)
-        (ensure(self.node.incorporate_node).called_with(new_node).raises(exceptions.OutOfContextNodeError))
+        new_node = nodes.KeyValue(pnode, "foo", value="bar", level=level - 1)
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            node.incorporate_node(new_node)
 
-    def test_it_should_not_add_a_listitem_at_a_higher_level(self):
+    def test_it_should_not_add_a_listitem_at_a_higher_level(self, node, level):
         pnode = Mock(
             full_text="    foo: bar\n       - baz",
             text="- baz",
-            start=18,
+            start=level + 4,
         )
-        new_node = nodes.ListItem(pnode, value="foo", level=8)
-        (ensure(self.node.incorporate_node).called_with(new_node).raises(exceptions.OutOfContextNodeError))
+        new_node = nodes.ListItem(pnode, value="foo", level=level + 4)
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            node.incorporate_node(new_node)
 
 
-class ListItemTests(TestCase):
-    def setUp(self):
-        self.root = nodes.Root(Mock())
-        self.level = 4
-        self.node = self.root.incorporate_node(nodes.ListItem(Mock(), level=self.level))
+class TestListItem:
+    @pytest.fixture
+    def node(self, root, level):
+        return root.incorporate_node(nodes.ListItem(Mock(), level=level))
 
-    def test_it_should_add_a_list_at_a_higher_level(self):
-        new_node = nodes.List(Mock(), level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_(new_node)
-        ensure(new_node.parent).is_(self.node)
+    def test_it_should_add_a_list_at_a_higher_level(self, node, level):
+        new_node = nodes.List(Mock(), level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is new_node
+        assert new_node.parent is node
 
-    def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(
-        self,
-    ):
-        new_node = nodes.ListItem(Mock(), "foo", level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_an(nodes.List)
-        ensure(self.node.value.level).equals(new_node.level)
+    def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(self, node, level):
+        new_node = nodes.ListItem(Mock(), "foo", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(node.value, nodes.List)
+        assert node.value.level == new_node.level
 
-        ensure(result.parent).is_(self.node.value)
-        ensure(self.node.value.parent).is_(self.node)
+        assert result.parent is node.value
+        assert node.value.parent is node
 
-    def test_it_should_cooperatively_add_a_list_item_at_the_same_level_to_the_parent_list(
-        self,
-    ):
-        new_node = nodes.ListItem(Mock(), "foo", level=self.level)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_none()
-        ensure(self.node.parent.children).has_length(2)
-        ensure(self.node.parent.children[-1]).is_(new_node)
+    def test_it_should_cooperatively_add_a_list_item_at_the_same_level_to_the_parent_list(self, node, level):
+        new_node = nodes.ListItem(Mock(), "foo", level=level)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is None
+        assert len(node.parent.children) == 2
+        assert node.parent.children[-1] is new_node
 
-        ensure(new_node.parent).is_(self.node.parent)
+        assert new_node.parent is node.parent
 
-    def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(
-        self,
-    ):
-        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_an(nodes.Mapping)
-        ensure(self.node.value.level).equals(new_node.level)
+    def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(self, node, level):
+        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(node.value, nodes.Mapping)
+        assert node.value.level == new_node.level
 
-        ensure(result.parent).is_(self.node.value)
-        ensure(self.node.value.parent).is_(self.node)
+        assert result.parent is node.value
+        assert node.value.parent is node
 
-    def test_it_should_add_a_keyvalue_with_no_level_and_create_an_intervening_mapping(
-        self,
-    ):
+    def test_it_should_add_a_keyvalue_with_no_level_and_create_an_intervening_mapping(self, node, level):
         new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=None)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_an(nodes.Mapping)
-        ensure(self.node.value.level).equals(new_node.level)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(node.value, nodes.Mapping)
+        assert node.value.level == new_node.level
 
-        ensure(result.parent).is_(self.node.value)
-        ensure(self.node.value.parent).is_(self.node)
+        assert result.parent is node.value
+        assert node.value.parent is node
 
-    def test_it_should_add_a_leafnode(self):
+    def test_it_should_add_a_leafnode(self, node):
         new_node = nodes.LeafNode(Mock(), types.Source.from_text("foo"))
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_(new_node)
-        ensure(new_node.parent).is_(self.node)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is new_node
+        assert new_node.parent is node
 
 
-class KeyValueTests(TestCase):
-    def setUp(self):
-        self.root = nodes.Root(Mock())
-        self.level = 4
-        self.node = self.root.incorporate_node(nodes.KeyValue(Mock(), "foo", level=self.level))
+class TestKeyValue:
+    @pytest.fixture
+    def node(self, root, level):
+        return root.incorporate_node(nodes.KeyValue(Mock(), "foo", level=level))
 
-    def test_it_should_add_a_list_at_a_higher_level(self):
-        new_node = nodes.List(Mock(), level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_(new_node)
-        ensure(new_node.parent).is_(self.node)
+    def test_it_should_add_a_list_at_a_higher_level(self, node, level):
+        new_node = nodes.List(Mock(), level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is new_node
+        assert new_node.parent is node
 
-    def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(
-        self,
-    ):
-        new_node = nodes.ListItem(Mock(), "foo", level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_an(nodes.List)
-        ensure(self.node.value.level).equals(new_node.level)
+    def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(self, node, level):
+        new_node = nodes.ListItem(Mock(), "foo", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(node.value, nodes.List)
+        assert node.value.level == new_node.level
 
-        ensure(result.parent).is_(self.node.value)
-        ensure(self.node.value.parent).is_(self.node)
+        assert result.parent is node.value
+        assert node.value.parent is node
 
-    def test_it_should_cooperatively_add_a_keyvalue_at_the_same_level_to_the_parent_mapping(
-        self,
-    ):
-        new_node = nodes.KeyValue(Mock(), "bar", level=self.level)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_none()
-        ensure(self.node.parent.children).has_length(2)
-        ensure(self.node.parent.children[-1]).is_(new_node)
+    def test_it_should_cooperatively_add_a_keyvalue_at_the_same_level_to_the_parent_mapping(self, node, level):
+        new_node = nodes.KeyValue(Mock(), "bar", level=level)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is None
+        assert len(node.parent.children) == 2
+        assert node.parent.children[-1] is new_node
 
-        ensure(new_node.parent).is_(self.node.parent)
+        assert new_node.parent is node.parent
 
-    def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(
-        self,
-    ):
-        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=self.level + 4)
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_an(nodes.Mapping)
-        ensure(self.node.value.level).equals(new_node.level)
+    def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(self, node, level):
+        new_node = nodes.KeyValue(Mock(), "foo", value="bar", level=level + 4)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert isinstance(node.value, nodes.Mapping)
+        assert node.value.level == new_node.level
 
-        ensure(result.parent).is_(self.node.value)
-        ensure(self.node.value.parent).is_(self.node)
+        assert result.parent is node.value
+        assert node.value.parent is node
 
-    def test_it_should_add_a_leafnode(self):
+    def test_it_should_add_a_leafnode(self, node, level):
         new_node = nodes.LeafNode(Mock(), types.Source.from_text("foo"))
-        result = self.node.incorporate_node(new_node)
-        ensure(result).is_(new_node)
-        ensure(self.node.value).is_(new_node)
-        ensure(new_node.parent).is_(self.node)
+        result = node.incorporate_node(new_node)
+        assert result is new_node
+        assert node.value is new_node
+        assert new_node.parent is node

@@ -1,6 +1,6 @@
 from . import _version, parser
 
-__version__ = _version.get_versions()["version"]
+__version__: str = _version.get_versions()["version"]  # type: ignore
 
 
 def loads(document, **kwargs):

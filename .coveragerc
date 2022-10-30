@@ -1,6 +1,8 @@
 [run]
 branch = True
 source = src/syml/
+omit =
+    src/syml/_version.py
 
 [report]
 show_missing = True

@@ -1,14 +1,14 @@
 import textwrap
-from unittest import TestCase
 
-from ensure import ensure
+import pytest
 
 from syml import utils
 
 
-class GetLineTests(TestCase):
-    def setUp(self):
-        self.text = textwrap.dedent(
+class TestGetLine:
+    @pytest.fixture
+    def text(self):
+        return textwrap.dedent(
             """
 
         foo
@@ -18,8 +18,8 @@ class GetLineTests(TestCase):
         """
         )
 
-    def test_it_should_get_the_line(self):
-        (ensure(utils.get_line).called_with(self.text, 5).equals("        baz blah blargh\n"))
+    def test_it_should_get_the_line(self, text):
+        assert utils.get_line(text, 5) == "        baz blah blargh\n"
 
-    def test_it_should_get_a_blank_str_for_bad_line(self):
-        (ensure(utils.get_line).called_with(self.text, 99).equals(""))
+    def test_it_should_get_a_blank_str_for_bad_line(self, text):
+        assert utils.get_line(text, 99) == ""
