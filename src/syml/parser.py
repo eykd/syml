@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor, VisitationError
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:  # pragma: nocover
 class TextOnlySymlParser(NodeVisitor):
     grammar = Grammar(grammars.text_only_syml_grammar)
 
-    def reduce_children(self, children: YamlNodes) -> List[YamlNode]:
+    def reduce_children(self, children: YamlNodes) -> list[YamlNode]:
         return [c for c in children if c is not None]
 
     def visit_blank(self, node: PNode, children: YamlNodes) -> None:
@@ -34,10 +34,9 @@ class TextOnlySymlParser(NodeVisitor):
         children = self.reduce_children(children)
         if not children:
             return None
-        elif len(children) == 1:
+        if len(children) == 1:
             return children[0]
-        else:
-            return children
+        return children
 
     def get_text(self, node: PNode, children: YamlNodes) -> nodes.TextLeafNode:
         return nodes.TextLeafNode(node, types.Source.from_node(node))
@@ -50,7 +49,7 @@ class TextOnlySymlParser(NodeVisitor):
     visit_key = get_text
 
     def visit_indent(self, node: PNode, children: YamlNodes) -> int:
-        return len(node.text.replace("\t", " " * 4).strip("\n"))
+        return len(node.text.replace('\t', ' ' * 4).strip('\n'))
 
     def visit_key_value(self, node: PNode, children: YamlNodes) -> OptionalNodes:
         section, _, value = children
@@ -86,12 +85,11 @@ class TextOnlySymlParser(NodeVisitor):
         except VisitationError as e:
             # Parsimonious swallows errors inside of `visit_` handlers and
             # wraps them in VisitationError cruft.
-            if e.args[0].startswith("OutOfContextNodeError"):
+            if e.args[0].startswith('OutOfContextNodeError'):
                 # Extract the original error message, ignoring the cruft.
-                msg = e.args[0].split("\n\n\n")[0].split(":", 1)[1]
+                msg = e.args[0].split('\n\n\n')[0].split(':', 1)[1]
                 raise OutOfContextNodeError(msg)
-            else:
-                raise  # pragma: no cover
+            raise  # pragma: no cover
 
 
 class BooleanSymlParser(TextOnlySymlParser):
@@ -107,7 +105,7 @@ class BooleanSymlParser(TextOnlySymlParser):
 
 
 def parse(
-    source_syml: str, filename: StrPath = "", raw: bool = True, booleans: bool = False
-) -> Union[List, Dict, str, bool]:
+    source_syml: str, filename: StrPath = '', raw: bool = True, booleans: bool = False
+) -> list | dict | str | bool:
     parser = BooleanSymlParser if booleans else TextOnlySymlParser
     return parser().parse(source_syml).as_data(filename, raw=raw)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from attrs import define
 from parsimonious.nodes import Node as PNode
@@ -37,7 +37,7 @@ class Pos:
 
 @define(slots=True, repr=False, frozen=True)
 class Source:
-    filename: Union[str, Path]
+    filename: str | Path
     start: Pos
     end: Pos
     text: str
@@ -45,7 +45,7 @@ class Source:
     value: StrBool
 
     @classmethod
-    def from_node(cls, pnode: PNode, filename: StrPath = "", value: Optional[StrBool] = None) -> Source:
+    def from_node(cls, pnode: PNode, filename: StrPath = '', value: StrBool | None = None) -> Source:
         return cls(
             filename=filename,
             start=Pos.from_str_index(pnode.full_text, pnode.start),
@@ -59,15 +59,15 @@ class Source:
         cls,
         text: str,
         substring: str = None,
-        source_text: Optional[str] = None,
-        value: Optional[str] = None,
-        filename: StrPath = "",
+        source_text: str | None = None,
+        value: str | None = None,
+        filename: StrPath = '',
     ):
         if substring is None:
             substring = text
         match = re.search(substring, text)
         if match is None:
-            raise ValueError(f"No match found for {substring!r}")
+            raise ValueError(f'No match found for {substring!r}')
         source_text = match.group() if source_text is None else source_text
         return Source(
             filename=filename,
@@ -78,8 +78,8 @@ class Source:
         )
 
     def __repr__(self):
-        return "%sLine %s, Column %s (index %s): %r (%r)" % (
-            "%s, " % self.filename if self.filename else "",
+        return '%sLine %s, Column %s (index %s): %r (%r)' % (
+            '%s, ' % self.filename if self.filename else '',
             self.start.line,
             self.start.column,
             self.start.index,
@@ -100,7 +100,7 @@ class Source:
                 text=self.text + other,
                 value=str(self.value) + other,
             )
-        elif isinstance(other, Source):
+        if isinstance(other, Source):
             return self + other.text
 
 

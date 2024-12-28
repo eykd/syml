@@ -7,7 +7,7 @@ from syml import utils
 
 class TestGetLine:
     @pytest.fixture
-    def text(self):
+    def text(self) -> str:
         return textwrap.dedent(
             """
 
@@ -18,8 +18,8 @@ class TestGetLine:
         """
         )
 
-    def test_it_should_get_the_line(self, text):
-        assert utils.get_line(text, 5) == "        baz blah blargh\n"
+    def test_it_should_get_the_line(self, text: str) -> None:
+        assert utils.get_line(text, 5) == '        baz blah blargh\n'
 
-    def test_it_should_get_a_blank_str_for_bad_line(self, text):
-        assert utils.get_line(text, 99) == ""
+    def test_it_should_get_a_blank_str_for_bad_line(self, text: str) -> None:
+        assert utils.get_line(text, 99) == ''

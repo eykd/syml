@@ -10,4 +10,4 @@ def get_line(text: str, line_number: int) -> str:
     try:
         return split_lines(text, True)[line_number - 1]
     except IndexError:
-        return ""
+        return ''
