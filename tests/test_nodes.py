@@ -31,16 +31,23 @@ class TestYamlNode:
     def test_it_cant_add_a_node(self, node: nodes.YamlNode) -> None:
         assert node.can_add_node(Mock()) is False
 
+    def test_it_should_get_a_value(self, node: nodes.YamlNode) -> None:
+        assert node.get_value() is None
+
+    def test_it_should_get_the_tip(self, node: nodes.YamlNode) -> None:
+        assert node.get_tip() is node
+
 
 class TestRoot:
-    def test_it_should_add_a_list(self, root: nodes.RootNode, level: int) -> None:
+    def test_it_should_add_a_list(self, root: nodes.Root, level: int) -> None:
         new_node = nodes.List(Mock(), level=level)
         result = root.incorporate_node(new_node)
         assert result is new_node
         assert root.value is new_node
         assert new_node.parent is root
+        assert root.get_tip() is new_node
 
-    def test_it_should_add_a_list_item_and_create_an_intervening_list(self, root: nodes.RootNode, level: int) -> None:
+    def test_it_should_add_a_list_item_and_create_an_intervening_list(self, root: nodes.Root, level: int) -> None:
         new_node = nodes.ListItem(Mock(), 'foo', level=level)
         result = root.incorporate_node(new_node)
         assert result is new_node
@@ -48,8 +55,9 @@ class TestRoot:
 
         assert result.parent is root.value
         assert root.value.parent is root
+        assert root.get_tip() is new_node
 
-    def test_it_should_add_a_keyvalue_and_create_an_intervening_mapping(self, root: nodes.RootNode, level: int) -> None:
+    def test_it_should_add_a_keyvalue_and_create_an_intervening_mapping(self, root: nodes.Root, level: int) -> None:
         new_node = nodes.KeyValue(Mock(), 'foo', value='bar', level=level)
         result = root.incorporate_node(new_node)
         assert result is new_node
@@ -57,11 +65,12 @@ class TestRoot:
 
         assert result.parent is root.value
         assert root.value.parent is root
+        assert root.get_tip() is new_node
 
 
 class TestList:
     @pytest.fixture
-    def node(self, root: nodes.RootNode, level: int) -> nodes.List:
+    def node(self, root: nodes.Root, level: int) -> nodes.List:
         node = root.add_node(nodes.List(Mock()))
         node.level = level
         return node
@@ -72,6 +81,7 @@ class TestList:
         assert result is new_node
         assert result.parent is node
         assert new_node in node.children
+        assert node.get_tip() is new_node
 
     def test_it_should_not_add_a_list_item_at_a_lower_level(self, node: nodes.YamlNode, level: int) -> None:
         pnode = Mock(
@@ -96,7 +106,7 @@ class TestList:
 
 class TestMapping:
     @pytest.fixture
-    def node(self, root: nodes.RootNode, level: int) -> nodes.Mapping:
+    def node(self, root: nodes.Root, level: int) -> nodes.Mapping:
         node = root.add_node(nodes.Mapping(Mock()))
         node.level = level
         return node
@@ -107,6 +117,7 @@ class TestMapping:
         assert result is new_node
         assert result.parent is node
         assert new_node in node.children
+        assert node.get_tip() is new_node
 
     def test_it_should_not_add_a_keyvalue_at_a_lower_level(self, node: nodes.YamlNode, level: int) -> None:
         pnode = Mock(
@@ -131,7 +142,7 @@ class TestMapping:
 
 class TestListItem:
     @pytest.fixture
-    def node(self, root: nodes.RootNode, level: int) -> nodes.ListItem:
+    def node(self, root: nodes.Root, level: int) -> nodes.ListItem:
         return root.incorporate_node(nodes.ListItem(Mock(), level=level))
 
     def test_it_should_add_a_list_at_a_higher_level(self, node: nodes.YamlNode, level: int) -> None:
@@ -140,6 +151,7 @@ class TestListItem:
         assert result is new_node
         assert node.value is new_node
         assert new_node.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(
         self, node: nodes.YamlNode, level: int
@@ -152,6 +164,7 @@ class TestListItem:
 
         assert result.parent is node.value
         assert node.value.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_cooperatively_add_a_list_item_at_the_same_level_to_the_parent_list(
         self, node: nodes.YamlNode, level: int
@@ -164,6 +177,8 @@ class TestListItem:
         assert node.parent.children[-1] is new_node
 
         assert new_node.parent is node.parent
+        assert node.get_tip() is node
+        assert node.parent.get_tip() is new_node
 
     def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(
         self, node: nodes.YamlNode, level: int
@@ -176,6 +191,7 @@ class TestListItem:
 
         assert result.parent is node.value
         assert node.value.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_add_a_keyvalue_with_no_level_and_create_an_intervening_mapping(
         self, node: nodes.YamlNode
@@ -188,6 +204,7 @@ class TestListItem:
 
         assert result.parent is node.value
         assert node.value.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_add_a_leafnode(self, node: nodes.YamlNode) -> None:
         new_node = nodes.LeafNode(Mock(), types.Source.from_text('foo'))
@@ -195,11 +212,12 @@ class TestListItem:
         assert result is new_node
         assert node.value is new_node
         assert new_node.parent is node
+        assert node.get_tip() is new_node
 
 
 class TestKeyValue:
     @pytest.fixture
-    def node(self, root: nodes.RootNode, level: int) -> nodes.KeyValue:
+    def node(self, root: nodes.Root, level: int) -> nodes.KeyValue:
         return root.incorporate_node(nodes.KeyValue(Mock(), 'foo', level=level))
 
     def test_it_should_add_a_list_at_a_higher_level(self, node: nodes.YamlNode, level: int) -> None:
@@ -208,6 +226,7 @@ class TestKeyValue:
         assert result is new_node
         assert node.value is new_node
         assert new_node.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_add_a_list_item_at_a_higher_level_and_create_an_intervening_list(
         self, node: nodes.YamlNode, level: int
@@ -220,6 +239,7 @@ class TestKeyValue:
 
         assert result.parent is node.value
         assert node.value.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_cooperatively_add_a_keyvalue_at_the_same_level_to_the_parent_mapping(
         self, node: nodes.YamlNode, level: int
@@ -232,6 +252,8 @@ class TestKeyValue:
         assert node.parent.children[-1] is new_node
 
         assert new_node.parent is node.parent
+        assert node.get_tip() is node
+        assert node.parent.get_tip() is new_node
 
     def test_it_should_add_a_keyvalue_at_a_higher_level_and_create_an_intervening_mapping(
         self, node: nodes.YamlNode, level: int
@@ -244,6 +266,7 @@ class TestKeyValue:
 
         assert result.parent is node.value
         assert node.value.parent is node
+        assert node.get_tip() is new_node
 
     def test_it_should_add_a_leafnode(self, node: nodes.YamlNode) -> None:
         new_node = nodes.LeafNode(Mock(), types.Source.from_text('foo'))
@@ -251,3 +274,4 @@ class TestKeyValue:
         assert result is new_node
         assert node.value is new_node
         assert new_node.parent is node
+        assert node.get_tip() is new_node
