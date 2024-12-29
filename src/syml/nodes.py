@@ -1,211 +1,261 @@
+"""Node implementations for parsing SYML documents"""
+
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Iterable
-from typing import Any, Optional, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
-from parsimonious.nodes import Node as PNode
+if TYPE_CHECKING:  # pragma: nocover
+    from parsimonious.nodes import Node as PNode
 
+from .basetypes import Pos, Source, SourceStrBool, StrBool, StrPath
 from .exceptions import OutOfContextNodeError
-from .types import Pos, Source, SourceStrBool, StrBool, StrPath
 from .utils import get_line
 
 
-class YamlNode:
-    def __init__(
-        self, pnode: PNode, level: int | None = None, parent: YamlNode | None = None, comments: Iterable = ()
-    ):
-        self.pnode = pnode
-        self._level = None
-        self.parent = parent
-        self.comments = list(comments)
+@dataclass(kw_only=True)
+class SymlNode:
+    """A generic node in a SYML document."""
+
+    pnode: PNode
+    level: int | None = field(default=None)
+    parent: SymlNode | None = field(default=None)
+    comments: list[Comment] = field(default_factory=list)
+    children: list[SymlNode] | tuple[SymlNode] = field(default_factory=list)
+    value: Any = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.level is not None:
+            self.set_level(self.level)
+
+    def set_level(self, level: int) -> None:
+        """Set this node's level."""
         self.level = level
 
-    @property
-    def level(self) -> int | None:
-        return self._level
-
-    @level.setter
-    def level(self, level: int) -> None:
-        self._set_level(level)
-
-    def _set_level(self, level: int) -> None:
-        self._level = level
-
-    def as_data(self, filename: StrPath = '', raw: bool = False) -> Any:
+    def as_data(self, filename: StrPath = '', raw: bool = False) -> Any:  # noqa: FBT001, FBT002, ANN401  # pragma: nocover
+        """Return this node as primitive data types."""
         raise NotImplementedError
 
-    def get_value(self):
+    def get_value(self) -> Any:  # noqa: ANN401  # pragma: nocover
+        """Return the value of this node."""
         return None
 
-    def get_tip(self) -> YamlNode:
+    def get_tip(self) -> SymlNode:
+        """Return the tip of this branch."""
         return self
 
-    def can_add_node(self, node: YamlNode) -> bool:
+    def can_add_node(self, node: SymlNode) -> bool:  # noqa: ARG002  # pragma: nocover
+        """Check if this node can add a child node."""
         return False
 
-    def add_node(self, node: YamlNode) -> YamlNode:
+    def add_node(self, node: SymlNode) -> SymlNode:  # pragma: nocover
+        """Add a child node."""
         raise NotImplementedError
 
-    def incorporate_node(self, node: YamlNode) -> YamlNode:
+    def incorporate_node(self, node: SymlNode) -> SymlNode:
+        """Incorporate the given node into the tree somewhere nearby."""
         if self.can_add_node(node):
             return self.add_node(node)
         if self.parent is not None:
             return self.parent.incorporate_node(node)
-        # pragma: no cover
-        # Shouldn't ever get here:
-        self.fail_to_incorporate_node(node)
-        return self
+        else:  # pragma: nocover  # noqa: RET505
+            # Shouldn't ever get here:
+            self.fail_to_incorporate_node(node)
+            return self  # pragma: nocover
 
-    def fail_to_incorporate_node(self, node: YamlNode) -> None:
+    def fail_to_incorporate_node(self, node: SymlNode) -> None:
+        """Report a failure to incorporate a node."""
         pnode = node.pnode
         pos = Pos.from_str_index(pnode.full_text, pnode.start)
         line = get_line(pnode.full_text, pos.line)
-        raise OutOfContextNodeError('Line %s, column %s:\n%s' % (pos.line, pos.column, line))
+        raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 
 
-YamlNodes = Iterable[YamlNode | None]
+SymlNodes = list[SymlNode]
+OptionalSymlNodes = list[SymlNode | None]
 
-NodeOrNodes = Union[YamlNodes, YamlNode, StrBool]
+NodeOrNodes = SymlNodes | SymlNode | StrBool
 
-OptionalNodes = Optional[NodeOrNodes]
+OptionalNodes = NodeOrNodes | None
 
 
-class ContainerNode(YamlNode):
-    def __init__(self, pnode: PNode, value: YamlNode | StrBool | None = None, **kwargs) -> None:
-        self.value = value
-        super().__init__(pnode, **kwargs)
+@dataclass(kw_only=True)
+class ContainerNode(SymlNode):
+    """A container node that may contain a child value."""
 
-    def _set_level(self, level: int) -> None:
-        self._level = level
-        if isinstance(self.value, YamlNode):
-            self.value.level = level
+    value: SymlNode | StrBool | None = field(default=None)
 
-    def as_data(self, filename: StrPath = '', raw: bool = False) -> StrBool | None:
-        if isinstance(self.value, YamlNode):
+    def set_level(self, level: int) -> None:
+        """Set the level on this node and its child value."""
+        self.level = level
+        if isinstance(self.value, SymlNode):
+            self.value.set_level(level)
+
+    def as_data(self, filename: StrPath = '', raw: bool = False) -> StrBool | None:  # noqa: FBT001, FBT002
+        """Return the container as primitive data types."""
+        if isinstance(self.value, SymlNode):
             return self.value.as_data(filename, raw=raw)
-        # pragma: no cover
-        # Shouldn't ever get here.
+        else:  # pragma: nocover  # noqa: RET505
+            # Shouldn't ever get here.
+            return self.value
+
+    def get_value(self) -> Any:  # noqa: ANN401  # pragma: nocover
+        """Return the value of this node."""
         return self.value
 
-    def get_value(self):
-        return self.value
-
-    def get_tip(self) -> YamlNode:
-        if self.value is not None and isinstance(self.value, YamlNode):
+    def get_tip(self) -> SymlNode:
+        """Get the tip of this branch."""
+        if self.value is not None and isinstance(self.value, SymlNode):
             return self.value.get_tip()
         return self
 
-    def incorporate_node(self, node: YamlNode) -> YamlNode:
+    def incorporate_node(self, node: SymlNode) -> SymlNode:
+        """Incorporate the given node into this branch."""
         if self.can_add_node(node):
-            intermediary: YamlNode | None = None
+            intermediary: SymlNode | None = None
             if isinstance(node, KeyValue):
-                intermediary = Mapping(node.pnode)
+                intermediary = Mapping(pnode=node.pnode, level=self.level)
             elif isinstance(node, ListItem):
-                intermediary = List(node.pnode)
+                intermediary = List(pnode=node.pnode, level=self.level)
 
             if intermediary is not None:
-                intermediary.level = node.level
+                intermediary.set_level(node.level)  # type: ignore[arg-type]
                 intermediary = self.incorporate_node(intermediary)
                 return intermediary.incorporate_node(node)
             return super().incorporate_node(node)
         if self.parent is not None:
             return self.parent.incorporate_node(node)
-        self.fail_to_incorporate_node(node)
-        return self
+        else:  # pragma: nocover  # noqa: RET505
+            self.fail_to_incorporate_node(node)
+            return self
 
-    def can_add_node(self, node: YamlNode):
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if this container can add a child node."""
         return self.value is None and (node.level is None or (self.level is not None and node.level > self.level))
 
-    def add_node(self, node: YamlNode):
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a child node to this container."""
         self.value = node
         node.parent = self
         if node.level is None:
-            node.level = self.level
+            node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
 
-class ParentNode(YamlNode):
-    def __init__(self, pnode: PNode, children: Iterable = (), **kwargs) -> None:
-        self.children = list(children)
-        super().__init__(pnode, **kwargs)
+@dataclass(kw_only=True)
+class ParentNode(SymlNode):
+    """A parent node that con have multiple children"""
 
-    def _set_level(self, level: int) -> None:
-        self._level = level
+    children: list[SymlNode] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.children = list(self.children)
+
+    def set_level(self, level: int) -> None:
+        """Set the level of this node and its children."""
+        self.level = level
         for child in self.children:
-            if isinstance(child, YamlNode):
-                child.level = level
+            if isinstance(child, SymlNode):  # pragma: nobranch
+                child.set_level(level)
 
-    def get_tip(self) -> YamlNode:
-        if self.children and isinstance(self.children[-1], YamlNode):
+    def get_tip(self) -> SymlNode:
+        """Return the tip of this branch."""
+        if self.children and isinstance(self.children[-1], SymlNode):
             return self.children[-1].get_tip()
         return self
 
-    def can_add_node(self, node: YamlNode) -> bool:
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node can be added."""
         return node.level is None or (self.level is not None and node.level >= self.level)
 
-    def add_node(self, node: YamlNode):
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a child node."""
         self.children.append(node)
         node.parent = self
         if node.level is None:
-            node.level = self.level
+            node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
 
+@dataclass(kw_only=True)
 class Root(ContainerNode):
-    def __init__(self, pnode: PNode) -> None:
-        super().__init__(pnode, level=0)
+    """A root container node for a SYML document"""
 
-    def can_add_node(self, node: YamlNode) -> bool:
+    value: SymlNode | None = field(default=None)
+    level: int = field(default=0)
+
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node may be added."""
         return self.value is None and (node.level is None or (self.level is not None and node.level >= self.level))
 
 
 class Comment(ContainerNode):
-    pass
+    """A comment node"""
 
 
 class List(ParentNode):
-    def can_add_node(self, node: YamlNode) -> bool:
+    """A list node"""
+
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node can be added."""
         return super().can_add_node(node) and isinstance(node, ListItem)
 
-    def as_data(self, filename: StrPath = '', raw: bool = False) -> list[StrBool]:
+    def as_data(self, filename: StrPath = '', raw: bool = False) -> list[StrBool]:  # noqa: FBT001, FBT002
+        """Return this node as primitive data types."""
         return [c.as_data(filename, raw=raw) for c in self.children]
 
 
 class ListItem(ContainerNode):
-    pass
+    """A list item within a list."""
 
 
 class Mapping(ParentNode):
-    def can_add_node(self, node: YamlNode) -> bool:
+    """A mapping of keys to values"""
+
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node may be added."""
         return super().can_add_node(node) and isinstance(node, KeyValue)
 
-    def as_data(self, filename: StrPath = '', raw: bool = False) -> OrderedDict[StrBool, StrBool]:
-        return OrderedDict([(c.key.as_data(filename, raw=raw), c.as_data(filename, raw=raw)) for c in self.children])
+    def as_data(self, filename: StrPath = '', raw: bool = False) -> OrderedDict[StrBool, StrBool]:  # noqa: FBT001, FBT002
+        """Return this node as primitive data types."""
+        return OrderedDict([(c.key.as_data(filename, raw=raw), c.as_data(filename, raw=raw)) for c in self.children])  # type: ignore[attr-defined]
 
 
+@dataclass(kw_only=True)
 class KeyValue(ContainerNode):
-    def __init__(self, pnode: PNode, key: StrBool, **kwargs):
-        self.key = key
-        super().__init__(pnode, **kwargs)
+    """A key-value item within a mapping"""
+
+    key: SymlNode | StrBool | None
 
 
-class LeafNode(YamlNode):
-    def __init__(self, pnode: PNode, source_text: Source, value: StrBool | None = None, **kwargs):
-        self.source_text = source_text
-        self.value = [(pnode, value)] if value is not None else [(pnode, source_text.value)]
-        super().__init__(pnode, **kwargs)
+@dataclass(kw_only=True)
+class LeafNode(SymlNode):
+    """The tip of a branch"""
+
+    source_text: Source
+    value: StrBool | None = field(default=None)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.value is not None:
+            self.value = [(self.pnode, self.value)]  # type: ignore[assignment]
+        else:
+            self.value = [(self.pnode, self.source_text.value)]  # type: ignore[assignment]
 
     def get_value(self) -> SourceStrBool:
-        return self.value[0][1]
+        """Return this node as a primitive value."""
+        return self.value[0][1]  # type: ignore[index]  # pragma: nocover
 
-    def as_data(self, filename: StrPath = '', raw: bool = False) -> SourceStrBool | None:
+    def as_data(self, filename: StrPath = '', raw: bool = False) -> SourceStrBool | None:  # noqa: FBT001, FBT002
+        """Return this node as primitive types."""
         if raw:
             return self.get_value()
-        start_pnode = self.value[0][0]
-        end_pnode = self.value[-1][0]
-        start = Pos.from_str_index(start_pnode.full_text, start_pnode.start)
-        end = Pos.from_str_index(end_pnode.full_text, end_pnode.end)
+        start_pnode = self.value[0][0]  # type: ignore[index]
+        end_pnode = self.value[-1][0]  # type: ignore[index]
+        start = Pos.from_str_index(start_pnode.full_text, start_pnode.start)  # type: ignore[union-attr]
+        end = Pos.from_str_index(end_pnode.full_text, end_pnode.end)  # type: ignore[union-attr]
 
         value = self.get_value()
 
@@ -218,23 +268,31 @@ class LeafNode(YamlNode):
             value=value.value if isinstance(value, Source) else value,
         )
 
-    def can_add_node(self, node: YamlNode) -> bool:
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node can be added."""
         return isinstance(node, LeafNode) and (
             node.level is None or (self.level is not None and node.level >= self.level)
         )
 
 
 class TextLeafNode(LeafNode):
-    def add_node(self, node: YamlNode) -> YamlNode:
+    """A leaf node containing a text value."""
+
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a node's text value to this node's text."""
         self.source_text += '\n' + str(node.get_value())
-        self.value.append((node.pnode, node.get_value()))
+        self.value.append((node.pnode, node.get_value()))  # type: ignore[union-attr]
         node.parent = self
         return self.get_tip()
 
     def get_value(self) -> str:
-        return '\n'.join([str(v[1]) for v in self.value])
+        """Return this node as a primitive value."""
+        return '\n'.join([str(v[1]) for v in self.value])  # type: ignore[union-attr]
 
 
 class RawValueLeafNode(LeafNode):
+    """A leaf node containing a raw value"""
+
     def get_value(self) -> StrBool:
-        return self.value[0][1]
+        """Return this node as a primitive value."""
+        return self.value[0][1]  # type: ignore[index]

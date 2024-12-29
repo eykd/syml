@@ -1,3 +1,5 @@
+"""Parsimonious grammars for parsing SYML"""
+
 import textwrap
 
 syml_base_grammar = textwrap.dedent(
@@ -23,14 +25,14 @@ syml_base_grammar = textwrap.dedent(
 
     value       = structure / data
 
-"""
+    """
 )
 
 
 text_only_syml_grammar = syml_base_grammar + textwrap.dedent(
     """
     data        = text
-"""
+    """
 )
 
 # If we want mare YAML-like booleans:
@@ -41,5 +43,5 @@ boolean_syml_grammar = syml_base_grammar + textwrap.dedent(
     bool        = truthy / falsey
 
     data        = bool / text
-"""
+    """
 )

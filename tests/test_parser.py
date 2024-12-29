@@ -5,21 +5,21 @@ from io import StringIO
 import pytest
 
 import syml
-from syml import exceptions, parser
-from syml.types import Source
+from syml import exceptions, parsers
+from syml.basetypes import Source
 
 
 class TestTextOnlySymlParser:
     @pytest.fixture
-    def parser(self) -> parser.TextOnlySymlParser:
-        return parser.TextOnlySymlParser()
+    def parser(self) -> parsers.TextOnlySymlParser:
+        return parsers.TextOnlySymlParser()
 
-    def test_it_should_parse_a_simple_text_value(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_simple_text_value(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent('true')
         result = parser.parse(text)
         assert result.as_data() == Source.from_text(text, 'true')
 
-    def test_it_should_parse_a_simple_multiline_list(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_simple_multiline_list(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo
@@ -34,7 +34,7 @@ class TestTextOnlySymlParser:
             Source.from_text(text, 'baz'),
         ]
 
-    def test_it_should_parse_a_simple_single_line_list(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_simple_single_line_list(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo
@@ -45,7 +45,7 @@ class TestTextOnlySymlParser:
             Source.from_text(text, 'foo'),
         ]
 
-    def test_it_should_parse_a_list_with_multiline_values(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_list_with_multiline_values(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo
@@ -59,7 +59,7 @@ class TestTextOnlySymlParser:
             Source.from_text(text, 'bar\n  baz', 'bar\nbaz', 'bar\nbaz'),
         ]
 
-    def test_it_should_parse_a_list_with_embedded_mappings_values(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_list_with_embedded_mappings_values(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo:
@@ -78,7 +78,7 @@ class TestTextOnlySymlParser:
             },
         ]
 
-    def test_it_should_parse_a_simple_single_line_mapping(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_simple_single_line_mapping(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             foo: bar
@@ -89,7 +89,7 @@ class TestTextOnlySymlParser:
             (Source.from_text(text, 'foo'), Source.from_text(text, 'bar')),
         ])
 
-    def test_it_should_parse_a_simple_multiline_mapping(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_simple_multiline_mapping(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             foo: bar
@@ -102,7 +102,7 @@ class TestTextOnlySymlParser:
             (Source.from_text(text, 'baz'), Source.from_text(text, 'boo')),
         ])
 
-    def test_it_should_parse_a_weirdly_nested_mapping(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_weirdly_nested_mapping(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             foo: bar: blah
@@ -115,7 +115,7 @@ class TestTextOnlySymlParser:
             (Source.from_text(text, 'baz'), Source.from_text(text, 'boo')),
         ])
 
-    def test_it_should_parse_a_nested_mapping_with_list(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_nested_mapping_with_list(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             foo:
@@ -136,7 +136,9 @@ class TestTextOnlySymlParser:
             (Source.from_text(text, 'blah'), Source.from_text(text, 'boo')),
         ])
 
-    def test_it_should_parse_a_nested_mapping_with_weirdly_nested_list(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_nested_mapping_with_weirdly_nested_list(
+        self, parser: parsers.TextOnlySymlParser
+    ) -> None:
         text = textwrap.dedent(
             """
             foo: - bar
@@ -149,7 +151,7 @@ class TestTextOnlySymlParser:
             (Source.from_text(text, 'blah'), Source.from_text(text, 'boo')),
         ])
 
-    def test_it_should_parse_a_nested_list_with_mapping(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_a_nested_list_with_mapping(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo:
@@ -174,7 +176,7 @@ class TestTextOnlySymlParser:
             ]),
         ]
 
-    def test_it_should_parse_comments_and_blanks(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_should_parse_comments_and_blanks(self, parser: parsers.TextOnlySymlParser) -> None:
         text = textwrap.dedent(
             """
             # A comment
@@ -207,7 +209,7 @@ class TestTextOnlySymlParser:
             ]),
         ]
 
-    def test_it_fails_parsing_weird_indentations(self, parser: parser.TextOnlySymlParser) -> None:
+    def test_it_fails_parsing_weird_indentations(self, parser: parsers.TextOnlySymlParser) -> None:
         bad_yaml = textwrap.dedent(
             """
               - foo:
@@ -222,15 +224,15 @@ class TestTextOnlySymlParser:
 
 class TestBooleanSymlParser:
     @pytest.fixture
-    def parser(self) -> parser.BooleanSymlParser:
-        return parser.BooleanSymlParser()
+    def parser(self) -> parsers.BooleanSymlParser:
+        return parsers.BooleanSymlParser()
 
-    def test_it_should_parse_a_simple_boolean_value(self, parser: parser.BooleanSymlParser) -> None:
+    def test_it_should_parse_a_simple_boolean_value(self, parser: parsers.BooleanSymlParser) -> None:
         text = textwrap.dedent('true')
         result = parser.parse(text)
         assert result.as_data() == Source.from_text(text, 'true', value=True)
 
-    def test_it_should_parse_mixed_boolean_values(self, parser: parser.BooleanSymlParser) -> None:
+    def test_it_should_parse_mixed_boolean_values(self, parser: parsers.BooleanSymlParser) -> None:
         text = textwrap.dedent(
             """
             - foo
@@ -255,7 +257,7 @@ class TestSimpleParserFunction:
             - false
             """
         )
-        result = parser.parse(text)
+        result = parsers.parse(text)
         assert result == [
             'foo',
             'true',

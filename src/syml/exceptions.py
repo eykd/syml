@@ -1,6 +1,9 @@
+"""Exceptions for parsing SYML documents"""
+
+
 class ParseError(ValueError):
-    pass
+    """An error encountered while parsing"""
 
 
 class OutOfContextNodeError(ParseError):
-    pass
+    """A node encountered in an illegal context"""
