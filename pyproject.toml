@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "syml"
-version = "0.4"
+version = "0.5"
 description = "SYML (Simple YAML-like Markup Language) is a simple markup language with similar structure to YAML, but without all the gewgaws and folderol."
 authors = ["David Eyk <david@worldsenoughstudios.com>"]
 homepage = "https://github.com/eykd/syml/"
