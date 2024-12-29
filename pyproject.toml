@@ -31,6 +31,8 @@ mypy = "^1.11.2"
 pytest-ruff = "^0.4.1"
 pytest-mypy = "^0.10.3"
 pydantic = "^2.8.2"
+types-parsimonious = "^0.10.0.20240331"
+funcy-typing = "^2.0.5"
 
 [build-system]
 requires = ["poetry-core"]
