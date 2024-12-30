@@ -35,6 +35,7 @@ class Pos:
         """
         lines = utils.split_lines(text, keepends=True)
         curr_pos = 0
+        linenum = 0
         for linenum, line in enumerate(lines):
             if curr_pos + len(line) > index:
                 return cls(index, linenum + 1, index - curr_pos)
@@ -109,6 +110,9 @@ class Source:
             return self + other.text
 
         raise TypeError('Tried to add invalid type to Source', type(other))
+
+    def __hash__(self) -> int:
+        return hash(str(self))
 
 
 SourceStr = Source | str
