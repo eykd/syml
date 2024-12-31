@@ -10,8 +10,6 @@ packages = [{include = "syml", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-attrs = "^24.3.0"
-funcy = "^2.0"
 parsimonious = "^0.10.0"
 regex = "^2024.11.6"
 
@@ -32,7 +30,6 @@ pytest-ruff = "^0.4.1"
 pytest-mypy = "^0.10.3"
 pydantic = "^2.8.2"
 types-parsimonious = "^0.10.0.20240331"
-funcy-typing = "^2.0.5"
 
 [build-system]
 requires = ["poetry-core"]

@@ -194,32 +194,6 @@ testing = ["covdefaults (>=2.3)", "coverage (>=7.6.1)", "diff-cover (>=9.2)", "p
 typing = ["typing-extensions (>=4.12.2)"]
 
 [[package]]
-name = "funcy"
-version = "2.0"
-description = "A fancy and practical functional tools"
-optional = false
-python-versions = "*"
-files = [
-    {file = "funcy-2.0-py2.py3-none-any.whl", hash = "sha256:53df23c8bb1651b12f095df764bfb057935d49537a56de211b098f4c79614bb0"},
-    {file = "funcy-2.0.tar.gz", hash = "sha256:3963315d59d41c6f30c04bc910e10ab50a3ac4a225868bfa96feed133df075cb"},
-]
-
-[[package]]
-name = "funcy-typing"
-version = "2.0.5"
-description = "Stubs for funcy package"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "funcy_typing-2.0.5-py3-none-any.whl", hash = "sha256:d6b2abeace80747d83df54330018988ead1dfe1f8213b0c213f84be0473b0386"},
-    {file = "funcy_typing-2.0.5.tar.gz", hash = "sha256:8bbfd183689f048acbdba96ab790da1b4734cee65e4925ab2571a9ade0e3d2b3"},
-]
-
-[package.dependencies]
-funcy = ">=2.0,<2.1"
-typing-extensions = ">=4.11"
-
-[[package]]
 name = "identify"
 version = "2.6.3"
 description = "File identification library for Python"
@@ -1096,4 +1070,4 @@ watchdog = "*"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "db3d654cf242b5ccdb83ad0dcb5168d5314bfcf88941d4b7a12a4f0323a510ed"
+content-hash = "27a6e01752dbf1bdc90dac3d434ea01d1a1d82e7fbe9aa22242bad3c894b58f1"

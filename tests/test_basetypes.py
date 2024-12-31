@@ -21,9 +21,8 @@ class TestSource:
             start=basetypes.Pos(index=3, line=2, column=2),
             end=basetypes.Pos(index=6, line=2, column=5),
             text='foo',
-            value='foo',
         )
-        assert repr(source) == "foo.txt, Line 2, Column 2 (index 3): 'foo' ('foo')"
+        assert repr(source) == "<Source: foo.txt, Line 2, Column 2 (index 3): 'foo'>"
 
     def test_it_should_add_more_text(self) -> None:
         text = textwrap.dedent(
@@ -34,14 +33,13 @@ class TestSource:
         """
         )
         source = basetypes.Source.from_text(text, 'foo', filename='foo.txt')
-        new_source = source + '\n  baz'
+        new_source = source + '  baz'
         assert new_source is not source
         assert new_source == basetypes.Source(
             filename='foo.txt',
             start=basetypes.Pos(index=3, line=2, column=2),
-            end=basetypes.Pos(index=12, line=4, column=5),
+            end=basetypes.Pos(index=11, line=3, column=5),
             text='foo\n  baz',
-            value='foo\n  baz',
         )
 
     def test_it_should_add_more_source(self) -> None:
@@ -53,15 +51,14 @@ class TestSource:
             """
         )
         source = basetypes.Source.from_text(text, 'foo', filename='foo.txt')
-        source_2 = basetypes.Source.from_text(text, '\n  baz', filename='foo.txt')
+        source_2 = basetypes.Source.from_text(text, 'baz', filename='foo.txt')
         new_source = source + source_2
         assert new_source is not source
         assert new_source == basetypes.Source(
             filename='foo.txt',
             start=basetypes.Pos(index=3, line=2, column=2),
-            end=basetypes.Pos(index=12, line=4, column=5),
-            text='foo\n  baz',
-            value='foo\n  baz',
+            end=basetypes.Pos(index=18, line=4, column=5),
+            text='foo\nbaz',
         )
 
     def test_it_should_fail_on_no_substring_match(self) -> None:

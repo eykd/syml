@@ -1,9 +1,9 @@
 """Utility functions for SYML"""
 
-from funcy import memoize
+from functools import cache
 
 
-@memoize
+@cache
 def split_lines(text: str, keepends: bool = False) -> list[str]:  # noqa: FBT001, FBT002
     """Memoized version of str.splitlines()"""
     return text.splitlines(keepends=keepends)

@@ -4,6 +4,7 @@ set -x
 ruff check --fix
 ruff format
 pytest \
+    --new-first \
     --failed-first \
     --exitfirst \
     --random-order \

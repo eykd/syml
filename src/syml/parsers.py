@@ -2,39 +2,66 @@
 
 from __future__ import annotations
 
+import textwrap
 from typing import TYPE_CHECKING, Any
 
-from parsimonious import Grammar, NodeVisitor, VisitationError
+from parsimonious import Grammar, NodeVisitor
 
-from . import basetypes as types
-from . import grammars, nodes
+from . import nodes
 from .exceptions import OutOfContextNodeError
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
-    from .basetypes import StrPath
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
 
 
-class TextOnlySymlParser(NodeVisitor):  # type: ignore[type-arg]
-    """Parser for the SYML variant that allows only text leaf nodes"""
+class SymlParser(NodeVisitor):  # type: ignore[type-arg]
+    """Parser for SYML"""
 
-    grammar = Grammar(grammars.text_only_syml_grammar)
+    grammar = Grammar(
+        textwrap.dedent(
+            r"""
+            lines       = line*
+            line        = indent (comment / blank / structure / value) &eol
+            structure   = list_item / key_value / section
+
+            indent      = ~"\s*"
+
+            blank       = &eol
+            comment     = ~"(#|//+)+" text?
+
+            list_item   = "-" ws value
+
+            key_value   = section ws data
+            section     = key ":"
+            key         = ~"[^\s:]+"
+
+            eol         = "\n" / ~"$"
+            ws          = ~"[ \t]+"
+            text        = ~".+"
+
+            value       = structure / data
+            data        = text
+
+            """
+        )
+    )
+    unwrapped_exceptions = (OutOfContextNodeError,)
 
     def reduce_children(self, children: OptionalSymlNodes) -> SymlNodes:
         """Return all non-null children."""
         return [c for c in children if c is not None]
 
-    def visit_blank(self, node: PNode, children: OptionalSymlNodes) -> None:  # noqa: ARG002
+    def visit_blank(self, node: PNode, children: SymlNodes) -> None:  # noqa: ARG002
         """Visit a blank."""
         return
 
-    def visit_line(self, node: PNode, children: OptionalSymlNodes) -> OptionalNodes:  # noqa: ARG002
+    def visit_line(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a line."""
         indent, value, _ = children
         if value is not None:
-            value.set_level(indent)  # type: ignore[arg-type]
+            value.set_level(indent.level)  # type: ignore[arg-type]
             return value
         return None
 
@@ -48,21 +75,22 @@ class TextOnlySymlParser(NodeVisitor):  # type: ignore[type-arg]
         else:  # pragma: nocover  # noqa: RET505
             return nodes
 
-    def get_text(self, node: PNode, children: OptionalSymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
+    def visit_text(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Return a text leaf node."""
-        return nodes.TextLeafNode(pnode=node, source_text=types.Source.from_node(node))
+        return nodes.TextLeafNode(pnode=node)
 
-    def visit_comment(self, node: PNode, children: OptionalSymlNodes) -> nodes.Comment:
+    def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
+        """Return a key leaf node."""
+        return nodes.KeyLeafNode(pnode=node)
+
+    def visit_comment(self, node: PNode, children: SymlNodes) -> nodes.Comment:  # noqa: ARG002
         """Visit a comment node."""
         _, text = children
-        return nodes.Comment(pnode=node, value=text)
+        return nodes.Comment(pnode=text.pnode)
 
-    visit_text = get_text
-    visit_key = get_text
-
-    def visit_indent(self, node: PNode, children: OptionalSymlNodes) -> int:  # noqa: ARG002
+    def visit_indent(self, node: PNode, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
         """Visit an indentation token."""
-        return len(node.text.replace('\t', ' ' * 4).strip('\n'))
+        return nodes.IndentNode(pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')))
 
     def visit_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value."""
@@ -70,12 +98,12 @@ class TextOnlySymlParser(NodeVisitor):  # type: ignore[type-arg]
         section.incorporate_node(value)
         return section
 
-    def visit_section(self, node: PNode, children: OptionalSymlNodes) -> nodes.KeyValue:
+    def visit_section(self, node: PNode, children: SymlNodes) -> nodes.KeyValue:
         """Visit a key/value section."""
         key, _ = children
-        return nodes.KeyValue(pnode=node, key=key)
+        return nodes.KeyValue(pnode=node, key=key)  # type: ignore[arg-type]
 
-    def visit_list_item(self, node: PNode, children: OptionalSymlNodes) -> nodes.ListItem:
+    def visit_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item."""
         _, _, value = children
         li = nodes.ListItem(pnode=node)
@@ -95,40 +123,7 @@ class TextOnlySymlParser(NodeVisitor):  # type: ignore[type-arg]
                 current = current.incorporate_node(child)
         return root
 
-    def parse(self, *args: Any, **kwargs: Any) -> SymlNode:  # noqa: ANN401
-        """Parse a SYML document."""
-        try:
-            return super().parse(*args, **kwargs)
-        except VisitationError as exc:
-            # Parsimonious swallows errors inside of `visit_` handlers and
-            # wraps them in VisitationError cruft.
-            if exc.args[0].startswith('OutOfContextNodeError'):
-                # Extract the original error message, ignoring the cruft.
-                msg = exc.args[0].split('\n\n\n')[0].split(':', 1)[1]
-                raise OutOfContextNodeError(msg) from exc
-            raise  # pragma: no cover
 
-
-class BooleanSymlParser(TextOnlySymlParser):
-    """Syml with support for YAML-like boolean values."""
-
-    grammar = Grammar(grammars.boolean_syml_grammar)
-
-    def visit_truthy(self, node: PNode, children: OptionalSymlNodes) -> nodes.RawValueLeafNode:  # noqa: ARG002
-        """Visit a truthy value."""
-        return nodes.RawValueLeafNode(pnode=node, source_text=types.Source.from_node(node), value=True)
-
-    def visit_falsey(self, node: PNode, children: OptionalSymlNodes) -> nodes.RawValueLeafNode:  # noqa: ARG002
-        """Visit a falsey value."""
-        return nodes.RawValueLeafNode(pnode=node, source_text=types.Source.from_node(node), value=False)
-
-
-def parse(
-    source_syml: str,
-    filename: StrPath = '',
-    raw: bool = True,  # noqa: FBT001, FBT002
-    booleans: bool = False,  # noqa: FBT001, FBT002
-) -> list[Any] | dict[str, Any] | str | bool:
+def parse(source_syml: str) -> list[Any] | dict[str, Any] | str | bool:
     """Parse a SYML document."""
-    parser = BooleanSymlParser if booleans else TextOnlySymlParser
-    return parser().parse(source_syml).as_data(filename, raw=raw)
+    return SymlParser().parse(source_syml).as_data()

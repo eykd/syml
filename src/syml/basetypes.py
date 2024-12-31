@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from attrs import define
 
 from syml import utils
 
@@ -16,10 +15,8 @@ if TYPE_CHECKING:  # pragma: nocover
 
 StrPath = str | Path
 
-StrBool = str | bool
 
-
-@define(slots=True, frozen=True)
+@dataclass(slots=True, frozen=True)
 class Pos:
     """A position within a source file"""
 
@@ -43,7 +40,7 @@ class Pos:
         return cls(len(text), linenum + 1, 0)
 
 
-@define(slots=True, repr=False, frozen=True)
+@dataclass(slots=True, repr=False, frozen=True)
 class Source:
     """A line within a source file"""
 
@@ -51,18 +48,15 @@ class Source:
     start: Pos
     end: Pos
     text: str
-    # value corresponds to a line of text
-    value: StrBool
 
     @classmethod
-    def from_node(cls, pnode: PNode, filename: StrPath = '', value: StrBool | None = None) -> Source:
+    def from_node(cls, pnode: PNode, filename: StrPath = '') -> Source:
         """Build a Source from the given PNode, filename, and line value."""
         return cls(
             filename=filename,
             start=Pos.from_str_index(pnode.full_text, pnode.start),
             end=Pos.from_str_index(pnode.full_text, pnode.end),
             text=pnode.text,
-            value=value if value is not None else pnode.text,
         )
 
     @classmethod
@@ -71,11 +65,10 @@ class Source:
         text: str,
         substring: str | None = None,
         source_text: str | None = None,
-        value: bool | str | None = None,  # noqa: FBT001
         filename: StrPath = '',
     ) -> Source:
         """Build a Source from the given components."""
-        if substring is None:
+        if substring is None:  # pragma: no cover
             substring = text
         match = re.search(substring, text)
         if match is None:
@@ -86,12 +79,11 @@ class Source:
             start=Pos.from_str_index(text, match.start()),
             end=Pos.from_str_index(text, match.end()),
             text=source_text,
-            value=value if value is not None else source_text,
         )
 
     def __repr__(self) -> str:
         filename = f'{self.filename}, ' if self.filename else ''
-        return f'{filename}Line {self.start.line}, Column {self.start.column} (index {self.start.index}): {self.text!r} ({self.value!r})'
+        return f'<Source: {filename}Line {self.start.line}, Column {self.start.column} (index {self.start.index}): {self.text!r}>'
 
     def __str__(self) -> str:
         return self.text
@@ -103,19 +95,21 @@ class Source:
                 filename=self.filename,
                 start=self.start,
                 end=Pos(index=self.end.index + len(other), line=self.end.line + len(lines), column=len(lines[-1])),
-                text=self.text + other,
-                value=str(self.value) + other,
+                text=f'{self.text}\n{other}',
             )
         if isinstance(other, Source):
+            return Source(
+                filename=self.filename,
+                start=self.start,
+                end=other.end,
+                text=f'{self.text}\n{other}',
+            )
             return self + other.text
 
         raise TypeError('Tried to add invalid type to Source', type(other))
 
-    def __hash__(self) -> int:
+    def __hash__(self) -> int:  # pragma: no cover
         return hash(str(self))
 
 
 SourceStr = Source | str
-
-
-SourceStrBool = SourceStr | bool

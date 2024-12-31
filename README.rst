@@ -42,10 +42,4 @@ And the resulting data structure::
                ('booleans?', ['True', 'False', 'true', 'false', 'TRUE', 'FALSE'])])
 
 
-All values in SYML are just plain ol' text. But let's face it, sometimes you
-really do want YAML-like booleans::
-
-  >>> import syml
-  >>> syml.loads(document, booleans=True)
-  OrderedDict([('foo', ['bar', 'baz', 'blah\nboo']),
-               ('booleans?', [True, False, True, False, True, False])])
+All values in SYML are just plain ol' text.
