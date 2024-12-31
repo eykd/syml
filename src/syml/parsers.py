@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor
 
@@ -124,6 +124,6 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return root
 
 
-def parse(source_syml: str) -> list[Any] | dict[str, Any] | str | bool:
+def parse(source_syml: str) -> nodes.Root:
     """Parse a SYML document."""
-    return SymlParser().parse(source_syml).as_data()
+    return SymlParser().parse(source_syml)

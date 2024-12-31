@@ -6,11 +6,11 @@ from typing import Any
 from . import parsers
 
 
-def loads(document: str, **kwargs: Any) -> Any:  # noqa: ANN401
+def loads(document: str, **kwargs: Any) -> list[Any] | dict[str, Any] | str:  # noqa: ANN401
     """Load a SYML document from a string."""
-    return parsers.parse(document, **kwargs)
+    return parsers.parse(document, **kwargs).as_data()
 
 
-def load(file_obj: TextIOBase, **kwargs: Any) -> Any:  # noqa: ANN401
+def load(file_obj: TextIOBase, **kwargs: Any) -> list[Any] | dict[str, Any] | str:  # noqa: ANN401
     """Load a SYML document from a file-like object."""
     return loads(file_obj.read(), **kwargs)

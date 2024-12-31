@@ -232,7 +232,7 @@ class TestSimpleParserFunction:
             - false
             """
         )
-        result = parsers.parse(text)
+        result = parsers.parse(text).as_data()
         assert result == [
             'foo',
             'true',
