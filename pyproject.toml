@@ -5,7 +5,7 @@ description = "SYML (Simple YAML-like Markup Language) is a simple markup langua
 authors = ["David Eyk <david@worldsenoughstudios.com>"]
 homepage = "https://github.com/eykd/syml/"
 repository = "https://github.com/eykd/syml"
-readme = "README.rst"
+readme = "README.md"
 packages = [{include = "syml", from = "src"}]
 
 [tool.poetry.dependencies]
