@@ -44,13 +44,13 @@ class Pos:
 class Source:
     """A line within a source file"""
 
-    filename: str | Path
+    filename: StrPath | None
     start: Pos
     end: Pos
     text: str
 
     @classmethod
-    def from_node(cls, pnode: PNode, filename: StrPath = '') -> Source:
+    def from_node(cls, pnode: PNode, filename: StrPath | None = None) -> Source:
         """Build a Source from the given PNode, filename, and line value."""
         return cls(
             filename=filename,
@@ -65,7 +65,7 @@ class Source:
         text: str,
         substring: str | None = None,
         source_text: str | None = None,
-        filename: StrPath = '',
+        filename: StrPath | None = None,
     ) -> Source:
         """Build a Source from the given components."""
         if substring is None:  # pragma: no cover

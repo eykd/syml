@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
-from .basetypes import Pos, Source
+from .basetypes import Pos, Source, StrPath
 from .exceptions import OutOfContextNodeError
 from .utils import get_line
 
@@ -22,11 +22,12 @@ class SymlNode:
     parent: SymlNode | None = field(default=None)
     comments: list[Comment] = field(default_factory=list)
     children: list[SymlNode] = field(default_factory=list)
+    filename: StrPath | None = field(default=None)
 
     source: Source = field(init=False)
 
     def __post_init__(self) -> None:
-        self.source = Source.from_node(self.pnode)
+        self.source = Source.from_node(self.pnode, filename=self.filename)
         if self.level is not None:
             self.set_level(self.level)
 
@@ -114,9 +115,9 @@ class ContainerNode(SymlNode):
         if self.can_add_node(node):
             intermediary: SymlNode | None = None
             if isinstance(node, KeyValue):
-                intermediary = Mapping(pnode=node.pnode, level=self.level)
+                intermediary = Mapping(pnode=node.pnode, level=self.level, filename=self.filename)
             elif isinstance(node, ListItem):
-                intermediary = List(pnode=node.pnode, level=self.level)
+                intermediary = List(pnode=node.pnode, level=self.level, filename=self.filename)
 
             if intermediary is not None:
                 intermediary.set_level(node.level)  # type: ignore[arg-type]
@@ -235,7 +236,7 @@ class KeyLeafNode(SymlNode):
     @property
     def key(self) -> Source:
         """Return a Source object representing the key."""
-        return Source.from_node(self.pnode)
+        return Source.from_node(self.pnode, filename=self.filename)
 
     def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
         """Return this node as primitive data types with Source objects for strings."""

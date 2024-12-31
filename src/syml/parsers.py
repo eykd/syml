@@ -13,6 +13,7 @@ from .exceptions import OutOfContextNodeError
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
+    from .basetypes import StrPath
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
 
 
@@ -49,6 +50,10 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     )
     unwrapped_exceptions = (OutOfContextNodeError,)
 
+    def __init__(self, filename: StrPath | None = None) -> None:
+        super().__init__()
+        self.filename = filename
+
     def reduce_children(self, children: OptionalSymlNodes) -> SymlNodes:
         """Return all non-null children."""
         return [c for c in children if c is not None]
@@ -77,20 +82,22 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
     def visit_text(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Return a text leaf node."""
-        return nodes.TextLeafNode(pnode=node)
+        return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
     def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
         """Return a key leaf node."""
-        return nodes.KeyLeafNode(pnode=node)
+        return nodes.KeyLeafNode(pnode=node, filename=self.filename)
 
     def visit_comment(self, node: PNode, children: SymlNodes) -> nodes.Comment:  # noqa: ARG002
         """Visit a comment node."""
         _, text = children
-        return nodes.Comment(pnode=text.pnode)
+        return nodes.Comment(pnode=text.pnode, filename=self.filename)
 
     def visit_indent(self, node: PNode, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
         """Visit an indentation token."""
-        return nodes.IndentNode(pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')))
+        return nodes.IndentNode(
+            pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')), filename=self.filename
+        )
 
     def visit_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value."""
@@ -101,19 +108,19 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     def visit_section(self, node: PNode, children: SymlNodes) -> nodes.KeyValue:
         """Visit a key/value section."""
         key, _ = children
-        return nodes.KeyValue(pnode=node, key=key)  # type: ignore[arg-type]
+        return nodes.KeyValue(pnode=node, key=key, filename=self.filename)  # type: ignore[arg-type]
 
     def visit_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item."""
         _, _, value = children
-        li = nodes.ListItem(pnode=node)
+        li = nodes.ListItem(pnode=node, filename=self.filename)
         if value is not None:  # pragma: nobranch
             li.incorporate_node(value)
         return li
 
     def visit_lines(self, node: PNode, children: OptionalSymlNodes) -> nodes.Root:
         """Visit the lines within a SYML document."""
-        root = nodes.Root(pnode=node)
+        root = nodes.Root(pnode=node, filename=self.filename)
         current: SymlNode = root
 
         for child in self.reduce_children(children):
@@ -124,6 +131,6 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return root
 
 
-def parse(source_syml: str) -> nodes.Root:
+def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
-    return SymlParser().parse(source_syml)
+    return SymlParser(filename=filename).parse(source_syml)

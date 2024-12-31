@@ -4,13 +4,14 @@ from io import TextIOBase
 from typing import Any
 
 from . import parsers
+from .basetypes import StrPath
 
 
-def loads(document: str, **kwargs: Any) -> list[Any] | dict[str, Any] | str:  # noqa: ANN401
+def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
     """Load a SYML document from a string."""
-    return parsers.parse(document, **kwargs).as_data()
+    return parsers.parse(document, filename=filename).as_data()
 
 
-def load(file_obj: TextIOBase, **kwargs: Any) -> list[Any] | dict[str, Any] | str:  # noqa: ANN401
+def load(file_obj: TextIOBase, filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
     """Load a SYML document from a file-like object."""
-    return loads(file_obj.read(), **kwargs)
+    return loads(file_obj.read(), filename=filename)
