@@ -1,0 +1,37 @@
+name: Continuous integration
+on: push
+
+jobs:
+  ci:
+    # This workflow will install Python dependencies, run tests and
+    # lint with a variety of Python versions For more information see:
+    # https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install poetry
+        poetry install --all-extras --with=test
+    - name: Lint with ruff
+      run: |
+        poetry run python -m ruff check
+    - name: Check types
+      run: |
+        poetry run python -m mypy
+    - name: Test with pytest
+      run: |
+        poetry run python -m pytest -vv --disable-warnings --cov-fail-under=100
+      env:
+        PYTHONDONTWRITEBYTECODE: 1
