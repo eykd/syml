@@ -7,6 +7,12 @@ from syml import basetypes
 
 
 class TestSource:
+    def test_it_should_work_interchangeably_as_a_dict_key_with_comparable_string(self) -> None:
+        text = 'foo'
+        source = basetypes.Source.from_text(text, 'foo')
+        data = {source: 'bar'}
+        assert data['foo'] == 'bar'  # type: ignore[index]
+
     def test_it_should_represent_itself_nicely(self) -> None:
         text = textwrap.dedent(
             """

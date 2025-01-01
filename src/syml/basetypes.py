@@ -108,6 +108,9 @@ class Source:
 
         raise TypeError('Tried to add invalid type to Source', type(other))
 
+    def __eq__(self, other: object) -> bool:
+        return str(self) == str(other)
+
     def __hash__(self) -> int:  # pragma: no cover
         return hash(str(self))
 
