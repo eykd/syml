@@ -112,7 +112,7 @@ Lists are ordered sequences of items, each prefixed with a hyphen (`-`) followed
 
 ### 3.3 Mappings (Dictionaries)
 
-Mappings are unordered collections of key-value pairs, where keys are separated from values by a colon (`:`) followed by optional whitespace.
+Mappings are collections of key-value pairs with no defined ordering. Implementations MAY preserve insertion order, but consumers MUST NOT depend on key ordering. Keys are separated from values by a colon (`:`) followed by optional whitespace.
 
 ```syml
 name: Alice
@@ -157,7 +157,7 @@ data        = text
 quoted_value   = single_quoted / double_quoted
 single_quoted  = "'" (~"''" "''" / ~"[^']")* "'"
 double_quoted  = '"' (escape_seq / ~'[^"\\]')* '"'
-escape_seq     = '\\' [\\"/nrt] / '\\u' [0-9a-fA-F]{4}
+escape_seq     = '\\' [\\/"/nrt] / '\\u' [0-9a-fA-F]{4} / '\\U' [0-9a-fA-F]{8}
 ```
 
 ### 4.2 Indentation
@@ -294,11 +294,13 @@ Double-quoted strings support escape sequences:
 | Escape | Result |
 |--------|--------|
 | `\\` | Backslash (`\`) |
+| `\/` | Forward slash (`/`) |
 | `\"` | Double quote (`"`) |
 | `\n` | Newline (LF) |
 | `\t` | Tab |
 | `\r` | Carriage return (CR) |
 | `\uXXXX` | Unicode code point (4 hex digits) |
+| `\UXXXXXXXX` | Unicode code point (8 hex digits, full range U+0000-U+10FFFF) |
 
 ```syml
 escaped: "hello\nworld"
@@ -333,6 +335,8 @@ Line endings are normalized during parsing:
 - `\r\n` (CRLF, Windows) is converted to `\n` (LF)
 - `\r` (CR, old Mac) is converted to `\n` (LF)
 - Documents may end with or without a trailing newline
+
+Line ending normalization applies to the **entire document** including content within quoted strings. To include a literal CR in a value, use the `\r` escape sequence.
 
 This ensures consistent behavior regardless of the source platform.
 
@@ -370,7 +374,10 @@ In the above example, `key:` is at column 0, so continuation lines must be inden
 
 ### 5.3 Indentation Preservation
 
-Relative indentation is preserved: common leading whitespace is stripped from continuation lines (similar to Python's `textwrap.dedent()`), with additional indentation beyond the first continuation line preserved.
+The **first continuation line** establishes the baseline indentation. Subsequent continuation lines:
+- At the baseline indentation: content preserved as-is
+- Beyond the baseline: extra indentation preserved relative to baseline
+- Below the baseline: terminates the multiline value (line belongs to parent/sibling context)
 
 ```syml
 key: line one
@@ -501,6 +508,8 @@ An empty document (or document with only comments/blank lines) produces an empty
 - Whitespace between `:` and an unquoted value is required
 - Whitespace before a quoted value is optional
 
+> **Editor Compatibility Note:** Many text editors automatically strip trailing whitespace on save. This may inadvertently modify SYML values. Authors who depend on trailing whitespace should use quoted strings or configure their editors accordingly.
+
 ```syml
 # Valid
 key: value
@@ -577,6 +586,8 @@ Tabs are only permitted within values, not as leading indentation.
 
 ## 9. Parsing Algorithm
 
+**Level:** The indentation level of a node, defined as the column index (0-indexed) where the node's structural marker (`-` for list items, key name for mappings) or content begins.
+
 ### 9.1 High-Level Process
 
 1. **Tokenize**: Split document into lines
@@ -637,6 +648,8 @@ For each parsed value, track:
 - Lines are **1-indexed** (first line is line 1)
 - Columns are **0-indexed** (first column is column 0)
 - Character indices are **0-indexed** from start of document
+
+> **Rationale:** This convention matches typical text editor displays, where the first line is shown as "Line 1" but cursor positions are often 0-indexed within lines.
 
 ### 10.3 Source-Preserving Mode
 
@@ -836,7 +849,7 @@ The reference implementation uses a PEG (Parsing Expression Grammar) parser via 
 SYML documents are assumed to be valid UTF-8 (or platform-native encoding). Implementations should:
 - Accept any valid Unicode in keys and values
 - Count columns by characters (code points), not bytes
-- Handle BOM (Byte Order Mark) if present
+- A UTF-8 BOM (U+FEFF) at the start of a document MUST be stripped silently and excluded from parsed content and source position calculations
 
 ---
 
@@ -844,8 +857,7 @@ SYML documents are assumed to be valid UTF-8 (or platform-native encoding). Impl
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2025-01 | Initial specification based on Python reference implementation v0.6.2 |
-| 1.0 | 2026-01 | Added quoted strings, tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization, clarified continuation rules |
+| 1.0 | 2026-01 | Initial specification formalizing SYML syntax. Includes quoted strings, escape sequences, tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. |
 
 ---
 
