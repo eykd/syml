@@ -91,17 +91,17 @@ class TestPosFromStrIndex:
         )
 
     def test_returns_line_and_column_at_start_of_line(self, text: str) -> None:
-        match = re.search('foo', text)
+        match = re.search(r'foo', text)
         start = match.start()  # type: ignore[union-attr]
         assert basetypes.Pos.from_str_index(text, start) == basetypes.Pos(start, 3, 0)
 
     def test_returns_line_and_column_of_indented_text(self, text: str) -> None:
-        match = re.search('bar', text)
+        match = re.search(r'bar', text)
         start = match.start()  # type: ignore[union-attr]
         assert basetypes.Pos.from_str_index(text, start) == basetypes.Pos(start, 4, 4)
 
     def test_returns_line_and_column_of_midline_text(self, text: str) -> None:
-        match = re.search('blah', text)
+        match = re.search(r'blah', text)
         start = match.start()  # type: ignore[union-attr]
         assert basetypes.Pos.from_str_index(text, start) == basetypes.Pos(start, 5, 12)
 
