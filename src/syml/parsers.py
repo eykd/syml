@@ -6,9 +6,11 @@ import textwrap
 from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor
+from parsimonious.exceptions import ParseError as ParsimoniousParseError
+from parsimonious.exceptions import VisitationError
 
 from . import nodes
-from .exceptions import OutOfContextNodeError
+from .exceptions import OutOfContextNodeError, ParseError
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -133,4 +135,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
-    return SymlParser(filename=filename).parse(source_syml)
+    try:
+        return SymlParser(filename=filename).parse(source_syml)
+    except (ParsimoniousParseError, VisitationError) as e:
+        raise ParseError(str(e), filename=filename) from e

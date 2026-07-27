@@ -219,8 +219,52 @@ class TestSymlParser:
             - blah
             """
         )
-        with pytest.raises(exceptions.OutOfContextNodeError):
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
             parser.parse(bad_yaml)
+        assert 'unexpected indentation' in str(exc_info.value)
+
+    def test_it_fails_parsing_weird_indentations_with_filename(self) -> None:
+        bad_yaml = textwrap.dedent(
+            """
+              - foo:
+                  - bar
+             - baz
+            - blah
+            """
+        )
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            parsers.parse(bad_yaml, filename='test.syml')
+        msg = str(exc_info.value)
+        assert 'test.syml' in msg
+        assert 'unexpected indentation' in msg
+        assert exc_info.value.filename == 'test.syml'
+        assert exc_info.value.pos is not None
+
+
+class TestParseErrorWrapping:
+    def test_visitor_error_raises_syml_parse_error(self) -> None:
+        with pytest.raises(exceptions.ParseError):
+            parsers.parse('#')
+
+    def test_visitor_error_includes_filename(self) -> None:
+        with pytest.raises(exceptions.ParseError) as exc_info:
+            parsers.parse('#', filename='broken.syml')
+        assert 'broken.syml' in str(exc_info.value)
+        assert exc_info.value.filename == 'broken.syml'
+
+    def test_visitor_error_is_syml_type(self) -> None:
+        from parsimonious.exceptions import VisitationError
+
+        with pytest.raises(exceptions.ParseError) as exc_info:
+            parsers.parse('#')
+        assert type(exc_info.value) is not VisitationError
+
+    def test_visitor_error_chains_original(self) -> None:
+        from parsimonious.exceptions import VisitationError
+
+        with pytest.raises(exceptions.ParseError) as exc_info:
+            parsers.parse('#')
+        assert isinstance(exc_info.value.__cause__, VisitationError)
 
 
 class TestSimpleParserFunction:

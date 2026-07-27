@@ -5,6 +5,9 @@ from typing import Any
 
 from . import parsers
 from .basetypes import StrPath
+from .exceptions import OutOfContextNodeError, ParseError
+
+__all__ = ['OutOfContextNodeError', 'ParseError', 'load', 'loads']
 
 
 def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:

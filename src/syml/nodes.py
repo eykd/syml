@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
-from .basetypes import Pos, Source, StrPath
+from .basetypes import Source, StrPath
 from .exceptions import OutOfContextNodeError
 from .utils import get_line
 
@@ -76,10 +76,9 @@ class SymlNode:
 
     def fail_to_incorporate_node(self, node: SymlNode) -> None:
         """Report a failure to incorporate a node."""
-        pnode = node.pnode
-        pos = Pos.from_str_index(pnode.full_text, pnode.start)
-        line = get_line(pnode.full_text, pos.line)
-        raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
+        pos = node.source.start
+        line = get_line(node.pnode.full_text, pos.line)
+        raise OutOfContextNodeError(pos=pos, line_text=line, filename=node.filename)
 
 
 class IndentNode(SymlNode):
