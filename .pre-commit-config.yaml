@@ -16,16 +16,15 @@ repos:
     -   id: ruff
         args: [ --fix ]
     -   id: ruff-format
--   repo: https://github.com/python-poetry/poetry
-    rev: '1.8.0'
+-   repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.5.11
     hooks:
-    -   id: poetry-check
-    -   id: poetry-install
+    -   id: uv-lock
 -   repo: local
     hooks:
     -   id: mypy-check
         name: mypy-check
-        entry: poetry run mypy
+        entry: uv run mypy
         language: system
         pass_filenames: false
         types_or:
@@ -33,7 +32,7 @@ repos:
           - toml
     -   id: pytest-check
         name: pytest-check
-        entry: poetry run pytest --cov-fail-under=100
+        entry: uv run pytest --cov-fail-under=100
         language: system
         pass_filenames: false
         types_or:
