@@ -1,0 +1,206 @@
+SYML TODO — conformance gaps between SYML-SPECIFICATION.md v1.0 and the parser
+==============================================================================
+
+Status: SYML-SPECIFICATION.md v1.0 was written ahead of the implementation. Its
+own version history says so: "Breaks compatibility with Python reference
+implementation v0.6.2." This file is the resulting work list.
+
+Every item below was verified empirically against src/syml at v0.6.2. Section C,
+marked [SPEC], records decisions already applied to the specification rather
+than outstanding parser work.
+
+The previous todo list is superseded. Two of its items are already resolved:
+"foo: - bar becomes a string" is now intended behavior (spec 7.2), and multiline
+values already work (spec 5.1/5.2). One is carried over unchanged: item B3.
+
+
+A. SPEC'D BUT UNIMPLEMENTED
+---------------------------
+
+A1. Quoted strings (spec 4.1, 4.7, 7.5)
+    Single- and double-quoted values are not recognized at all; the quotes come
+    back as literal characters.
+      padded: '  spaces  '        want {'padded': '  spaces  '}
+                                  got  {'padded': "'  spaces  '"}
+      escaped: "hello\nworld"     want {'escaped': 'hello\nworld'}
+                                  got  {'escaped': '"hello\\nworld"'}
+    Needs: single_quoted (literal, '' escape), double_quoted (\\ \/ \" \n \t \r
+    \uXXXX \UXXXXXXXX), quote stripping, whitespace preservation inside quotes,
+    and the optional-whitespace form `k:"value"` (currently IncompleteParseError).
+    This is the one substantial new feature; the other seven 4.7 examples all
+    fail for this single reason.
+    OPEN QUESTION for whoever implements this: 'key:"value" extra' — trailing
+    content after a closing quote. quoted_value matches the prefix, then the
+    line's &eol fails, so under PEG the line errors rather than falling
+    through to scalar. That contradicts 7.6's opening sentence. Same &eol-guard
+    consideration as A10, but the right answer (scalar fallback vs. genuine
+    error) is a spec decision nobody has made yet — the pre-1.0 spec was
+    silent too. Decide it before implementing, do not guess.
+
+A2. Empty values produce empty strings, not None (spec 7.3, 7.4, 12.3)
+      empty:\nnext: value    want {'empty': '', 'next': 'value'}   got {'empty': None, ...}
+      empty:                 want {'empty': ''}                    got {'empty': None}
+      ""  (empty document)   want ''                               got None
+      "# just a comment"     want ''                               got None
+      "k: "  (colon, space, nothing)   want {'k': ''}   got IncompleteParseError
+    Root cause for the last one: the grammar uses text = ~".+" where the spec
+    specifies text = ~"[^\n]*" (empty match permitted). Fixing the grammar rule
+    and ContainerNode/Root.as_data()'s None fallbacks covers all five.
+
+A5. Key pattern narrowing (spec 4.5, 7.6)
+      "a\x01b: v"    want 'a\x01b: v' (scalar, key falls through per 7.6)
+                     got  {'a\x01b': 'v'}  (control char wrongly accepted as key)
+    Key pattern is ~"[^\s:]+"; narrow to ~"[^\s:\x00-\x1f\x7f-\x9f]+" in
+    src/syml/parsers.py:39. Once narrowed, key_value fails to match on a
+    control-character key and the PEG falls through to a scalar line per
+    7.6 — no error, no special-case code needed.
+
+A3. Error condition: tabs in indentation (spec 4.2, 8.4)
+      "a:\n\tb: c"    want ParseError    got {'a': {'b': 'c'}}
+    The parser accepts tabs and expands each to 4 columns in
+    parsers.visit_indent. Spec says indent = ~" *", spaces only.
+
+A4. Error condition: inconsistent indentation (spec 4.2, 8.1)
+      "parent:\n  child1: v\n   child2: v"
+        want ParseError    got {'parent': {'child1': 'v', 'child2': 'v'}}
+      "parent:\n  child1: v\n child2: v"
+        want ParseError    got {'parent': {'child1': 'v'}, 'child2': 'v'}
+    Off-by-one indentation is silently normalized or silently reparented.
+
+A6. Error condition: duplicate keys (spec 4.5, 8.3)
+      "k: v1\nk: v2"    want ParseError    got {'k': 'v2'}  (last wins)
+    Needs a uniqueness check per Mapping in nodes.Mapping.
+
+A7. Line ending normalization (spec 4.8)
+      "a: b\r\nc: d"    want {'a': 'b', 'c': 'd'}    got {'a': 'b\r', 'c': 'd'}
+      "a: b\rc: d"      want {'a': 'b', 'c': 'd'}    got {'a': 'b\rc: d'}
+    CRLF leaves a stray CR on the value; bare CR is not a line break at all.
+    Normalize the whole document before parsing.
+
+A8. UTF-8 BOM stripping (spec 13.3)
+      "\ufeffkey: value"    want {'key': 'value'}    got {'\ufeffkey': 'value'}
+    Must be stripped silently and excluded from source position calculations.
+
+A9. Multiline indentation preservation (spec 5.3)
+      "key: line one\n  line two\n    line three"
+        want {'key': 'line one\nline two\n  line three'}
+        got  {'key': 'line one\nline two\nline three'}
+    Indentation beyond the baseline set by the first continuation line must be
+    preserved. Currently all continuation indentation is discarded.
+
+A10. Structural rules need &eol guards (spec 4.1, 4.6, 7.6)
+      "-\n  block item"    want ['block item']    got '-\nblock item'
+      "key:value"          want 'key:value'       got IncompleteParseError
+    Two grammar changes, both required for 7.6 to hold:
+      list_item = "-" ws value / "-" &eol
+      section   = key_colon &eol      (key_colon = key ":", used by key_value)
+    The guards exist because PEG ordered choice commits: without them a rule
+    matches a prefix ("-" of "-item", "key:" of "key:value"), then the line's
+    trailing &eol fails and the whole line errors instead of falling through
+    to a scalar. Verified empirically against parsimonious — see note below.
+    Delivers at once: inline "- item"; a lone "-" taking a nested block value
+    (spec 4.6); "- " as an empty list item once A2 relaxes text to ~"[^\n]*";
+    and "-item", "-42", "key:value" all backtracking to scalar per 7.6.
+    Note: parsimonious's meta-grammar gives "/" HIGHER precedence than
+    sequencing, so choice-of-sequences must be parenthesized in the actual
+    implementation: ("-" ws value) / ("-" &eol). The spec uses standard PEG
+    notation, where "/" is lowest-precedence; the two mean the same thing.
+
+
+B. BUGS INDEPENDENT OF THE NEW SPEC FEATURES
+--------------------------------------------
+
+B1. indent = ~"\s*" corrupts levels across whitespace-only lines
+    The indent rule matches newlines, so a blank line carrying trailing spaces
+    gets absorbed into the following line's indent token and inflates its level.
+    Reproduces today:
+      'a:\n        \n  b: c\n  d: e'
+        want {'a': {'b': 'c', 'd': 'e'}}
+        got  {'a': {'b': 'c'}, 'd': 'e'}
+    "d" escapes its parent entirely. Fix by restricting indent to ~" *" (which
+    spec 4.1 requires anyway) and handling blank lines as their own rule. This
+    also delivers A3.
+
+B2. Exception contract is not honored (spec 11.3)
+    Grammar-level failures raise parsimonious.exceptions.IncompleteParseError,
+    which does NOT inherit from syml.exceptions.ParseError (it inherits from
+    parsimonious's own ParseError -> StrAndRepr -> Exception). Callers cannot
+    catch syml.ParseError and be safe.
+      "k: "          want {'k': ''}          got IncompleteParseError
+    (that specific case is fixed by A2; the leaking exception type is not.
+    "key:value" is no longer an example here — per spec 7.6 it is a scalar,
+    not an error at all. See A10.)
+    Also: OutOfContextNodeError should expose .message, .position and .line_text
+    as named attributes; today they are positional args on a bare ValueError.
+    Wrap or translate all parsimonious exceptions at the parse() boundary.
+
+B3. Dead code in basetypes.py:107  (carried over from the previous todo)
+    Source.__add__ has an unreachable `return self + other.text` after the
+    Source branch already returns. Delete it.
+
+
+C. [SPEC] RESOLVED SPECIFICATION DECISIONS
+------------------------------------------
+
+The three open specification questions below have been decided by the
+project owner and the spec edits are already applied. Recorded here so the
+reasoning survives for whoever implements the affected items.
+
+S1. Optional vs required whitespace after the colon — RESOLVED
+    Section 3.3 said "Keys are separated from values by a colon (:) followed
+    by optional whitespace." Sections 7.5 and 4.1 disagreed. 7.5/4.1 are
+    normative; 3.3 was the error and has been fixed. `key:value` is scalar
+    text; `key: value` and `key:"value"` are mappings.
+
+S2. Invalid keys: parse error or scalar fallback? — RESOLVED
+    Old section 8.3 said a key containing whitespace MUST raise a parse
+    error, but the 4.1 PEG simply falls through to `value` and yields a
+    scalar. The scalar fallback wins; 8.3 has been deleted (old 8.4/8.5
+    renumbered to 8.3/8.4). This fallback is load-bearing: it is the only
+    reason a multiline prose value containing a colon parses, e.g.
+    "note: Some text here\n  and more: with a colon" ->
+    {"note": "Some text here\nand more: with a colon"}.
+
+S3. Missing whitespace after a list marker — RESOLVED
+    Section 7.5 said whitespace after "-" is required, but section 8 never
+    listed its absence as an error and the grammar fell through to a
+    scalar. Resolved the same direction as S2: a "-" is a list marker only
+    when followed by whitespace or end-of-line; otherwise the line is
+    scalar text. Grammar becomes list_item = "-" (ws value)?. So "-item" ->
+    "-item", "-42" -> "-42", a lone "-" -> a list item taking a nested
+    block value, "- " -> a list item with an empty value.
+
+S2 and S3 are the same principle, now written into the spec as new section
+7.6, "Lines That Resemble Structure": a line that does not match a
+structural form is literal scalar text.
+
+
+D. SUGGESTED ORDER
+------------------
+
+Spec decisions S1, S2, S3 are settled (see Section C); the order below
+assumes them.
+
+1. A5 (one-line regex narrowing), B1 + A3 (one grammar change to indent),
+   B3, B2.
+2. A2, A7, A8 — small, self-contained, no design questions.
+3. A4, A6 — new post-parse validation passes.
+4. A9, A10 — node-tree changes.
+5. A1 — quoted strings, the one real feature build.
+
+Bump the spec's "Reference Implementation in Python (v0.6.2)" status line when
+the implementation actually conforms.
+
+
+E. VERIFIED AS ALREADY CONFORMANT
+---------------------------------
+
+Scalar/list/mapping roots (2.1); no type coercion (3.1); # and // comments and
+trailing-marker-is-not-a-comment (4.3); blank lines ignored (4.4); unicode keys
+(4.5); block values under a key (4.6); multiline joining in mappings and lists
+(5.1, 5.2); lists in mappings and mappings in lists (6.1, 6.2); mixed-content
+context violations raising OutOfContextNodeError (6.4, 8.2); inline colons in
+values (7.1); "key: - not a list" staying a string (7.2); trailing whitespace
+preserved in values (7.5); 1-indexed lines and 0-indexed columns in Source
+(10.2); loads() and load() (11.1); source mode via parsers.parse().as_source()
+(10.3). dumps()/dump() are absent, which spec 11.2 explicitly permits.

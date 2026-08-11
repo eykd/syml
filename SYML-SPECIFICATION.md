@@ -112,7 +112,7 @@ Lists are ordered sequences of items, each prefixed with a hyphen (`-`) followed
 
 ### 3.3 Mappings (Dictionaries)
 
-Mappings are collections of key-value pairs with no defined ordering. Implementations MAY preserve insertion order, but consumers MUST NOT depend on key ordering. Keys are separated from values by a colon (`:`) followed by optional whitespace.
+Mappings are collections of key-value pairs with no defined ordering. Implementations MAY preserve insertion order, but consumers MUST NOT depend on key ordering. Keys are separated from values by a colon (`:`); at least one space MUST follow the colon before an unquoted value, though the space is optional before a quoted value (see §7.5).
 
 ```syml
 name: Alice
@@ -140,10 +140,11 @@ indent      = ~" *"              # Spaces only, no tabs
 blank       = &eol
 comment     = ~"(#|//+)+" text?
 
-list_item   = "-" ws value
+list_item   = "-" ws value / "-" &eol    # A "-" is a marker only before whitespace or EOL
 
-key_value   = section ws? quoted_value / section ws data
-section     = key ":"
+key_value   = key_colon ws? quoted_value / key_colon ws data
+section     = key_colon &eol             # A standalone section header must end the line
+key_colon   = key ":"
 key         = ~"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon
 
 eol         = "\n" / ~"$"
@@ -220,13 +221,16 @@ Blank lines (lines containing only whitespace) are ignored and do not affect doc
 
 ### 4.5 Keys
 
-Keys in mappings:
-- MUST NOT contain whitespace characters
-- MUST NOT contain colons (`:`)
-- MUST NOT contain control characters (U+0000-U+001F, U+007F-U+009F)
+A `key:` token matches when the text before the colon:
+- Contains no whitespace characters
+- Contains no colons (`:`)
+- Contains no control characters (U+0000-U+001F, U+007F-U+009F)
 - MAY contain any other printable Unicode characters (letters, numbers, punctuation, emoji)
 - Pattern: `[^\s:\x00-\x1f\x7f-\x9f]+` (printable non-whitespace, non-colon)
 - Keys MUST be unique within their mapping; duplicate keys are a parse error
+
+A line whose text before the first colon does not match this pattern is not a
+key-value pair at all; it is parsed as scalar text (see §7.6).
 
 ```syml
 simple-key: value
@@ -504,7 +508,7 @@ An empty document (or document with only comments/blank lines) produces an empty
 
 - Leading whitespace before content determines indentation level
 - Trailing whitespace on lines is preserved in values
-- Whitespace between `-` and value is required (at least one space)
+- A `-` forms a list marker only when followed by whitespace or end-of-line; otherwise the line is scalar text (§7.6)
 - Whitespace between `:` and an unquoted value is required
 - Whitespace before a quoted value is optional
 
@@ -516,9 +520,42 @@ key: value
 key: "value"
 key:"value"
 
-# Invalid
-key:value        # ERROR: No space before unquoted value
+# Not a mapping
+key:value        # Scalar text "key:value" — no space before unquoted value (§7.6)
 ```
+
+### 7.6 Lines That Resemble Structure
+
+A line that does not match one of the structural forms is scalar text. SYML never
+guesses at a malformed structure; it takes the line literally. This is a
+deliberate consequence of the grammar in §4.1: when `list_item`, `key_value` and
+`section` all fail to match, the `value` alternative succeeds and the line is data.
+
+This is why the `&eol` guards in §4.1 matter. PEG ordered choice commits to the
+first alternative that matches, so a structural rule that matched a *prefix* of
+the line would strand the parser rather than fall through. `list_item` requires
+whitespace or end-of-line after the `-`, and `section` requires end-of-line after
+the `key:`, so neither can swallow a prefix of `-item` or `key:value` and then
+fail. Both lines are rejected by every structural rule and reach `value` intact.
+
+| Input | Result | Why |
+|-------|--------|-----|
+| `invalid key: value` | `"invalid key: value"` | Key pattern (§4.5) rejects the space |
+| `key:value` | `"key:value"` | No whitespace after the colon (§7.5) |
+| `-item` | `"-item"` | No whitespace after the list marker (§7.5) |
+| `-42` | `"-42"` | Same rule; keeps negative numbers usable as scalars |
+| `key: - not a list` | `{"key": "- not a list"}` | See §7.2 |
+
+This rule is what allows prose values to contain colons. In:
+
+```syml
+note: Some text here
+  and more: with a colon
+```
+
+the continuation line `and more: with a colon` is not a nested mapping, because
+`and more` is not a valid key. It joins the multiline value (§5.1):
+`{"note": "Some text here\nand more: with a colon"}`.
 
 ---
 
@@ -552,16 +589,7 @@ key2: value2
 - item             # ERROR: Cannot add list item to mapping context at same level
 ```
 
-### 8.3 Invalid Key Format
-
-Keys containing whitespace or colons:
-
-```syml
-invalid key: value   # ERROR: Key contains whitespace
-key:with:colons: v   # ERROR: Key contains colons (first colon ends key)
-```
-
-### 8.4 Duplicate Keys
+### 8.3 Duplicate Keys
 
 When the same key appears multiple times in a mapping:
 
@@ -572,7 +600,7 @@ key: value2     # ERROR: Duplicate key 'key'
 
 Keys must be unique within their immediate mapping. The same key may appear in different nested mappings.
 
-### 8.5 Tabs in Indentation
+### 8.4 Tabs in Indentation
 
 When tab characters are used for indentation:
 
@@ -857,7 +885,7 @@ SYML documents are assumed to be valid UTF-8 (or platform-native encoding). Impl
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2026-01 | Initial specification formalizing SYML syntax. Includes quoted strings, escape sequences, tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. |
+| 1.0 | 2026-01 | Initial specification formalizing SYML syntax. Includes quoted strings, escape sequences, tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. Clarifies that malformed structural lines parse as scalars rather than raising, and that whitespace after `:` is required before an unquoted value. |
 
 ---
 
