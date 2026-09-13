@@ -218,7 +218,7 @@ The shipped `src/syml` (0.6.2) diverges from v1.1 in every one of these, all con
 
 ## Verification record
 
-- Corrected §4.1 grammar: loads in Parsimonious; all 98 harness examples parse at the grammar level; every non-error example produces its stated output through the literal §9 tree builder.
+- Pre-audit grammar (grammar lane's corrected §4.1, before D16 restructured the top rule): loads in Parsimonious; all 98 harness examples parsed at the grammar level; every non-error example produced its stated output through the v1.0-era literal §9 tree builder. Superseded by the v1.1 checks below.
 - Rewritten §9.3/§5.3 tree builder (algorithm lane's build, prior to the audit-driven D11/D13 change): 61 pass / 3 fail / 34 unspecified over the 98 `examples.json` rows; the 3 failures were the B3 and B7 grammar-layer items, fixed separately in v1.1.
 - Cross-vendor audit (OpenAI-family, read-only) of this report: 6 blind spots and 4 fix conflicts, all folded in as M18–M24 and D12–D16, plus the D2 scoping and D11 replacement. One citation error (M15's finding number) and one over-severity (B9) corrected.
 - v1.1 text: the §4.1 grammar as printed loads in Parsimonious; all 54 ```syml blocks in the revised spec were extracted and parsed against it: 52 parse, and the 2 that do not are both the intentional `key: "a" trailing` error example. Every §N.N cross-reference in the text resolves to a heading (0 missing). Script: `verify_spec.py` in the session scratchpad.
