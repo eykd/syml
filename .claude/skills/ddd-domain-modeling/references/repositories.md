@@ -27,7 +27,7 @@ Repository interfaces define the contract for persistence in the domain layer. I
 │                Infrastructure Layer                  │
 │  ┌─────────────────────────────────────────────┐    │
 │  │  class SqliteTaskRepository (ADAPTER)       │    │
-│  │    def __init__(self, conn: sqlite3.Connection) │
+│  │    def __init__(self, conn: Connection)     │    │
 │  │    def find_by_id(task_id) -> Task | None   │    │
 │  │    def save(task) -> None                   │    │
 │  └─────────────────────────────────────────────┘    │
