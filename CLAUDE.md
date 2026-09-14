@@ -49,3 +49,127 @@ Two renderings exist on every node: `as_data()` returns plain `str`/`list`/`dict
 - ruff runs in preview mode with single quotes inline and double quotes for docstrings; public functions and classes need docstrings (pydocstyle `D` rules).
 - Unreachable branches satisfy the coverage gate with `# pragma: nocover` / `# pragma: nobranch`, which is the established pattern in `nodes.py` and `parsers.py`.
 - Tests run in random order, so they must not depend on each other. New pytest markers must be registered in pyproject (`--strict-markers`).
+
+## Spec-kit workflow
+
+The `/sp:*` commands drive a spec-first workflow; see `.claude/commands/sp/README.md` for the full architecture. Phase order: `/sp:01-brainstorm` → `/sp:02-specify` → `/sp:03-plan` → `/sp:04-red-team` → `/sp:05-tasks` → `/sp:06-analyze` → `/sp:07-implement` → `/sp:08-harden`. `/sp:next` and `/sp:shepherd` drive the loop across phases; `/ralph` drains the beads leaf-task queue within a phase. The constitution lives at `.specify/memory/constitution.md`.
+
+## Specs
+
+Read `specs/readme.md` (the Pin) first — it indexes every feature spec by keyword. Feature directories live at `specs/NNN-<slug>/`; acceptance features live in `specs/acceptance-specs/`.
+
+## Beads Task Management
+
+Always pass `--description` when creating a task. Always parent new tasks to the branch epic found via `scripts/find-branch-epic.sh`. Run `br sync --flush-only` before committing, and stage `.beads/issues.jsonl` together with the code it tracks.
+
+## Orchestration
+
+Orchestration runs in the main session, never in a subagent, because subagents cannot spawn subagents — an orchestrator delegated to a subagent would have no way to dispatch the leaf work it plans.
+
+## Landing the Plane
+
+**When ending a work session**, complete all steps below. Work is NOT complete until `git push` succeeds.
+
+1. File issues for remaining work.
+2. Run quality gates (if code changed) — tests, linters, mypy.
+3. Update issue status — close finished work, update in-progress items.
+4. **Push to remote** (mandatory):
+   ```bash
+   git pull --rebase
+   br sync --flush-only
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. Clean up — clear stashes, prune remote branches.
+6. Verify all changes are committed AND pushed.
+7. Hand off — provide context for the next session.
+
+Never stop before pushing, and never say "ready to push when you are" — push it yourself.
+
+<!-- BEGIN BEADS INTEGRATION -->
+
+## Issue Tracking with br (beads)
+
+**IMPORTANT**: This project uses **br (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+
+### Why br?
+
+- Dependency-aware: Track blockers and relationships between issues
+- Git-friendly: Auto-syncs to JSONL for version control
+- Agent-optimized: JSON output, ready work detection, discovered-from links
+- Prevents duplicate tracking systems and confusion
+
+### Quick Start
+
+**Check for ready work:**
+
+```bash
+br ready --json
+```
+
+**Create new issues:**
+
+```bash
+br create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
+br create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:br-123 --json
+```
+
+**Claim and update:**
+
+```bash
+br update <id> --claim --json
+br update br-42 --priority 1 --json
+```
+
+**Complete work:**
+
+```bash
+br close br-42 --reason "Completed" --json
+```
+
+### Issue Types
+
+- `bug` - Something broken
+- `feature` - New functionality
+- `task` - Work item (tests, docs, refactoring)
+- `epic` - Large feature with subtasks
+- `chore` - Maintenance (dependencies, tooling)
+
+### Priorities
+
+- `0` - Critical (security, data loss, broken builds)
+- `1` - High (major features, important bugs)
+- `2` - Medium (default, nice-to-have)
+- `3` - Low (polish, optimization)
+- `4` - Backlog (future ideas)
+
+### Workflow for AI Agents
+
+1. **Check ready work**: `br ready` shows unblocked issues
+2. **Claim your task atomically**: `br update <id> --claim`
+3. **Work on it**: Implement, test, document
+4. **Discover new work?** Create linked issue:
+   - `br create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
+5. **Complete**: `br close <id> --reason "Done"`
+
+### Auto-Sync
+
+br automatically syncs with git:
+
+- Exports to `.beads/issues.jsonl` after changes (5s debounce)
+- Imports from JSONL when newer (e.g., after `git pull`)
+- No manual export/import needed!
+
+### Important Rules
+
+- Use br for ALL task tracking
+- Always use `--json` flag for programmatic use
+- Link discovered work with `discovered-from` dependencies
+- Check `br ready` before asking "what should I work on?"
+- ❌ Do NOT create markdown TODO lists
+- ❌ Do NOT use external issue trackers
+- ❌ Do NOT duplicate tracking systems
+
+For more details, see README.md and docs/QUICKSTART.md.
+
+<!-- END BEADS INTEGRATION -->
