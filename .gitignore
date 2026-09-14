@@ -7,3 +7,11 @@ include
 man
 *.egg-info
 dist
+
+# Spec-kit workflow state (written by /sp:08-harden and tools/harden_fingerprint.py)
+.sp-harden-state.json
+.sp-harden-findings.json
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/tsc-cache/

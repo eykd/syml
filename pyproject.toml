@@ -42,6 +42,7 @@ test = [
     "pytest-mypy>=0.10.3,<0.11",
     "pydantic>=2.8.2,<3",
     "types-parsimonious>=0.10.0.20240331,<0.11",
+    "pytest-bdd>=8.1.0",
 ]
 
 [build-system]
@@ -55,7 +56,7 @@ packages = ["src/syml"]
 # Python linter & formatter
 # https://docs.astral.sh/ruff/
 line-length = 120
-src = ["src"]
+src = ["src", "."]
 target-version = "py312"
 
 [tool.ruff.lint]
@@ -146,6 +147,12 @@ unfixable = []
     "INP001",
     "ARG001",
 ]
+"tools/**/*.py" = [
+    "S404",   # subprocess import: these are stdlib CLI tools that shell out by design
+    "S603",   # subprocess call without shell=True: arguments are list-form, never shell strings
+    "S607",   # partial executable path: `git`, `br`, `uv` are resolved from PATH on purpose
+    "T201",   # print: CLI output goes to stdout/stderr
+]
 
 
 [tool.ruff.lint.flake8-quotes]
@@ -175,7 +182,17 @@ addopts = [
     "--strict-config",
     "--random-order",
     "-vv",
+    # Acceptance tests (pytest-bdd) run only via `just acceptance`. Both flags
+    # are needed: `-m` deselects, but `--ignore` keeps pytest from even
+    # importing tests/acceptance, where `scenarios()` raises at import when a
+    # feature has no bindings and Gherkin @tags would trip --strict-markers.
+    "-m", "not acceptance",
+    "--ignore=tests/acceptance",
 ]
+pythonpath = ["."]
+testpaths = ["tests"]
+# Gherkin feature files, resolved against the pytest rootdir.
+bdd_features_base_dir = "specs/acceptance-specs"
 
 markers = [
     # If you have slow tests that you want to exclude, mark them like so:
@@ -183,6 +200,7 @@ markers = [
     #     def test_my_slow_test():
     #         # ...
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "acceptance: pytest-bdd acceptance tests bound to specs/acceptance-specs/*.feature (run with `just acceptance`)",
 ]
 
 
@@ -192,7 +210,7 @@ markers = [
 plugins = [
 ]
 branch = true
-source = ['src']
+source = ['src', 'tools']
 omit = [
      '*/test*.py',
      '*/conftest.py',
@@ -208,8 +226,8 @@ show_missing = true
 # pyproject.toml, specifically:
 #   https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file
 
-mypy_path = "./src:./tests"
-files = ["./tests/**/*.py", "./src/**/*.py"]
+mypy_path = "./src:./tests:."
+files = ["./tests/**/*.py", "./src/**/*.py", "./tools/**/*.py"]
 
 plugins = [
     "pydantic.mypy",
