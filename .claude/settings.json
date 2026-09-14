@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "cd \"${CLAUDE_PROJECT_DIR}\" && .venv/bin/python -m tools.pre_tool_use_bash" }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(br:*)", "Bash(uv run:*)", "Bash(just:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git branch:*)", "Bash(git add:*)", "Bash(git commit:*)", "Bash(git checkout -b:*)", "Bash(git switch:*)", "Bash(git rev-parse:*)",
+      "Bash(.venv/bin/python -m tools.commit_red:*)", "Bash(.venv/bin/python -m tools.harden_fingerprint:*)", "Bash(.venv/bin/python -m tools.pre_tool_use_bash:*)",
+      "Bash(bash .claude/skills/ralph/prep.sh:*)", "Bash(bash .claude/skills/ralph/verify.sh:*)", "Bash(bash .specify/scripts/bash/*)", "Bash(bash scripts/find-branch-epic.sh:*)",
+      "Bash(shasum:*)", "Bash(jq:*)",
+      "Skill(sp-commit)", "Skill(ralph)"
+    ]
+  }
+}
