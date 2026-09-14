@@ -374,16 +374,16 @@ Output a Markdown report (no file writes) with the following structure:
 
 **Coverage Gaps Filled:**
 
-- Created task bd-abc123: "Implement user profile export" (uncovered requirement FR-7)
-- Created task bd-abc124: "Add rate limiting to API" (uncovered NFR-2)
+- Created task syml-abc123: "Implement user profile export" (uncovered requirement FR-7)
+- Created task syml-abc124: "Add rate limiting to API" (uncovered NFR-2)
 
 **Partial Coverage Folded In:**
 
-- Expanded task bd-abc222 in place to also cover RecordWeeklyReviewReflectionUseCase (FR-018 was referenced but missing from the US40 use-case TDD pair)
+- Expanded task syml-abc222 in place to also cover RecordWeeklyReviewReflectionUseCase (FR-018 was referenced but missing from the US40 use-case TDD pair)
 
 **Orphan Tasks Mapped:**
 
-- Mapped task bd-xyz789 to requirement FR-3
+- Mapped task syml-xyz789 to requirement FR-3
 
 **Duplicates Removed:**
 
@@ -397,15 +397,15 @@ List any fixes that required user approval and were applied.
 
 **Constitution Violations (CRITICAL):**
 
-- Task bd-def456: "Resolve constitution violation in authentication approach"
+- Task syml-def456: "Resolve constitution violation in authentication approach"
 
 **Conflicting Requirements (HIGH):**
 
-- Task bd-def457: "Resolve conflict between FR-10 and FR-15"
+- Task syml-def457: "Resolve conflict between FR-10 and FR-15"
 
 **Underspecification (MEDIUM):**
 
-- Task bd-def458: "Clarify acceptance criteria for performance requirement"
+- Task syml-def458: "Clarify acceptance criteria for performance requirement"
 
 **Remediation Ordering Check:**
 

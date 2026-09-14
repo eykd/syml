@@ -280,7 +280,7 @@ BRANCH="<branch-name-from-step-3>"
 # Create phase tasks (store IDs from JSON responses)
 br create "[sp:03-plan] Create implementation plan for $FEATURE_NAME" -p 1 --parent <epic-id> \
   --description "**Spec**: specs/$BRANCH/spec.md
-**Skills**: /prefactoring, /latent-features, /glossary
+**Skills**: /prefactoring, /glossary
 **Context**: Generate plan.md with technical architecture, data-model.md if needed
 **Acceptance**: All technical decisions documented, file structure defined" --json
 # Store returned ID as PLAN_ID
