@@ -8,7 +8,8 @@
 
 ## Grammar
 
-Transcribed from §4.1 as printed, with the one substitution R-01 requires.
+Transcribed from §4.1 as printed, with **two** substitutions — see "Escaping
+inside `~"..."` atoms" below. Both are transcription-level, not normative.
 
 ```peg
 document       = (line "\n")* line?
@@ -21,7 +22,7 @@ key_value      = (key_colon ws? quoted_value ~" *") / (key_colon ws data)
 section        = key_colon &eol
 key_colon      = key ":"
 key            = ~"[^\x00-\x20\x7f-\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000:]+"
-eol            = &"\n" / ~"\Z"
+eol            = &"\n" / ~"\\Z"
 ws             = ~" +"
 text           = ~"[^\n]*"
 
@@ -43,10 +44,32 @@ escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[
 | `ws = ~"[ \t]+"` | `ws = ~" +"` | a tab is never separator whitespace (D5, US3 scenarios 5–6) |
 | `text = ~".+"` | `text = ~"[^\n]*"` | matches empty, so `key:␠` lexes (D6, audit gap #6, US3 scenario 7) |
 | `key = ~"[^\s:]+"` | enumerated class | D15 + kills both `SyntaxWarning`s (audit gap #20, FR-017, R-01) |
+| `eol = "\n" / ~"$"` | `&"\n" / ~"\\Z"` | D16 (absolute end, lookahead-only) + the `\Z` escaping trap below |
 | `list_item = "-" ws value` | `("-" ws value) / ("-" &eol)` | bare `-` takes a block value (§4.6, US3 scenario 1) |
 | no `&eol` on `section` | `key_colon &eol` | `key:value` falls through instead of stranding (§7.6, US3 scenario 3) |
 | no quoting | `quoted_value` alternatives | Contract 04 |
 | separate `blank` rule | none | a blank line is a `data` match of `""` (§4.1) |
+
+### Escaping inside `~"..."` atoms
+
+Parsimonious evaluates the body of every `~"..."` atom as a **Python string
+literal** before compiling it as a regex. Any sequence that is not a valid
+Python escape emits `SyntaxWarning: invalid escape sequence` on import — and
+under `-W error` it becomes a `VisitationError` wrapping a `SyntaxError`, so the
+grammar does not load at all. Verified 2026-09-21.
+
+Two atoms in §4.1 as printed are affected:
+
+| As printed | As transcribed | Why |
+| --- | --- | --- |
+| `key = ~"[^\s:\x00-\x1f\x7f-\x9f]+"` | enumerated `White_Space` class, no `\s` | D15 requires the exact set (R-01); `\s` is also one of today's two `SyntaxWarning`s |
+| `eol = &"\n" / ~"\Z"` | `~"\\Z"` | `\Z` is not a valid Python escape; **verified** to raise `VisitationError(SyntaxError)` under `-W error` |
+
+Every other atom is safe: `\n`, `\"`, `\\\\`, `\x..`, and `\u....` are all valid
+Python escapes. `\Z` is the only remaining landmine, and it is the same defect
+class as audit gap #20 — so the FR-017 test obligation
+(`python -W error -c "import syml"`) must pass with the grammar loaded, not just
+with the module imported lazily.
 
 ### Key class
 

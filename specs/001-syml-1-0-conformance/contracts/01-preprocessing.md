@@ -63,6 +63,16 @@ def split_lines_lf(text: str) -> list[Line]:
 Normalization runs on the raw text **before any grammar rule**, including inside
 what will later be quoted-string content (§4.8).
 
+**Implementation constraint — single pass.** Normalization MUST be one
+left-to-right scan, e.g. `re.sub(r'\r\n|\r', ...)` with a position-tracking
+replacement callback. Chained `str.replace('\r\n', '\n').replace('\r', '\n')`
+produces the correct normalized *text* but cannot produce the offset table: on
+`"a: b\r\r\nc"` the first pass rewrites the `\r\n`, and the second then sees a
+`\r` that the original document never had adjacent to a `\n`, so the recorded
+collapse positions no longer describe the original. The `\r\r\n` row above is
+the case that discriminates the two implementations, and it is one of the
+red-team targets named in research.md.
+
 ### Step 3 — blank classification, then the tab scan (§9.0.3, D14)
 
 Per line, compute the **leading-whitespace run**: the maximal run of U+0020 and

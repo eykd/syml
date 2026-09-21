@@ -52,7 +52,7 @@ D15. D15 contains nothing Python's `\s` misses. All four sit inside
    question has no observable consequence: the `\x00-\x1f` clause decides it.
 2. The grammar transcription MUST NOT write `\s` in the key class. It
    enumerates D15's set explicitly:
-   `key = ~"[^\x00-\x20\x7f-\xa0\x85\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000:]+"`
+   `key = ~"[^\x00-\x20\x7f-\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000:]+"`
    (the `\x00-\x20` run subsumes `\t\n\v\f\r` and the space; `\x7f-\xa0`
    subsumes U+0085 and U+00A0).
 3. `SYML-SPECIFICATION.md` §4.5 gains one clarifying sentence recording finding
@@ -65,6 +65,14 @@ side-steps a second, unrelated defect: Parsimonious evaluates a `~"..."` atom's
 body as a Python string literal, so a bare `\s` inside the grammar is what emits
 the two `SyntaxWarning`s at import (audit gap #20, FR-017). Enumerating fixes
 hygiene and conformance in one edit.
+
+**Knock-on finding (verified 2026-09-21)**: the same `literal_eval` applies to
+**every** `~"..."` atom, not just `key`. §4.1's `eol = &"\n" / ~"\Z"` as printed
+puts `"\Z"` through it — `\Z` is not a valid Python escape, so it emits the same
+`SyntaxWarning` and, under `-W error`, raises `VisitationError(SyntaxError)` and
+the grammar does not load at all. The transcription writes `~"\\Z"`. Every other
+atom in §4.1 (`\n`, `\"`, `\\\\`, `\x..`, `\u....`) is a valid Python escape.
+Contract 02 tabulates both substitutions.
 
 **Alternatives considered**:
 
