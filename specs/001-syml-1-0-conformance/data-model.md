@@ -69,7 +69,7 @@ exactly one of:
 
 | Kind | Recognized when | Effect on the tree |
 | --- | --- | --- |
-| **blank** | leading-whitespace run is the whole line | skipped entirely; never incorporated, never affects a baseline or an indentation level (§4.4, D12, audit gap #13) |
+| **blank** | leading-whitespace run is the whole line (`preprocess.is_blank`: only U+0020/U+0009, any mixture) | skipped entirely — dropped by the per-line loop **before lexing** (Contract 02), because a tab-bearing blank would otherwise lex as non-empty `data`; never incorporated, never affects a baseline or an indentation level (§4.4, D12, D14, audit gap #13) |
 | **comment** | first non-indent characters are `#` or `//` | skipped; attached to `comments` on the current tip |
 | **structure** | matches `list_item` / `key_value` / `section` | incorporated as a node |
 | **scalar text** | everything else (`data`) | incorporated as a `TextLeafNode` |
@@ -202,7 +202,7 @@ registers is the node's own column (R-11), which is what makes
 | `Source` field | Type | Semantics |
 | --- | --- | --- |
 | `filename` | `StrPath \| None` | |
-| `start`, `end` | `Pos` | original-text coordinates |
+| `start`, `end` | `Pos` | original-text coordinates, built by `Source.from_node(pnode, line, position_map, filename)` as `to_original(pos_at(line, offset))` — `pnode` offsets are line-local under per-line lexing (Contract 08) |
 | `text` | `str` | the decoded value — quoted values carry the **decoded** text, not the raw source slice; their `start`/`end` span the raw token from the opening quote to just past the closing quote, exclusive (Contract 08) |
 
 **Equality/hash**: by `text` only, unchanged (R-07, §10.3). The
@@ -222,9 +222,9 @@ node (including preserved indentation), so `str(source) == node.as_data()` holds
 ValueError
 ├── ParseError                       (message, position: Pos, line_text: str)
 │   ├── OutOfContextNodeError
-│   ├── DuplicateKeyError            + key: str, first_position: Pos
+│   ├── DuplicateKeyError            + key: str, first_position: Pos   (keyword-only)
 │   ├── TabIndentationError
-│   ├── MalformedQuotedStringError   + escape: str | None, code_point: int | None
+│   ├── MalformedQuotedStringError   + escape: str | None, code_point: int | None   (keyword-only)
 │   └── EncodingError                (new; §11.3 amended — FR-009, R-04)
 └── UnrepresentableValueError        (raised by dumps, not loads)
 ```
@@ -232,7 +232,7 @@ ValueError
 Seven exported classes. `DocumentLimitError` is **not** among them (spec Edge
 Cases; §11.3 and §13.4 are edited to mark limits post-1.0).
 
-Attribute contract and per-class position anchors: see `contracts/errors.md`.
+Attribute contract and per-class position anchors: see `contracts/05-errors.md`.
 
 ---
 

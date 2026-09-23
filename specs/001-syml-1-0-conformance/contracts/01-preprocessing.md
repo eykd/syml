@@ -35,6 +35,18 @@ def preprocess(text: str, filename: StrPath | None = None) -> Document:
 
 def split_lines_lf(text: str) -> list[Line]:
     """Split on U+000A only. Never str.splitlines() (§13.3)."""
+
+
+def is_blank(text: str) -> bool:
+    """D14's blank predicate: the line is entirely U+0020/U+0009, in any
+    mixture (including the empty line). The ONE definition, shared by step 3's
+    tab scan and Contract 02's per-line loop."""
+
+
+def pos_at(line: Line, offset: int) -> Pos:
+    """A line-local offset as a NORMALIZED Pos:
+    Pos(line.start + offset, line.number, offset). Callers pass the result
+    through PositionMap.to_original before it reaches a Source or ParseError."""
 ```
 
 `Line` is `(text: str, start: int, number: int)` — see `data-model.md` §2.
@@ -79,8 +91,12 @@ Per line, compute the **leading-whitespace run**: the maximal run of U+0020 and
 U+0009, in any mixture, from the start of the line.
 
 1. If nothing follows that run before the next line boundary or end of document,
-   the line is **blank** (§4.4) — **skip the tab check entirely**, even if the
-   run contains a tab.
+   the line is **blank** (§4.4, `is_blank`) — **skip the tab check entirely**,
+   even if the run contains a tab. A blank line is also **never lexed**: D14
+   says it is "discarded before any other check", and Contract 02's per-line
+   loop drops it with the same `is_blank` before calling the grammar.
+   `preprocess` itself cannot remove the line — `normalized` keeps every break
+   so `line` numbers and `PositionMap` stay one-for-one with the original.
 2. Otherwise, if the run contains a tab anywhere, raise `TabIndentationError`,
    positioned at the **first** tab in the run. The scan runs on the normalized text (after steps
    1–2), so the position is passed through `to_original` like every other:
@@ -91,8 +107,16 @@ U+0009, in any mixture, from the start of the line.
 | --- | --- |
 | `"\tkey: value"` | `TabIndentationError` |
 | `"key: a\n\tb"` | `TabIndentationError` — a continuation line gets no exemption |
-| `"  \t  \nkey: v"` | no error — line 1 is blank (US2 scenario 6) |
-| `"\t"` | no error — blank |
+| `"  \t  \nkey: v"` | no error — line 1 is blank (US2 scenario 6); `loads` → `{"key": "v"}` |
+| `"\t"` | no error — blank; `loads` → `""` |
+| `"key: a\n  \t\n  b"` | no error; `loads` → `{"key": "a\nb"}` — a tab-bearing blank line inside a value is discarded (D12), not appended as `"\t"` |
+
+The three `loads` results are asserted through `loads`, not only through
+`preprocess`: under `indent = ~" *"` the line `"  \t  "` lexes as `indent`
+`"  "` plus `data` `"\t  "` (verified 2026-09-23), a **non-empty** scalar at
+level 2. If the loop does not drop it, `"  \t  \nkey: v"` makes it the root
+scalar and then raises `OutOfContextNodeError` on `key: v` — while a unit test
+of `preprocess` alone still passes.
 | `"key:\tv"` | no error — the tab is not in *leading* whitespace (D5) |
 | `"key: \tv"` | no error — same (D5) |
 | `"\ufeff\tkey: v"` | `TabIndentationError` at `Pos(1, 1, 1)` — original coordinates |

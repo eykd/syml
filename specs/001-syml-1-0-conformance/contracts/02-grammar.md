@@ -48,7 +48,7 @@ escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[
 | `list_item = "-" ws value` | `("-" ws value) / ("-" &eol)` | bare `-` takes a block value (§4.6, US3 scenario 1) |
 | no `&eol` on `section` | `key_colon &eol` | `key:value` falls through instead of stranding (§7.6, US3 scenario 3) |
 | no quoting | `quoted_value` alternatives | Contract 04 |
-| separate `blank` rule | none | a blank line is a `data` match of `""` (§4.1) |
+| separate `blank` rule | none | per §4.4 a space-only blank line is a `data` match of `""`; a tab-bearing one is not (`"\t"` is non-empty `data`), so blanks are dropped by `is_blank` before lexing (entry point below, D14) |
 
 ### Escaping inside `~"..."` atoms
 
@@ -89,13 +89,32 @@ it falls through to `data`.
 
 ```python
 doc = preprocess(text, filename)            # Contract 01
+visitor = SymlParser(doc)                   # holds position_map, original, filename
 for line in split_lines_lf(doc.normalized): # §9.1 step 2
+    if is_blank(line.text):                 # D14: discarded before any other check
+        continue
     pnode = GRAMMAR['line'].match(line.text)  # §9.1 step 3 — match, not parse
     if pnode.end < len(line.text):            # stranded: §4.7 trailing content
-        raise_trailing_content(pnode, line)   # Contract 05 — anchors at the opening quote
-    node  = visitor.visit(pnode, line)
+        raise_trailing_content(pnode, line, doc)  # Contract 05 — anchors at the opening quote
+    visitor.line = line                       # NodeVisitor.visit takes ONE argument
+    node  = visitor.visit(pnode)
     tip   = incorporate(tip, node)            # Contract 03 — outside NodeVisitor.visit
 ```
+
+**The blank-line skip is load-bearing, not an optimization.** A tab-bearing
+blank line (`"  \t  "`) lexes as `indent` + a **non-empty** `data` (`"\t  "`),
+so the grammar alone cannot classify it as blank; only `is_blank` can
+(Contract 01). With the skip in place, the grammar's `data`-matches-`""` path
+is unreachable from this loop. `is_blank` is the same function step 3's tab
+scan uses, so the two cannot disagree about which lines are blank.
+
+**How the visitor learns the line.** `NodeVisitor.visit(node)` takes exactly
+one argument (verified: `visit(pnode, line)` is a `TypeError`), and a per-line
+`pnode.full_text` is the **line**, not the document (verified). So the visitor
+is built once per document holding the `Document`, and the loop sets
+`visitor.line` before each `visit`. Every node's `Source` is built from that
+line (Contract 08's `Source.from_node(pnode, line, position_map, filename)`);
+nothing reads `pnode.full_text` for positions.
 
 `match` rather than `parse`: `parse` is `match` plus a full-consumption check
 whose `IncompleteParseError` carries only the strand point, while the error
@@ -105,9 +124,10 @@ This makes §5.1 rule 6 ("each line is lexed independently of its position in th
 document") structural rather than incidental, and it gives the third-party
 exception boundary a single, well-typed meaning — see Contract 05.
 
-Line-local offsets are lifted to document offsets with `line.start`, so
-`pnode.start + line.start` is the normalized index, which Contract 01's
-`PositionMap` then maps to the original.
+Line-local offsets are lifted with Contract 01's `pos_at(line, offset)`, so
+`pos_at(line, pnode.start)` is the normalized `Pos` (index `line.start +
+pnode.start`, line `line.number`, column `pnode.start`), which
+`PositionMap.to_original` then maps to the original.
 
 ### `data` is an alias, and does not appear in the parse tree
 
@@ -165,7 +185,8 @@ line's indent. That is audit gap #14 / M23 exactly:
 | `//x` | `comment` | |
 | `invalid key: value` | `data` | key pattern rejects the space |
 | `a\x01b: v` | `data` | control character excluded from keys |
-| `"        "` (spaces only) | blank | discarded in pre-processing; never affects indentation |
+| `"        "` (spaces only) | blank | dropped by `is_blank` before lexing; never affects indentation |
+| `"  \t  "` (spaces and a tab) | blank | same — **never lexed**; lexing it would give non-empty `data` `"\t  "` |
 | `k: 'a: b'` | `key_value` (quoted) | `{"k": "a: b"}` — `quoted_value` is tried first |
 | `- 'a: b'` | `list_item` > `key_value` | `[{"'a": "b'"}]` — **§4.1 as printed**: `key` admits `'`, and `value` tries `structure` first (plan.md open item 4) |
 | `- "a: b"` | `list_item` > `key_value` | `[{'"a': 'b"'}]` — same |
@@ -181,3 +202,7 @@ line's indent. That is audit gap #14 / M23 exactly:
   `# "a` (comment) and `"a` (root scalar) do not — proving the quote-guard is
   not hung on the shared `text` expression.
 - US3's nine acceptance scenarios.
+- Through `loads`: `"  \t  \nkey: v"` → `{"key": "v"}` and
+  `"key: a\n  \t\n  b"` → `{"key": "a\nb"}` (the `is_blank` skip; Contract 01).
+- A two-line document's second-line key reports `line == 2` from
+  `as_source()` — the per-line `full_text` trap above.

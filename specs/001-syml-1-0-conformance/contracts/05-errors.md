@@ -108,18 +108,48 @@ without the full-consumption check (`parse` is `match` plus that check;
 verified 2026-09-23 that `IncompleteParseError.pos == match(...).end`):
 
 ```python
-def raise_trailing_content(pnode: Node, line: Line) -> None:
+def raise_trailing_content(pnode: Node, line: Line, doc: Document) -> NoReturn:
     """The helper Contract 02's entry point calls when `pnode.end < len(line.text)`."""
     quote = find_first(pnode, 'quoted_value')         # exactly one on this path
+    position = doc.position_map.to_original(pos_at(line, quote.start))  # Contract 01
     raise MalformedQuotedStringError(
-        message, doc.position_map.to_original(pos_at(quote.start + line.start)),
-        line_text, escape=None, code_point=None,
+        message, position, original_line(doc, position.line),
+        escape=None, code_point=None,
     )
 
 pnode = GRAMMAR['line'].match(line.text)
 if pnode.end < len(line.text):                       # stranded: §4.7 trailing content
-    raise_trailing_content(pnode, line)
+    raise_trailing_content(pnode, line, doc)
 ```
+
+`pnode` offsets are **line-local** (per-line `match`), so `quote.start` goes
+through `pos_at(line, …)` — never `quote.start + line.start` alone, which is an
+index with no line or column. `original_line(doc, n)` is the `line_text` rule
+below: line `n` of `doc.original`, split on `\r\n` / `\r` / `\n`, terminator
+excluded. Every raise site uses the same two helpers.
+
+### Subclass constructors
+
+The subclasses with extra attributes take them as **keyword-only** arguments
+after the three base ones, and call `super().__init__(message, position,
+line_text)` so `.args` keeps its three-element shape on every class:
+
+```python
+MalformedQuotedStringError(message, position, line_text, *, escape, code_point)
+DuplicateKeyError(message, position, line_text, *, key, first_position)
+```
+
+### Decoder failures cross the visitor as `ParseError`s
+
+Contract 04's `decode_double_quoted(raw)` is position-free, so it cannot build
+a `MalformedQuotedStringError` (whose `.position` is never `None`). It raises a
+module-private `QuotedStringDefect(ValueError)` carrying `escape` and
+`code_point`; the calling `visit_key_value` / `visit_list_item` catches it
+**inside the same method** and re-raises `MalformedQuotedStringError` anchored
+at the opening quote. It must not be allowed to leave the `visit_*` method:
+`QuotedStringDefect` is not in `unwrapped_exceptions`, so Parsimonious would
+wrap it in `VisitationError` (verified 2026-09-23) and a third-party exception
+would escape `loads`.
 
 - **Exactly one `quoted_value`** is in a stranded prefix: the grammar admits a
   quoted value only in `key_value`'s first alternative and `value`'s second,

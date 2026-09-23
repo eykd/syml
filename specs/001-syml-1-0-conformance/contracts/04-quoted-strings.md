@@ -22,8 +22,11 @@ def decode_double_quoted(raw: str) -> str:
     `double_quoted`'s own span (Contract 02).
 
     Only ever receives text the grammar matched, so every escape is
-    syntactically valid; raises MalformedQuotedStringError (with .escape and
-    .code_point) only for a code point above U+10FFFF or a surrogate.
+    syntactically valid; raises the module-private QuotedStringDefect (with
+    .escape and .code_point) only for a code point above U+10FFFF or a
+    surrogate. It is position-free, so it cannot build a
+    MalformedQuotedStringError itself; the calling visit_* method converts
+    it, anchored at the opening quote (Contract 05).
     """
 
 def diagnose_malformed(text: str) -> str | None:
@@ -172,7 +175,8 @@ A value that the scan finds well-formed **and** terminated is unreachable on
 this path — it would have matched `quoted_value` — so the scan must be written
 without that branch rather than with a pragma (constitution III). Out-of-range
 code points (`\U00110000`) and surrogates (`\ud800`) **do** match the grammar
-and are reported by `decode_double_quoted` as specified above; the two paths
+and are reported through `decode_double_quoted` (its `QuotedStringDefect`,
+converted by the visitor per Contract 05) as specified above; the two paths
 partition the malformed cases between them.
 
 Alternative considered and **not applied**: widen `escape_seq` to

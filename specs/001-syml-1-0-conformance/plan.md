@@ -683,6 +683,54 @@ were re-checked and not reopened.
   helper. Rewritten as `loads(dumps({'k': s}))['k'] == s`, using the actual
   public surface.
 
+### Pass 7 (2026-09-23, outer iteration 5): per-line plumbing
+
+A cross-contract API sweep: every helper a contract calls, checked for a
+definition with a matching signature. The R-09 stranded-prefix claim and the
+`\r\r\n` / trailing-bare-`\r` boundaries were re-checked and still hold; the
+iteration-5 edits opened nothing. Three problems, all in how Contract 02's
+per-line loop connects to the rest. Each was verified against Parsimonious.
+
+- **Tab-bearing blank lines were never dropped (High).** D14 says a blank line
+  is "discarded before any other check". Contract 01 only skipped the *tab
+  check*, and Contract 02's loop had no skip at all. Its delta row said "a
+  blank line is a `data` match of `""`", which is false once a tab is
+  involved. `"  \t  "` lexes as `indent` `"  "` plus a **non-empty** `data`
+  `"\t  "` (verified), so `"  \t  \nkey: v"` (US2.6's shape, SC-002's
+  "tab-only line" probe) would make `"\t  "` the root scalar and then raise
+  `OutOfContextNodeError`. And `"key: a\n  \t\n  b"` would absorb a `"\t"`
+  continuation, which breaks D12. A `preprocess`-only unit test passes either
+  way. **Mitigation**: one `is_blank(text)` predicate in `preprocess.py`,
+  shared by the tab scan and the loop, which `continue`s before `match`.
+  Pinned through `loads` in Contracts 01 and 02. This transcribes D14; it does
+  not change it.
+- **Positions had no defined path from a line-local `pnode` (High).** Per-line
+  `match` makes `pnode.full_text` the **line** (verified). Today's
+  `Source.from_node(pnode, filename)` computes `line`/`column` with
+  `Pos.from_str_index(pnode.full_text, …)`, so it would report line 1 for
+  every node and use line-local indices. Contract 08 said only that
+  `from_node` "takes the `PositionMap`". Contract 02 called
+  `visitor.visit(pnode, line)`, but `NodeVisitor.visit` takes one argument
+  (verified `TypeError`). Contract 05's `raise_trailing_content` used an
+  undefined `pos_at` and an out-of-scope `doc`. These are the same defect
+  class as pass 6's `decode()`/`dumps_quoted`, but load-bearing.
+  **Mitigation**: `pos_at(line, offset) -> Pos` in Contract 01;
+  `Source.from_node(pnode, line, position_map, filename)` in Contract 08; the
+  visitor is built once per `Document` and the loop sets `visitor.line`;
+  `raise_trailing_content(pnode, line, doc)` with an `original_line` helper.
+  `Pos.from_str_index` and `Source.from_text` stay (the existing tests use
+  them) but count `\n` only and are never used for parse positions.
+- **`decode_double_quoted` could not raise the error it promised (Medium).**
+  It is position-free, and `MalformedQuotedStringError.position` is never
+  `None`. A private exception leaving a `visit_*` method would be wrapped in
+  `VisitationError` (verified). **Mitigation**: the decoder raises a private
+  `QuotedStringDefect`, which the calling `visit_key_value`/`visit_list_item`
+  converts **within the same method** (Contracts 04, 05). The subclass
+  constructors now take their extra attributes keyword-only
+  (`*, escape, code_point` / `*, key, first_position`), so `.args` stays three
+  elements. data-model §5's stale `contracts/errors.md` link now points at
+  `05-errors.md`.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

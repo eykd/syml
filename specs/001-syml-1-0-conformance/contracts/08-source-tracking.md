@@ -26,6 +26,18 @@ class Source:
     def __eq__(self, other: object) -> bool: ...   # by text
     def __hash__(self) -> int: ...                 # by text
     def __add__(self, other: Source | str) -> Source: ...
+
+    @classmethod
+    def from_node(
+        cls,
+        pnode: PNode,
+        line: Line,
+        position_map: PositionMap,
+        filename: StrPath | None = None,
+    ) -> Source:
+        """start/end = position_map.to_original(pos_at(line, pnode.start/end))
+        (Contract 01). Never reads pnode.full_text, which is the LINE under
+        per-line lexing (Contract 02)."""
 ```
 
 `parse(document, filename).as_source()` returns the same shape as `as_data()`
@@ -40,11 +52,18 @@ with every leaf and every key a `Source` instead of a `str` (US8.1).
 | coverage | `as_source()` blanket-exempted by `# pragma: nocover` | fully tested, exemptions removed (FR-012) |
 | `__hash__` | `# pragma: no cover` | tested |
 | `Source.__add__` | dead `return self + other.text` after a `return` | deleted (`todo.txt` B3, FR-017) |
+| `Source.from_node` | `(pnode, filename)`; positions via `Pos.from_str_index(pnode.full_text, …)` | `(pnode, line, position_map, filename)`; positions via `pos_at` + `to_original` |
+| `Pos.from_str_index` | line/column by `utils.split_lines` (`splitlines`); also used by `nodes.fail_to_incorporate_node` on `pnode.full_text` | kept (with `Source.from_text`, which the existing tests use) but counts `\n` only (§13.3); **never** used for parse positions — on a per-line `full_text` it would report line 1 for every node. `OutOfContextNodeError` / `DuplicateKeyError` take their `position` from the node's stored `Source.start` |
 
 ## Original-text coordinates (FR-013, R-02)
 
-`Source.from_node` takes the `PositionMap` produced by Contract 01's
-pre-processing and applies `to_original` to both `start` and `end`.
+`Source.from_node(pnode, line, position_map, filename)` builds each endpoint
+as `position_map.to_original(pos_at(line, offset))` — `pos_at` (Contract 01)
+lifts the line-local `pnode` offset to a normalized `Pos`, and `to_original`
+maps it to the caller's text. The `line` and `position_map` reach it through
+the visitor (Contract 02's entry point sets `visitor.line`), and the resulting
+`Source` is stored on the node when it is created, so `as_source()` needs no
+arguments.
 
 | Original document | Value | `Pos` |
 | --- | --- | --- |
