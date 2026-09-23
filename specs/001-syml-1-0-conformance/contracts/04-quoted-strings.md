@@ -31,6 +31,11 @@ def decode_double_quoted(raw: str) -> str:
     parent's method runs.
     """
 
+class QuotedStringDefect(ValueError):  # noqa: N818 -- private signal, never reaches a caller (pass 23)
+    """Raised by decode_double_quoted; converted by visit_quoted_value."""
+    escape: str
+    code_point: int
+
 def diagnose_malformed(text: str) -> str | None:
     """The .escape for a quote-guard fallthrough: the first invalid or
     incomplete escape, or None if the value is merely unterminated.
@@ -162,10 +167,14 @@ The guard diagnoses the text with a left-to-right scan from the opening quote
 the decoders):
 
 1. **Double-quoted**: on each `\`, check the following characters against the
-   §4.7 table. The **first** invalid or incomplete escape wins: `escape` is the
+   §4.7 table. A valid escape is skipped whole, so `\"` never reads as a
+   closing quote. The **first** invalid or incomplete escape wins: `escape` is the
    backslash plus the characters examined before the failure (`"\\x"` for
    `\x`, `"\\u12"` for `\u12"`, `"\\"` for a backslash at end of line);
-   `code_point` is `None`. An unescaped `"` ends the scan.
+   `code_point` is `None`. The scan never meets an unescaped `"` before a
+   defect: one there would mean `double_quoted` matched and the line never
+   reached the guard (pass 23 corrects this step, which used to say an
+   unescaped `"` ends the scan, i.e. the unreachable branch below).
 2. If the scan reaches end of line without a defect or a closing quote, the
    value is **unterminated**: `escape=None`, `code_point=None`.
 3. **Single-quoted** values have no escapes; the only reachable diagnosis is
@@ -236,6 +245,11 @@ Contract 07 (§11.2.1 rules B, C, E, F, and the single-quote preference).
   `escape="\\u12"`; `k: "abc\` → `escape="\\"`; `k: "a\xb` (invalid escape
   **and** unterminated) → `escape="\\x"` (first defect wins); `k: "abc` and
   `k: 'abc` → `escape=None`. Each at an inline `key:` position and after `- `.
+  Two more exercise the valid-escape skip, which none of the above reaches
+  (pass 23: without them the skip line is uncovered and `\"` handling is
+  untested): `k: "a\"b` → `escape=None` (unterminated; the `\"` is not a
+  close), and `k: "a\nb\x"` → `escape="\\x"` (a valid escape, then the
+  defect).
 - Round-trip: `loads(dumps({'k': s}))['k'] == s` over a corpus of strings
   containing quotes, backslashes, control characters, and astral-plane
   characters — `dumps`/`loads` are the only exported surface (Contract 07);

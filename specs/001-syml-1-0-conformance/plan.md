@@ -180,6 +180,17 @@ caller-visible on the guarded surface):
 - `ParseError`'s constructor requires `(message, position, line_text)`;
   `ParseError('msg')` is now a `TypeError`. `Source` no longer equals a
   non-`str` operand (`Source('1') == 1`; Contract 08, pass 20).
+- Three more `Source`/`Pos` changes (red-team pass 23, Contract 08).
+  `Source.from_node(pnode, filename)` becomes `from_node(pnode, line,
+  position_map, filename)`, so a 0.6.2 caller's two-argument call is a
+  `TypeError`. `Pos.from_str_index` and `Source.from_text` count only `\n`
+  as a break, so text holding U+2028 or U+0085 gets different line numbers.
+  `Source + str` counts the joining `\n` in `end.index`. Rejected
+  alternative for `from_node`: keep the two-argument form beside a new
+  per-line constructor. The old form cannot produce a correct position
+  under per-line lexing, where `pnode.full_text` is one line, so keeping
+  it keeps a wrong answer. The other two are §13.3 and arithmetic
+  corrections, and no 0.6.2 caller could rely on the old results.
 
 All three, plus the behaviour list above, appear in the FR-015 migration notes.
 
@@ -1376,6 +1387,96 @@ still `None` (it never subtracts it), a quoted leaf (no children, decoded
   and the seven exception classes from `__init__.py` by plain import would
   make every `from syml import …` in the tests a mypy error. Contract 06 now
   requires `__all__`.
+
+### Pass 23 (2026-09-23, outer iteration 14): the contracts assembled and type-checked
+
+Every code block in Contracts 01-08 was transcribed into a scratch package in
+§ Project Structure's import order, with the smallest possible fill-ins where
+a contract gives only a signature. mypy and ruff then ran under this repo's
+settings. The assembly also ran the 53 specification examples (all agree),
+every contract table row, and a 297-value round-trip corpus (267 round-trip
+and are idempotent, 30 raise `UnrepresentableValueError`, and none fails).
+Every error class survives `pickle` and `copy`. R-09 sanity: `k: "a" x`
+strands at 7 of 8. R-02 sanity: `a\r\r\nb\r` has three breaks before and
+after normalization, and `crlf_indices == (2,)`.
+
+No Critical or High finding. Every defect below fails a gate (mypy, ruff,
+or coverage) on the first commit that transcribes it. None gives a wrong
+result at run time. That matches pass 12's rating of the same defect class
+(`Root(...)` built without `level`).
+
+- **Four contract code blocks fail the repo's mypy gate (Medium, Type
+  Safety).** Found by running mypy, verified. (a) Contract 03
+  `TextLeafNode.as_data` / `as_source` subtract `baseline: int | None`
+  three times. The `inline` guard is a run-time argument, and mypy does
+  not accept it. (b) Contract 03 `Mapping.add_node` reads `node.key` on a
+  `SymlNode` and stores it in `dict[str, KeyValue]`, which gives two
+  errors. (c) Contract 02's loop wrote `root = tip = Root(...)`, which types
+  `tip` as `Root` and rejects `tip = tip.incorporate_node(...)`. (d)
+  Contract 06's `load` narrowed `name` with `isinstance(name, (str,
+  os.PathLike))`, which is not assignable to `StrPath | None`, and ruff
+  `UP038` also rejects it. The obvious local fixes are the ones this plan
+  forbids: `assert` (ruff `S101` in `src/`) and an unreachable guard (a
+  pragma). **Mitigations**: (a) a `_base()` helper that returns `level`
+  when `baseline` is `None`. (b) `cast('KeyValue', node)`, since an
+  `isinstance` guard adds a branch nothing reaches. (c) `tip: SymlNode =
+  root`. (d) `isinstance(name, str | Path)`, because `open(Path(p)).name`
+  is a `str` (verified). With these, the assembly passes mypy with no
+  errors. Under `--strict` (not this repo's setting) one more remains:
+  `loads` returns the `Any` that `as_data()` is typed as (`warn_return_any`).
+  It is recorded, not changed.
+- **Principle VI missed three `Source`/`Pos` changes (Medium,
+  Congruence).** Contract 08's change table has `Source.from_node` going
+  from two arguments to four, `Pos.from_str_index` / `Source.from_text`
+  counting `\n` only, and `Source.__add__`'s corrected `end`. Principle VI
+  guards `Source`/`Pos` semantics, but none of the three was in the
+  Constitution Check or the migration notes. All three are added above,
+  with the rejected alternative, and to Contract 09 note 10. Note 12 now
+  covers `SymlParser`'s new constructor.
+- **Nothing said how the unreachable node stubs get covered (Medium).**
+  The Principle III row allows only `TYPE_CHECKING` pragmas in `src/`.
+  But today's `nodes.py` pragmas seven sites no input reaches: the
+  abstract `as_data`/`as_source`, the base `can_add_node`, the base
+  `incorporate_node`'s fail line, `KeyLeafNode.can_add_node`, and
+  `Comment.as_data`/`can_add_node`. Contract 08's `rg` check looked at
+  `nodes.py` only. The natural `incorporate_node` also ends in a bare
+  `NoReturn` call, which fails ruff `RET503`. **Mitigation (Contract
+  03)**: a disposition table. The last three sites are deleted and the
+  first four get direct tests. `incorporate_node` ends in `return
+  self.fail_to_incorporate_node(node, doc)`, and the `rg` check covers all
+  of `src/`, `nobranch` included (Contract 08). `Source.from_text`'s
+  `substring is None` pragma goes too.
+- **Low.**
+  - Contract 04's scan step said "an unescaped `"` ends the scan". That is
+    the unreachable branch the next paragraph forbids. It now says a valid
+    escape is skipped whole. No test obligation had a valid escape before
+    the defect, so the skip was uncovered and `\"` untested. Two rows are
+    added: `k: "a\"b` gives `escape=None`, and `k: "a\nb\x"` gives `\x`.
+  - `QuotedStringDefect` fails ruff `N818`. It keeps its name with a
+    reasoned `noqa`, because it never reaches a caller. Contract 06's
+    `# noqa: F401` beside `__all__` was `RUF100` and is dropped.
+  - `SymlData` written as a plain assignment raises `NameError` at import.
+    mypy passes it and ruff `F821` catches it. It is now pinned as a PEP 695
+    `type` statement (Contract 07).
+  - The typed test module needs `# type: ignore[arg-type]` on `dumps(5)`,
+    and `[dict-item]` (not `arg-type`) on literals such as `{1: 'v'}`. Under
+    `warn_unused_ignores` those same ignores are the static half of
+    "rejects `dict[int, str]`". Fake handles subclass `io.StringIO`
+    (Contracts 06, 07).
+  - `find_first` is pinned as an explicit-stack loop, which gives `-> Node`
+    with no `raise` and no pragma (100% branch coverage, verified).
+    `Mapping` must be `@dataclass(kw_only=True)` for its `keys` field
+    (Contract 03).
+- **Open item 4's neighbours (no new item).** Under §4.1 as printed:
+  `- 'a:''` is `[{"'a": ""}]`; `- 'a:'b'` is `[{"'a": "b"}]`, while
+  `k: 'a:'b'` raises trailing content; `- "k": v` is `[{'"k"': 'v'}]`.
+  They are the same class as item 4 (`key` admits a quote, and `value`
+  tries `structure` first). Either of item 4's grammar edits settles them
+  too.
+- Recursion figures re-measured under pytest with coverage: the inline limit
+  is 118, the block limit 481, and `dumps` fails on nested lists at 951. The
+  test obligations (50/200 inline, 400/500 block) and Contract 09's note 13
+  hold.
 
 ### Open items for the principal (not applied)
 

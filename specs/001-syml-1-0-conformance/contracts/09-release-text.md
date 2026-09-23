@@ -54,7 +54,12 @@ user-visible change from 0.6.2 (US9.3, SC-006):
    the filename when there is one (Contract 05 `error_message`)
 10. `Pos` coordinates now refer to the **original** text. `Source` still
     equals a `str` with the same text, but no longer equals a non-`str`
-    (`Source('1') == 1` was `True`; red-team pass 20, Contract 08)
+    (`Source('1') == 1` was `True`; red-team pass 20, Contract 08).
+    `Source.from_node` takes `(pnode, line, position_map, filename)` instead
+    of `(pnode, filename)`; `Pos.from_str_index` and `Source.from_text`
+    count only `\n` as a line break (U+2028, U+0085 and the rest no longer
+    start a line); and `Source + str` now counts the joining `\n` in
+    `end.index` and accepts `''` (red-team pass 23, Contract 08)
 11. `load()` accepts binary streams and decodes them as strict UTF-8;
     invalid UTF-8 → `EncodingError`. A text handle decodes with its own
     codec before `load` sees the text: a failure there is also
@@ -65,7 +70,10 @@ user-visible change from 0.6.2 (US9.3, SC-006):
     `file_obj.name`. `Pos.index` from a default `open(p)` text handle is an
     offset into newline-translated text; editor-grade positions need
     `open(p, 'rb')` or `open(p, encoding='utf-8', newline='')`
-12. New: `dumps`, `dump`, and `parse` promoted to a public export (§11.2)
+12. New: `dumps`, `dump`, and `parse` promoted to a public export (§11.2).
+    `syml.parsers.SymlParser` now takes a preprocessed `Document` rather than
+    a `filename` and is no longer a whole-document entry point (per-line
+    lexing, Contract 02): call `syml.parse` instead
 13. Known limitation: deep nesting raises the host `RecursionError` — past
     roughly 500 levels of **block** nesting (one level per line), but past
     only roughly 120 levels of **inline** nesting on a single line

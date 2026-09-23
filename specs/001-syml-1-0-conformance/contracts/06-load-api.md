@@ -10,7 +10,7 @@
 # and re-exported here: serializer.py needs them and precedes __init__.py in
 # the import order, plan.md § Project Structure; red-team pass 20)
 
-from .basetypes import SymlData, SymlInput  # noqa: F401 (re-export, __all__ below)
+from .basetypes import SymlData, SymlInput  # re-exported through __all__ below; no noqa (RUF100)
 
 def loads(document: str, filename: StrPath | None = None) -> SymlData: ...
 
@@ -68,7 +68,7 @@ documents beyond the documented nesting limitation (SC-005, spec Edge Cases).
 def load(file_obj, filename=None):
     if filename is None:                        # resolved FIRST, so EncodingError
         name = getattr(file_obj, 'name', None)  # can carry it (Contract 05 error_message)
-        filename = name if isinstance(name, (str, os.PathLike)) else None
+        filename = name if isinstance(name, str | Path) else None   # pathlib.Path, pass 23
     try:
         raw = file_obj.read()                   # a text handle decodes here
     except UnicodeDecodeError as err:
@@ -143,6 +143,16 @@ so the type checker cannot catch it. Only a `str` or `os.PathLike` name is used;
 anything else falls back to `None`, keeping `Source.filename` and every
 `ParseError` message within `StrPath | None`.
 
+**The check is `str | Path`, not `(str, os.PathLike)` (red-team pass 23).**
+`StrPath` is `str | Path`, and `isinstance(name, os.PathLike)` narrows the
+`Any` from `getattr` to `PathLike[Any]`, which mypy rejects as a
+`StrPath | None` assignment (verified); ruff's `UP038` also rejects the
+tuple form. Nothing is lost in practice: `open(Path(p)).name` is a `str`
+(verified), so a non-`Path` `PathLike` name comes only from a custom
+file-like, and falling back to `None` for it is the documented default.
+Widening `StrPath` instead would widen `Source.filename`'s declared type, a
+typing change on the semver-guarded `Source`.
+
 ### Positions from text handles are in newline-translated text
 
 `open(p)` defaults to `newline=None`, so the handle has already turned `\r\n`
@@ -199,3 +209,7 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
   `as_data()` is equal across all three while `Pos.index` differs for the
   default text handle.
 - mypy strict accepts `load(open(p))` and `load(open(p, 'rb'))` without a cast.
+- Fake handles in these tests subclass `io.StringIO` or `io.BytesIO` and
+  override `read`, so they satisfy `IO[str] | IO[bytes]`; a bare class with a
+  `read` method is an `arg-type` error in the mypy-checked test module
+  (verified, pass 23).

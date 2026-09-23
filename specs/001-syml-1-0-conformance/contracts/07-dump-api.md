@@ -50,8 +50,19 @@ already typed `SymlData` would pass, which fails Principle II for the
 serializer's whole audience. The parameter is therefore
 
 ```python
-SymlInput = str | list[Any] | dict[str, Any]     # basetypes.py, beside SymlData
+type SymlData = str | list[SymlData] | dict[str, SymlData]   # basetypes.py (PEP 695)
+SymlInput = str | list[Any] | dict[str, Any]                  # basetypes.py, beside SymlData
 ```
+
+**`SymlData` is a PEP 695 `type` statement (red-team pass 23).** Written as
+a plain assignment, `SymlData = str | list[SymlData] | …` refers to itself
+before it exists and raises `NameError` when `basetypes` is imported. mypy
+does not report it (it passes the file); ruff reports `F821` (both
+verified). The `type` form is recursive by construction, passes mypy 1.20
+and ruff under this repo's settings, and a `SymlData` value is still
+accepted where `SymlInput` is expected (verified). String forward
+references (`list['SymlData']`) also work; the `type` form is the one the
+py312 target and ruff's `UP040` point to.
 
 which accepts those three (and `loads`'s own `SymlData`), and still rejects
 `dict[int, str]` and a tuple at the top level, matching the runtime type
@@ -391,6 +402,14 @@ blank lines between top-level keys.
 - `dumps(['- ' * 200 + 'x'])` round-trips and `dumps('- ' * 200 + 'x')` raises
   `UnrepresentableValueError`; neither raises `RecursionError`.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
+- These runtime `TypeError` calls are mypy errors in the type-checked test
+  module, so each carries a `# type: ignore[...]` with the code mypy
+  reports: `arg-type` for `dumps(5)` and for a variable typed
+  `dict[int, str]`, but `dict-item` for a literal such as `{1: 'v'}`
+  (verified, pass 23). Under `warn_unused_ignores = true` those same
+  ignores are the static half of the typing obligation below: if a later
+  signature change starts accepting the call, the ignore goes unused and
+  mypy fails.
 - Non-`str` keys (`{1: 'v'}`, `{None: 'v'}`, `{True: 'v'}`, `{b'k': 'v'}`,
   `{('a',): 'v'}`) → `TypeError` raised by `dumps` itself, not by `re`.
 - `structure_matches` returns `False` for `hello`, `#x`, `'a'`, `''`, and

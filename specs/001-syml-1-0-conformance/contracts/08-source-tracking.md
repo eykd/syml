@@ -177,8 +177,10 @@ The blanket `# pragma: nocover` over `nodes.py`'s `as_source` surface is
 removed. `nodes.py` is at 100% today only because seventeen branches carry a
 pragma, including the entire `as_source()` path, which is reachable and
 demonstrably works (audit gap #19). After this feature the only permitted
-pragmas in `src/` are provably-unreachable branches — `if TYPE_CHECKING:` blocks
-qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
+pragmas in `src/` are `if TYPE_CHECKING:` blocks (plan.md Principle III row);
+a reachable-but-untested `as_source` does not qualify (US8.5, SC-004), and
+the base-class stubs no input reaches are deleted or covered by direct
+tests (Contract 03 § Coverage without pragmas, pass 23).
 
 ## Hygiene (FR-017)
 
@@ -199,15 +201,18 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
   text='foo')` (all four fields are required): `src == "foo"` and
   `{src: 1}["foo"] == 1`.
 - `Source.__hash__` exercised directly (no pragma).
-- `Source('1') == 1`, `Source('None') == None`, and `Source('a') == ['a']`
-  are all `False`; `Source('foo') == 'foo'`, `'foo' == Source('foo')`, and
+- (`Source('x')` below is shorthand for a `Source` with text `'x'` and any
+  positions; all four fields are required.) `Source('1') == 1`,
+  `Source('None') == None`, and `Source('a') == ['a']` are all `False`; `Source('foo') == 'foo'`, `'foo' == Source('foo')`, and
   `Source('foo') == Source('foo', other positions)` are `True` (pass 20).
 - `Source.__add__`: `src + 'x'` has `end.index == src.end.index + 2`;
   `src + ''` returns a `Source` whose text ends in `\n`; both assert `.end`
   field by field. `Source + Source` takes the right operand's `end`.
 - No position assertion anywhere compares whole `Source` objects with `==`
   (see § Equality and hashing).
-- `rg 'pragma: no ?cover' src/syml/nodes.py` finds only `TYPE_CHECKING` blocks.
+- `rg 'pragma: no ?(cover|branch)' src/` finds only `TYPE_CHECKING` blocks
+  (pass 23 widened this from `nodes.py` alone; Contract 03 § Coverage
+  without pragmas lists what replaces each of today's pragmas).
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,

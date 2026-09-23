@@ -66,23 +66,30 @@ class TextLeafNode(SymlNode):
     def get_tip(self) -> SymlNode:
         return self                                        # continuations are never tips
 
+    def _base(self) -> int:                                # red-team pass 23 (mypy)
+        # baseline is None only for an inline leaf with no continuation yet,
+        # where nothing subtracts it; this narrows int | None for mypy with
+        # no assert (ruff S101 is on for src/) and no uncovered branch.
+        return self.level if self.baseline is None else self.baseline
+
     def as_data(self) -> str:                              # red-team pass 13
         # The head line keeps its own indentation past the baseline only when
         # it occupies a line of its own (§5.3). That is non-zero for a root
         # scalar alone: a block head has level == baseline, and an inline head
         # shares its line with `key:` / `-`, so it is never prefixed (for
         # `key: a\n  b`, level 5 - baseline 2 would wrongly add three spaces).
-        head = '' if self.inline else ' ' * (self.level - self.baseline)
+        base = self._base()
+        head = '' if self.inline else ' ' * (self.level - base)
         return '\n'.join(
             [head + self.source.text]
-            + [' ' * (c.level - self.baseline) + c.source.text for c in self.children]
+            + [' ' * (c.level - base) + c.source.text for c in self.children]
         )
 
     def as_source(self) -> Source:                         # red-team pass 20
         # Built directly, never with Source.__add__, which joins with a bare
         # '\n' and so drops both the head prefix and every continuation's
         # preserved indentation (Contract 08).
-        n = 0 if self.inline else self.level - self.baseline
+        n = 0 if self.inline else self.level - self._base()
         start = self.source.start
         return Source(
             filename=self.source.filename,
@@ -132,6 +139,14 @@ by the time a continuation child exists, so that subtraction never sees
 `incorporate_node` is §9.2 verbatim: accept → `add_child`; else walk to the
 parent; else `OutOfContextNodeError`. `add_child` returns the **tip** of the
 added subtree, which is the node the next line is tested against.
+
+**The fall-through returns the `NoReturn` call (red-team pass 23).** Both
+`SymlNode.incorporate_node` and `ContainerNode.incorporate_node` end in
+`return self.fail_to_incorporate_node(node, doc)`. A bare call as the last
+statement fails ruff `RET503` (ruff cannot see the `NoReturn`), and today's
+trailing `return self  # pragma: nocover` is an unreachable line the
+coverage gate can no longer excuse. Returning the `NoReturn` call satisfies
+mypy and ruff with no dead line (verified).
 
 **Signature change from today: `doc: Document` is now a required second
 argument.** Today's `fail_to_incorporate_node` builds its position and
@@ -219,8 +234,9 @@ raises `DuplicateKeyError` **immediately** and does **not** fall through to
 §9.2's walk-up:
 
 ```python
+@dataclass(kw_only=True)         # required: `keys` is a dataclass field (pass 23)
 class Mapping(ParentNode):
-    keys: dict[str, KeyValue]    # key text -> first KeyValue holding it (red-team pass 16)
+    keys: dict[str, KeyValue] = field(default_factory=dict)  # key text -> first KeyValue (pass 16)
 
     def can_add_node(self, node: SymlNode, doc: Document) -> bool:
         if not (isinstance(node, KeyValue) and node.level == self.level):
@@ -236,11 +252,19 @@ class Mapping(ParentNode):
         return True
 
     def add_node(self, node: SymlNode) -> SymlNode:
-        self.children.append(node)
-        node.parent = self
-        self.keys[node.key.as_data()] = node                  # only KeyValues reach here
-        return node.get_tip()
+        kv = cast('KeyValue', node)       # can_add_node admitted only a KeyValue (pass 23)
+        self.children.append(kv)
+        kv.parent = self
+        self.keys[kv.key.as_data()] = kv
+        return kv.get_tip()
 ```
+
+**Why `cast` (red-team pass 23).** The override keeps `SymlNode` as its
+parameter type (narrowing it to `KeyValue` breaks the override's
+compatibility with `SymlNode.add_node`), so mypy sees `node.key` as
+`attr-defined` and the dict store as an `assignment` error (verified).
+An `isinstance` guard would type-check but adds a branch no input reaches,
+which the coverage gate then fails without a pragma. `cast` is neither.
 
 **The duplicate check is a dict lookup, not a scan (red-team pass 16).** A
 scan over `self.children` makes a flat mapping of *n* keys cost O(*n*²) key
@@ -360,9 +384,33 @@ incorporates the node into it.
   document; `level=0` is required per Contract 02's "Who sets `level`" table
   (`Root | the per-line loop | 0`). Contract 02's loop constructs it.
 
+## Coverage without pragmas (red-team pass 23)
+
+plan.md's Principle III row allows only `if TYPE_CHECKING:` pragmas in
+`src/` after this feature. Today `nodes.py` pragmas seven sites that no
+`loads` input reaches, by design, and a contract must say what becomes of
+each, or the 100% gate fails on them. An assembly of Contracts 01-08 (with
+the last two rows already deleted), run over every contract table, the 53
+specification examples, and the US7 corpus, left exactly the first three
+rows' lines uncovered in `nodes.py`:
+
+| Site | Why no input reaches it | Disposition |
+| --- | --- | --- |
+| `SymlNode.as_data` / `as_source` (`raise NotImplementedError`) | every concrete node overrides both | direct test in `test_nodes.py` |
+| `SymlNode.can_add_node` (`return False`) | inherited only by `KeyLeafNode`, which is never a tip | direct test |
+| `SymlNode.incorporate_node`'s fail line | a non-container with no parent is never offered a node | direct test: a parentless `TextLeafNode` declining a `KeyValue` raises `OutOfContextNodeError` |
+| `KeyLeafNode.can_add_node` | never a tip | **deleted**; inherits `SymlNode`'s |
+| `Comment.as_data` / `Comment.can_add_node` | the loop routes comments to `tip.comments` (Contract 02) | **deleted**; inherit `TextLeafNode`'s |
+
+`basetypes.py` has one more: `Source.from_text`'s `if substring is None:
+# pragma: no cover`, which a direct call with no `substring` covers.
+
 ## Test obligations
 
 - Every acceptance table row and every worked case above.
+- The direct tests in § Coverage without pragmas, and
+  `rg 'pragma: no ?(cover|branch)' src/` finding only `if TYPE_CHECKING:`
+  lines.
 - `set_level` is gone (R-11): no node's `level` is `None` or changed after
   construction; `-   name: Alice` gives `ListItem`/`Mapping`/`KeyValue`/leaf
   levels 0/4/4/10 (Contract 02 § Who sets `level`).

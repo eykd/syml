@@ -67,8 +67,8 @@ position primitives, and `Source.from_node` (Contract 08, `basetypes.py`) calls
 `pos_at` in `preprocess.py` the two modules import each other and the second
 `from … import` fails on a partially initialized module. The import direction
 is one-way: `preprocess` imports `basetypes`; `basetypes` names `PositionMap`
-only under `if TYPE_CHECKING:` (the one permitted pragma site, plan.md
-§ Project Structure). Everything else on this surface stays in
+only under `if TYPE_CHECKING:` (the only kind of pragma site plan.md's
+Principle III row permits; § Project Structure). Everything else on this surface stays in
 `preprocess.py`, including `original_line` (Contract 05), which shares the
 normalization regex.
 

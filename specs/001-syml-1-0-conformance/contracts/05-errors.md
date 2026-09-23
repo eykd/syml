@@ -179,7 +179,18 @@ def find_first(node: Node, expr_name: str) -> Node:
     whose `expr_name == expr_name` (parsimonious `Node` has no such method;
     this contract defines it). `raise_trailing_content` calls it with
     `'quoted_value'`, and exactly one such node exists on that path, so the
-    search always finds a match — there is no not-found case to handle."""
+    search always finds a match — there is no not-found case to handle.
+
+    Written as an explicit-stack loop (pass 23), which gives `-> Node`, no
+    `raise`, and no uncovered branch (verified at 100% branch coverage):
+        stack = [node]
+        while True:
+            current = stack.pop()
+            if current.expr_name == expr_name:
+                return current
+            stack.extend(reversed(current.children))
+    A recursive search needs a per-subtree not-found result, which is the
+    branch this contract rules out."""
 
 
 def original_line(doc: Document, n: int) -> str:
