@@ -87,9 +87,12 @@ Because parsing is per-line (Contract 02), a `parsimonious.exceptions.Incomplete
 raised by `GRAMMAR['line'].parse(...)` means exactly one thing: *this line did
 not fully lex*. With `data = ~"[^\n]*"` as the last alternative of every path,
 the only way a line fails to fully lex is a `quoted_value` that closed and was
-followed by non-whitespace — §4.7's trailing-content case. The boundary handler
-therefore classifies it as `MalformedQuotedStringError`; there is no residual
-"unknown parse failure" bucket.
+followed by anything other than a run of ASCII spaces (`~" *"`, §4.1) —
+§4.7's trailing-content case. This is ASCII space specifically, not D15
+`White_Space`: a tab or other Unicode whitespace character right after the
+closing quote also strands the line and gets the same classification. The
+boundary handler therefore classifies it as `MalformedQuotedStringError`;
+there is no residual "unknown parse failure" bucket.
 
 Every call into Parsimonious is wrapped. `ParseError` and its subclasses stay in
 `unwrapped_exceptions` so the tree builder's own raises pass through unwrapped.

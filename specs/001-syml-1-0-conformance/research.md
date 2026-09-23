@@ -429,9 +429,16 @@ Consequences:
 - A per-line `IncompleteParseError` means exactly one thing: *this line did not
   fully lex*. With `data = ~"[^\n]*"` as the final alternative, the only way a
   line fails to fully lex is a `quoted_value` that closed and was followed by
-  non-whitespace — precisely §4.7's trailing-content case. So the boundary
-  handler classifies it as `MalformedQuotedStringError` and there is no residual
-  "unknown parse failure" bucket.
+  anything other than a run of ASCII spaces — precisely §4.7's trailing-content
+  case. Note the boundary is ASCII space specifically, not "whitespace" in
+  D15's Unicode sense: `~" *"` (§4.1) only consumes literal U+0020, so a tab or
+  any other D15 `White_Space` character (U+0009, U+00A0, U+2028, U+200A, …)
+  immediately after the closing quote also strands the line and is classified
+  the same way — verified 2026-09-23 by fuzzing the transcribed grammar
+  (500k+ random lines, quote-bearing alphabet) and confirming zero
+  `IncompleteParseError`s that don't fit this pattern. So the boundary handler
+  classifies every per-line `IncompleteParseError` as `MalformedQuotedStringError`
+  and there is no residual "unknown parse failure" bucket.
 - Line/column bookkeeping becomes trivial: each line knows its own start offset
   in the normalized text, so `pnode.start` + `line_start` gives the document
   index without re-deriving it.
@@ -518,6 +525,36 @@ None blocking. Two worth an adversarial look:
    trailing-content-after-quote.** It rests on `data = ~"[^\n]*"` being the last
    alternative of every path. A red-team pass should try to construct a
    counterexample line that lexes partially and strands for a different reason.
+
+   **Resolved 2026-09-23**: no counterexample found. Fuzzed the transcribed
+   grammar (parsimonious, R-01's D15-enumerated `key` class) with 800k+ random
+   lines over quote-bearing and quote-free alphabets, plus hand-crafted probes
+   (nested `list_item`/`key_value`, malformed escapes, multi-colon lines,
+   empty-value sections). Every `IncompleteParseError` fit the pattern:
+   prefix ends at a closing `'`/`"` (optionally followed by ASCII spaces),
+   suffix non-empty. The *decision* stands unchanged. The *wording* was
+   imprecise: "non-whitespace" conflates with D15's Unicode `White_Space`
+   set, but `~" *"` (§4.1) only consumes literal ASCII space — a tab or other
+   D15 whitespace character right after the closing quote also strands the
+   line. Corrected in R-09 above and in Contract 05 to say "anything other
+   than a run of ASCII spaces," matching Contract 04's existing (already
+   correct) phrasing. No change to any D1–D17 decision or to spec.md, whose
+   §7.6 table entry already used the generic, correct "trailing content"
+   framing.
+
 2. **R-02's claim that `line` needs no remapping.** It rests on §9.0 being
    exactly one-break-for-one-break. A red-team pass should check the boundary
    cases: a document ending in a bare `\r`, and `\r\r\n`.
+
+   **Resolved 2026-09-23**: no bug found; the design already anticipates
+   this. Contract 01 (§"Step 2 — line endings") already tables both boundary
+   cases (`"a: b\r"` → `crlf_indices=()`; `"a: b\r\r\nc"` →
+   `crlf_indices=(5,)`) and already calls out, under "Implementation
+   constraint — single pass," the exact ordering pitfall a naive
+   `.replace('\r\n', ...).replace('\r', ...)` implementation would hit on
+   `\r\r\n`. Independently reimplemented the single-pass scan and
+   `bisect_right`-based `to_original` in a throwaway script and round-tripped
+   every `normalized_idx` back to the correct `original_idx` for `"abc\r"`,
+   `"a\r\r\nb"`, `"x\r\n\ry"`, `"\r\r\r\n"`, and `"end\r\n"` — all matched.
+   No artifact change needed; Contract 01 already carries the worked
+   examples and the pitfall warning.
