@@ -143,7 +143,9 @@ the decoders):
 2. If the scan reaches end of line without a defect or a closing quote, the
    value is **unterminated**: `escape=None`, `code_point=None`.
 3. **Single-quoted** values have no escapes; the only reachable diagnosis is
-   unterminated.
+   unterminated. The scan reads `''` as an embedded apostrophe exactly as the
+   grammar does, so `k: 'a''` is unterminated (the grammar's greedy
+   `("''" / [^'\n])*` consumes `a''` and then finds no closing quote).
 
 A value that the scan finds well-formed **and** terminated is unreachable on
 this path — it would have matched `quoted_value` — so the scan must be written
@@ -172,6 +174,26 @@ raises `OutOfContextNodeError`.
 ## Whitespace around quotes
 
 `ws?` before a quoted value — `key:"value"` is valid (§7.5, `todo.txt` S1).
+
+**No-space asymmetry (§4.1 as printed; flagged, not changed).** The quote-guard
+covers only `key_value`'s **second** alternative, which requires `ws`. With no
+space after the colon, a malformed quoted value matches neither `key_value`
+alternative nor `section`, so the whole line falls through to root-level `data`
+and never reaches the guard:
+
+| Input | Result under §4.1 as printed |
+| --- | --- |
+| `k:"ab"` | `{"k": "ab"}` |
+| `k:"abc` (unterminated) | scalar `"k:\"abc"` — **no error** |
+| `k:"a\xb"` (bad escape) | scalar `"k:\"a\\xb\""` — **no error** |
+| `- k:"abc` | `["k:\"abc"]` — **no error** |
+
+This is the silent fallthrough D2 set out to remove, surviving at the one
+position `ws?` admits. The implementation follows the grammar as printed and
+pins these rows as tests, so any later spec change is a visible, deliberate
+diff. Whether §4.1's guard should also cover `key_colon` immediately followed
+by a quote is an open item for the principal (plan.md § Edge Cases & Error
+Handling); it would be a spec edit, not a transcription fix.
 `~" *"` after the closing quote — trailing spaces are allowed and consumed;
 anything else is trailing content.
 

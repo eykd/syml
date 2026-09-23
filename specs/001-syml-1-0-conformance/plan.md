@@ -476,6 +476,22 @@ from reading. None changes a D1–D17 decision._
   anchor character on LF, CRLF, and BOM documents alike. Taking the normalized
   line would be off by one on a BOM-bearing line 1.
 
+### Pass 2 (2026-09-23): second-order checks
+
+- **No-space quoted values escape the quote-guard (§4.1 as printed).**
+  `k:"abc` and `k:"a\xb"` match neither `key_value` alternative (the
+  second needs `ws`) nor `section`, so the line is root-level `data` and parses
+  as a scalar with no error; `k:"ab"` is a mapping. Contract 04 pins these rows
+  as tests of the grammar as printed and raises the question below.
+- `TabIndentationError` is found on normalized text; its position goes through
+  `to_original`, so a BOM-bearing line 1 reports the tab at column 1
+  (Contract 01 row added).
+- `diagnose_malformed` reads `''` exactly as the grammar does, so `k: 'a''` is
+  unterminated (Contract 04).
+- Re-checked with `bisect_left`: empty tokens at a CRLF line end and the
+  BOM-plus-line-1 column rule stay consistent (covered by the 97,855-position
+  brute force, which includes both).
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
@@ -485,6 +501,11 @@ from reading. None changes a D1–D17 decision._
    levels" raise `RecursionError`. True for block nesting; inline nesting on
    one line fails at ~120. The red team did not edit spec.md; the release text
    (Contract 09) carries both figures.
+3. **Should the quote-guard also fire on `key:` immediately followed by a
+   quote?** Today `key:"value"` is a mapping but `key:"unterminated` is a
+   silent scalar. Extending the guard is a normative §4.1 edit bearing on D2's
+   intent, so it is left for the principal; the plan implements and tests the
+   grammar as printed.
 
 ## Complexity Tracking
 

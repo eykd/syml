@@ -82,7 +82,10 @@ U+0009, in any mixture, from the start of the line.
    the line is **blank** (§4.4) — **skip the tab check entirely**, even if the
    run contains a tab.
 2. Otherwise, if the run contains a tab anywhere, raise `TabIndentationError`,
-   positioned at the **first** tab in the run.
+   positioned at the **first** tab in the run. The scan runs on the normalized text (after steps
+   1–2), so the position is passed through `to_original` like every other:
+   `"\ufeff\tkey: v"` reports the tab at column **1**, index 1 (the BOM
+   counts), with `line_text` the original line including the BOM (Contract 05).
 
 | Input | Result |
 | --- | --- |
@@ -92,6 +95,7 @@ U+0009, in any mixture, from the start of the line.
 | `"\t"` | no error — blank |
 | `"key:\tv"` | no error — the tab is not in *leading* whitespace (D5) |
 | `"key: \tv"` | no error — same (D5) |
+| `"\ufeff\tkey: v"` | `TabIndentationError` at `Pos(1, 1, 1)` — original coordinates |
 
 The scan applies uniformly to every physical line. There is no special case for
 "the tab is really the first character of the continuation's content" (§9.0).
