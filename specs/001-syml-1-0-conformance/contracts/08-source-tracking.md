@@ -128,8 +128,11 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,
   `original[start.index:end.index] == source.text` for an unquoted value, and
-  `decode(original[start.index:end.index]) == source.text` for a quoted one
-  (the raw slice runs quote to quote), over a corpus that includes CRLF,
+  `decode_single_quoted(slice) == source.text` or `decode_double_quoted(slice)
+  == source.text` for a quoted one — dispatched on `slice[0]`, `'` or `"` —
+  where `slice = original[start.index:end.index]` (Contract 04: both decoders
+  take the full quote-to-quote match, which this slice is by construction),
+  over a corpus that includes CRLF,
   bare-CR, and BOM documents **and quoted values on CRLF lines**. Excluding
   quoted values instead would leave `end` unchecked on exactly the lines where
   it lands one before a collapsed break. This is the test that catches an exclusive

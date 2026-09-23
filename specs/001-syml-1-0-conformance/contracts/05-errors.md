@@ -68,8 +68,11 @@ gaining the named attributes §11.3 requires.
 
 `UnicodeDecodeError.start` is a **byte** offset, not a code-point index.
 
-1. `prefix = raw[: err.start].decode('utf-8')` — always succeeds (UTF-8 is
-   self-synchronizing; `err.start` is a sequence boundary).
+1. `prefix = err.object[: err.start].decode('utf-8')` — always succeeds (UTF-8
+   is self-synchronizing; `err.start` is a sequence boundary). This derivation
+   is over `(err.object, err.start)` alone and does not depend on where the
+   bytes came from — a binary handle, or (Contract 06) the bytes a text
+   handle's `read()` decoded internally.
 2. `index` = `len(prefix)` in code points.
 3. `line` = 1 + line breaks in `prefix`, counting `\r\n`, bare `\r`, and `\n`
    each as one. (The raw text has not been normalized — it cannot be decoded.)

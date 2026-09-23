@@ -166,11 +166,27 @@ the end of this feature", but `just acceptance` runs in CI on **every** push —
 present. Bound as permanent assertions, US9.9 turns CI red on the very commit
 that is tagged for release, and US9.1 turns it red on the first 1.0.1 bump.
 
-- Tag both scenarios `@feature-exit` in the `.feature` file, and register the
-  marker in pyproject (`--strict-markers`).
+- Tag both scenarios `@feature-exit` in the `.feature` file. pytest-bdd
+  converts a Gherkin `@tag` to a pytest marker of the **same literal string**
+  — the hyphen is not normalized — so register `feature-exit: ...` (with the
+  hyphen) under `[tool.pytest.ini_options] markers` in pyproject; verified
+  against the pinned pytest-bdd 8.1.0 with `--strict-markers`, both for
+  collection and for `-m feature-exit` selection. This is a separate
+  mechanism from the project's own `acceptance` marker, which the
+  `acceptance-tests` skill applies by hand as `pytestmark =
+  pytest.mark.acceptance` at module scope in each binding file — a per-file
+  marker cannot distinguish 2 of 9 scenarios in one `.feature` file, which is
+  why `@feature-exit` goes on individual Gherkin scenarios instead.
+- `@feature-exit` is not a skip marker and `just acceptance` applies no
+  deselection for it: both scenarios run, and are expected to pass, on every
+  invocation up to and including the commit that removes them. The tag exists
+  only to make that removal (FR-018) a `grep`-able, one-step edit; it carries
+  no runtime behaviour of its own.
 - FR-018's manual release step starts by removing those two scenarios and their
   bindings in a commit **before** creating the tag, so the tagged commit's CI
-  run does not carry them (recorded under FR-018 above).
+  run does not carry them (recorded under FR-018 above). This removal is the
+  **only** mechanism that keeps CI green across the release — there is no
+  conditional skip to fall back on.
 - US9.1 reads `pyproject.toml` with `tomllib` as well as
   `importlib.metadata.version('syml')`, so an installed-metadata version that
   lags an edited `pyproject.toml` cannot mask a wrong file.

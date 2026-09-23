@@ -12,10 +12,14 @@
 # src/syml/quoting.py  (new module)
 
 def decode_single_quoted(raw: str) -> str:
-    """Decode a '...' literal. '' is an embedded apostrophe. No escape processing."""
+    """Decode a '...' literal. `raw` is the full grammar match — the opening
+    and closing `'` included, per `single_quoted`'s own span (Contract 02).
+    '' is an embedded apostrophe. No escape processing."""
 
 def decode_double_quoted(raw: str) -> str:
-    """Decode a "..." literal per the §4.7 escape table.
+    """Decode a "..." literal per the §4.7 escape table. `raw` is the full
+    grammar match — the opening and closing `"` included, per
+    `double_quoted`'s own span (Contract 02).
 
     Only ever receives text the grammar matched, so every escape is
     syntactically valid; raises MalformedQuotedStringError (with .escape and
