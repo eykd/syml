@@ -773,6 +773,45 @@ them.
   **Mitigation**: one sentence in Contract 02 stating the before/after and
   that `filename` is still reachable as `doc.filename`.
 
+### Pass 9 (2026-09-23, outer iteration 7): tree-building sweep after `doc` threading
+
+R-09's stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r` line
+boundaries still hold. `\r\r\n` is two breaks both before and after
+normalization, and a trailing `\r` is one. Nothing below touches them.
+
+- **`Mapping.can_add_node` ran the duplicate scan before the level test
+  (High).** Contract 03's code checked every incoming `KeyValue` against the
+  mapping's keys first, while its own prose, spec §9.3's table, and
+  data-model §3.2 all scope the check to `node.level == mapping.level`.
+  `p:\n  a: 1\na: 2` walks up through the level-2 mapping holding `a` before
+  it reaches the root mapping, so the code raised `DuplicateKeyError` on a
+  valid document (§8.3: "the same key may appear in different nested
+  mappings"). **Mitigation**: the code now tests the level gate first and
+  returns `False` without scanning on a mismatch. The input is now a worked
+  case and a test obligation. This is a transcription fix, not a decision
+  change.
+- **The per-line loop dropped comment routing (High).** Contract 02's loop
+  passed every visited node to `incorporate_node`. `Comment` is a
+  `TextLeafNode` subclass, so a comment inside a value would have joined as
+  continuation text (breaking D12), and `"# only"` would have become a root
+  scalar. data-model §2 and today's `visit_lines` both attach comments to
+  `tip.comments`. **Mitigation**: the loop gets an explicit `Comment` branch
+  before `incorporate_node`. Both cases are test obligations in Contract 03.
+- **`Root` and auto-created intermediaries had no way to build a `Source`
+  (Medium).** `__post_init__` derives `source` from `Source.from_node`,
+  which now needs a `line`. `incorporate_node` has no `line`, and under
+  per-line lexing `Root` has no document-level `pnode`. The loop also never
+  initialized `tip`. **Mitigation**: `source` is a constructor field built
+  by the visitor. Intermediaries copy the triggering node's `Source`. `Root`
+  is `pnode=None` with an empty `Source` at `Pos(0, 1, 0)`, which is the
+  "empty span" data-model §3.5 promised. The loop constructs `root = tip`
+  and returns `root` (Contracts 02 and 03, data-model §3.4).
+- **Contract 05 said all incorporation runs outside `NodeVisitor.visit`
+  (Low).** Inline structure (`- key: v`) incorporates inside
+  `visit_key_value`/`visit_list_item`, which §9.2 requires. It is safe
+  because only `ParseError`/`RecursionError` can escape, and both are
+  unwrapped. The rule now says that, and those calls pass `self.doc`.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

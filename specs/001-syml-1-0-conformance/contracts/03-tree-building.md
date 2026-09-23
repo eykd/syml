@@ -11,6 +11,8 @@
 
 ```python
 class SymlNode:
+    pnode: PNode | None        # None only on Root (§ Automatic container creation)
+    source: Source             # constructor field, built by the visitor (Contract 08)
     level: int | None          # the node's OWN column (R-11), not the line's indent
     def can_add_node(self, node: SymlNode, doc: Document) -> bool: ...
     def add_node(self, node: SymlNode) -> SymlNode: ...       # returns the TIP
@@ -114,16 +116,24 @@ raises `DuplicateKeyError` **immediately** and does **not** fall through to
 
 ```python
 def can_add_node(self, node: SymlNode, doc: Document) -> bool:
-    if isinstance(node, KeyValue):
-        for child in self.children:
-            if child.key.as_data() == node.key.as_data():     # code-point compare
-                position = node.source.start
-                raise DuplicateKeyError(
-                    'Duplicate key', position, original_line(doc, position.line),
-                    key=node.key.as_data(), first_position=child.source.start,
-                )
-    return node.level == self.level and isinstance(node, KeyValue)
+    if not (isinstance(node, KeyValue) and node.level == self.level):
+        return False                                          # walk up; NO duplicate check
+    for child in self.children:
+        if child.key.as_data() == node.key.as_data():         # code-point compare
+            position = node.source.start
+            raise DuplicateKeyError(
+                'Duplicate key', position, original_line(doc, position.line),
+                key=node.key.as_data(), first_position=child.source.start,
+            )
+    return True
 ```
+
+**The level gate comes first.** §9.3's table scopes the duplicate check to
+`new_node.level == mapping.level`. Scanning before the level test would
+reject valid documents: for `p:\n  a: 1\na: 2`, the walk-up from `a: 2`
+offers it to the level-2 `Mapping` holding `a` *before* it reaches the root
+mapping. That mapping must decline on level alone and let the walk continue
+(§8.3: "the same key may appear in different nested mappings").
 
 `KeyValue.key` is a `KeyLeafNode` (data-model.md §3), not a string; `.as_data()`
 is the existing `str` conversion `Mapping.as_data`/`as_source` already use
@@ -171,6 +181,7 @@ Each row is an acceptance scenario. `→` is `loads`.
 | `a: Note\n  Big Warning: do not touch` | `{"a": "Note\nBig Warning: do not touch"}` | `Big Warning` is not a key | US1.10 |
 | `a: Note\n  Warning: do not touch` | `OutOfContextNodeError` | `Warning` **is** a key; `a` is closed (D13) | §7.6 |
 | `p:\n  a: 1\n  a: 2` | `DuplicateKeyError` | per-mapping, nested too | Edge Cases |
+| `p:\n  a: 1\na: 2` | `{"p": {"a": "1"}, "a": "2"}` | the inner mapping declines on level **before** any duplicate scan (§9.3) | §8.3 |
 | `empty:\nnext: value` | `{"empty": "", "next": "value"}` | | US4.1 |
 | `- item1\n\n- item2\n\n\n- item3` | `["item1", "item2", "item3"]` | blanks ignored (§4.4) | §4.4 |
 | `a:\n        \n  b: c\n  d: e` | `{"a": {"b": "c", "d": "e"}}` | whitespace-only line never affects indentation | US3.8 |
@@ -181,11 +192,41 @@ Unchanged in shape: accepting a bare `KeyValue`/`ListItem` inserts a
 `Mapping`/`List` **at the incoming node's own level**, incorporates it, then
 incorporates the node into it.
 
+**Construction changed, though.** Today every node computes its `source` in
+`__post_init__` as `Source.from_node(pnode, filename)`. Contract 08's
+`from_node` now needs `(pnode, line, position_map, filename)`, and neither
+`incorporate_node` (which has `doc` but no `line`) nor the per-line loop's
+`Root` (which has no document-level `pnode` at all) can supply that. So:
+
+- `source: Source` becomes an ordinary **constructor field** on `SymlNode`,
+  not something `__post_init__` derives. The visitor builds it with
+  `Source.from_node(pnode, self.line, self.doc.position_map, self.doc.filename)`
+  (Contract 08) and passes it in.
+- An intermediary copies the triggering node's `Source`:
+  `Mapping(pnode=node.pnode, source=node.source, level=node.level)` (and the
+  same for `List`). No `line` is needed.
+- `pnode` becomes `PNode | None`, and it is `None` only on `Root`.
+  `Root(pnode=None, source=Source(filename=doc.filename, start=Pos(0, 1, 0),
+  end=Pos(0, 1, 0), text=''))` is the "`Source` over the empty span" that
+  data-model §3.5 promises for an empty or comment-only document. Contract
+  02's loop constructs it.
+
 ## Test obligations
 
 - Every acceptance table row and every worked case above.
 - `set_level` no longer recurses into children for inline structures (R-11).
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
+- A dedented key equal to a key in a deeper mapping on the walk-up path
+  (`p:\n  a: 1\na: 2`) is **not** a duplicate. This pins the level-gate
+  ordering in `Mapping.can_add_node`.
+- A comment line inside a value, and a comment-only document, never reach
+  `incorporate_node`. `"key: a\n  # c\n  b"` gives `{"key": "a\nb"}`, and
+  `"# only"` gives `""` (Contract 02's comment branch; `Comment` is a
+  `TextLeafNode` subclass, so an unrouted comment would join as continuation
+  text).
+- `parse("").as_source()` is an empty `Source` at `Pos(0, 1, 0)` for both
+  endpoints, carrying `filename`. An auto-created `Mapping`/`List` carries
+  the `Source` of the node that triggered it.
 - `OutOfContextNodeError.line_text` and `DuplicateKeyError.line_text` are the
   original line (BOM/CRLF-bearing inputs included), not the normalized one —
   asserting the `doc`-threading above actually reaches both raise sites.

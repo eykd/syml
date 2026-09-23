@@ -90,6 +90,8 @@ it falls through to `data`.
 ```python
 doc = preprocess(text, filename)            # Contract 01
 visitor = SymlParser(doc)                   # holds position_map, original, filename
+root = tip = Root(pnode=None, source=Source(  # Contract 03: no document-level pnode
+    filename=doc.filename, start=Pos(0, 1, 0), end=Pos(0, 1, 0), text=''))
 for line in split_lines_lf(doc.normalized): # §9.1 step 2
     if is_blank(line.text):                 # D14: discarded before any other check
         continue
@@ -98,8 +100,20 @@ for line in split_lines_lf(doc.normalized): # §9.1 step 2
         raise_trailing_content(pnode, line, doc)  # Contract 05 — anchors at the opening quote
     visitor.line = line                       # NodeVisitor.visit takes ONE argument
     node  = visitor.visit(pnode)
-    tip   = tip.incorporate_node(node, doc)   # Contract 03 — outside NodeVisitor.visit
+    if isinstance(node, Comment):             # D12: never incorporated (data-model §2)
+        tip.comments.append(node)
+        continue
+    tip   = tip.incorporate_node(node, doc)   # Contract 03
+return root
 ```
+
+**The comment branch is load-bearing.** `Comment` is a `TextLeafNode`
+subclass (data-model §3), and `TextLeafNode.can_add_node` accepts any
+`TextLeafNode`. An unrouted comment would therefore join a value as
+continuation text (`"key: a\n  # c\n  b"` → `"a\n# c\nb"`, breaking D12),
+or become the root scalar of a comment-only document. Today's `visit_lines`
+has the same `isinstance(child, Comment)` branch, and the per-line loop keeps
+it.
 
 **The blank-line skip is load-bearing, not an optimization.** A tab-bearing
 blank line (`"  \t  "`) lexes as `indent` + a **non-empty** `data` (`"\t  "`),

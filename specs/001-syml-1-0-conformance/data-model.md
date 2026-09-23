@@ -179,6 +179,11 @@ node's** level, incorporate it, then incorporate the node into it. The level it
 registers is the node's own column (R-11), which is what makes
 `-   name: Alice` register column 4 rather than column 0.
 
+`source` is a constructor field, no longer derived in `__post_init__`.
+Contract 08's `Source.from_node` needs a `line` that `incorporate_node` does
+not have. An intermediary therefore copies the triggering node's `Source`.
+`Root` has `pnode=None` and an empty `Source` at `Pos(0, 1, 0)` (Contract 03).
+
 ### 3.5 Rendering
 
 | Method | Leaves are | Absent value yields |

@@ -198,8 +198,13 @@ exception escaping `loads`. Two rules close that:
    overflow while visiting a deeply nested inline line surfaces as the host
    `RecursionError` — the documented known limitation — not as
    `VisitationError`.
-2. Tree incorporation (`incorporate_node`, Contract 03) runs in the per-line
-   loop, **outside** `NodeVisitor.visit`, so its raises are never wrapped.
+2. Line-to-line tree incorporation (`incorporate_node`, Contract 03) runs in
+   the per-line loop, **outside** `NodeVisitor.visit`. *Inline* structure
+   (`- key: v`, `- - x`) is the exception. §9.2 requires it to go through the
+   same algorithm, so `visit_key_value`/`visit_list_item` call
+   `incorporate_node(value, self.doc)` **inside** a visit. That is safe
+   because everything it can raise is a `ParseError` or a `RecursionError`,
+   and both are in `unwrapped_exceptions` (rule 1).
 
 ### `line_text`
 
