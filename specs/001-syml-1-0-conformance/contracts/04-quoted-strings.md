@@ -75,6 +75,7 @@ At an inline position only:
 | --- | --- | --- | --- |
 | unterminated | `key: "unterminated` | `None` | `None` |
 | trailing content after close | `key: "a" trailing` | `None` | `None` |
+| trailing content after close (tab, not ASCII space) | `key: "a"\tx` | `None` | `None` |
 | invalid / incomplete escape | `k: "a\xb"` | `"\\x"` | `None` |
 | `\U` above U+10FFFF | `k: "\U00110000"` | `"\\U00110000"` | `0x110000` |
 | escape decodes to a surrogate | `k: "\ud800"` | `"\\ud800"` | `0xD800` |
