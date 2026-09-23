@@ -812,6 +812,24 @@ normalization, and a trailing `\r` is one. Nothing below touches them.
   because only `ParseError`/`RecursionError` can escape, and both are
   unwrapped. The rule now says that, and those calls pass `self.doc`.
 
+### Pass 10 (2026-09-23, outer iteration 7): incorporate_node's missing receiver
+
+R-09's stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r` line
+boundaries still hold, unaffected by this pass.
+
+- **Contract 05's inline-incorporation rule named no receiver (Low).** Rule 2
+  wrote `incorporate_node(value, self.doc)` as if it were a free function,
+  the only call in Contracts 02/03/05 written that way — every other site is
+  `<node>.incorporate_node(<candidate>, doc)`. Today's `parsers.py` shows
+  `visit_key_value` building an empty `section` and calling
+  `section.incorporate_node(value)`, and `visit_list_item` building an empty
+  `li` and calling `li.incorporate_node(value)` — uniformly, for a leaf value
+  or a nested `structure` alike. `key_value`'s own value slot is only ever
+  `quoted_value`/`data` (never `structure`, per Contract 02's grammar), so
+  `section`'s call always resolves in one step; `li`'s can recurse into
+  §9.2's full algorithm for `- key: v` / `- - x`. **Mitigation**: Contract 05
+  now names both receivers explicitly and notes which one can recurse.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
