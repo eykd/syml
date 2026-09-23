@@ -43,7 +43,7 @@ A string MUST be quoted if any of:
 | A | it is the empty string — use the position's empty-value convention (`key:`, `-`), **never** `''` or `""` |
 | B | it has leading or trailing space or tab |
 | C | it contains `\n`, `\r`, or any other control character |
-| D | it is a **list item's** inline value and would itself match `list_item`, `key_value`, or `section` (a mapping's inline value is exempt — §7.2) |
+| D | it is a **list item's** inline value and would itself match `list_item`, `key_value`, or `section` (a mapping's inline value is exempt — §7.2). "Would match" means `GRAMMAR['structure'].match(s)` succeeds — a **prefix** match, stranded or not: `k: "a" x` fails `parse` but must still be quoted (plan.md pass 4) |
 | E | it is at an inline position and starts with `'` or `"` |
 | F | it is exactly `''` or `""` |
 | G | it is a list item's inline **mapping** value: emit exactly one space between `-` and the key |
@@ -63,14 +63,20 @@ control characters, prefer `'...'` over `"..."`, to keep output literal per
 `- "a: b"` fails the same way (plan.md § Edge Cases, pass 3). The mapping-value
 position is not affected. The rule:
 
-1. At a **list-item** inline position, after choosing the rendering by rules
-   A–F and the single-quote preference, re-lex the emitted line with
-   `GRAMMAR['line'].match('- ' + rendered)`.
+1. At a **list-item** inline position, **when one of rules B–F required
+   quoting**, re-lex the chosen quoted rendering with
+   `GRAMMAR['line'].match('- ' + rendered)`. An unquoted rendering, and rule
+   A's bare `-`, are never re-lexed or re-quoted: `hello` stays `- hello` and
+   the empty string stays `-`, never `- ""`.
 2. If the result is anything other than a `list_item` whose value is one
    `quoted_value` spanning to end of line, emit the **double-quoted** form
    instead, with every `:` written as the four-hex-digit unicode escape
    `\u003a` (`escape_seq`'s `\uXXXX` alternative, Contract 02) rather than a
    literal `:` (and control characters escaped as rule C already requires).
+   Escaping is **one pass per character** — `\` → `\\`, `"` → `\"`, `:` →
+   `\u003a`, controls → their escapes. Substituting `:` first and escaping `\`
+   afterwards turns the inserted escape into `\\u003a`, which loads as literal
+   text.
    With no literal `:`, `key_colon` cannot match, and a line starting `- "`
    cannot lex as `list_item` or a comment, so the value is a `quoted_value`
    by construction.
@@ -84,7 +90,9 @@ its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the
 | --- | --- |
 | `a: b` | `- "a\u003a b"` (single- and plain double-quoted forms both re-lex as a mapping, per steps 1–2 above) |
 | `k:` | `- 'k:'` (rule D quotes it; the single-quoted form re-lexes as a quoted value) |
-| `a:b` | `- a:b` (no rule requires quoting) |
+| `a:b` | `- a:b` (no rule requires quoting, so no re-lex) |
+| `k: "a" x` | `- "k\u003a \"a\" x"` (rule D by prefix match; the single-quoted form strands) |
+| `""` (empty) | `-` (rule A; never re-lexed) |
 | `a: b` as a mapping value | `k: 'a: b'` (unaffected) |
 
 ## Format choices (R-06) — implementation, not spec
@@ -102,6 +110,21 @@ Documented in the `dumps` docstring and the README's serializer section, and
 | list-valued key | `key:` + indented `-` lines |
 | list item holding a mapping | `- k: v`, siblings at the key's column |
 | list item holding a list | `-` + indented `-` lines |
+
+## Recursion in the rule-D and §11.2.4(a) probes
+
+`structure` recurses in Parsimonious once per inline `- `, so lexing a raw
+string such as `'- ' * 150 + 'x'` raises the host `RecursionError` (plan.md
+pass 4). That string is representable — `- '- - … x'` loads, because a
+quote-led line fails `structure` at its first character. So:
+
+- The rule-D probe (and §11.2.4(a)'s, per line) catches `RecursionError` and
+  treats it as **"matches `structure`"**. Only a `- `-led string can recurse
+  that deep, so this is exact, not a guess.
+- At a list-item position the value is then quoted; the quoted re-lex is
+  shallow. At the root it is `UnrepresentableValueError` (condition a).
+- `dumps` never lets `RecursionError` escape. The known limitation in
+  Contract 09 is `loads`-only.
 
 ## Unrepresentable values
 
@@ -155,7 +178,11 @@ rows.
 **Corpus must include**: the empty string; strings with leading/trailing space
 and tab; strings containing `\n`, `\r`, NUL, and other C0 controls; strings
 that look like structure (`key: v`, `- x`, `-42`, `key:value`); strings
-beginning with `'`, `"`, `#`, `//`; the literals `''` and `""`; astral-plane
+beginning with `'`, `"`, `#`, `//`; the literals `''` and `""`; backslash
+with colons at a list-item position (`a\: b`, the literal text `\u003a`,
+`a: 'b" \c`); stranding structure-shaped strings (`k: "a" x`, `k: 'v' x`);
+`'- ' * 200 + 'x'` as a list item, a mapping value, and a root scalar (the
+last raises `UnrepresentableValueError`, never `RecursionError`); astral-plane
 and combining characters; nested mappings and lists to depth 4; a list of
 mappings (rule G); insertion-ordered mappings with non-sorted keys (US7.5).
 
@@ -177,6 +204,10 @@ blank lines between top-level keys.
   `quoted_value` spanning to end of line, or an unquoted node named `text`
   (Contract 02's `data`/`text` alias — never a node named `data`) equal to the
   string.
+- The re-lex runs only on quoted renderings: `dumps(["hello", ""])` is
+  `- hello\n-\n`.
+- `dumps(['- ' * 200 + 'x'])` round-trips and `dumps('- ' * 200 + 'x')` raises
+  `UnrepresentableValueError`; neither raises `RecursionError`.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
 - Idempotence over the corpus.
 - Format choices asserted against a golden fixture, labelled in the test name as

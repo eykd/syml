@@ -470,6 +470,9 @@ from reading. None changes a D1–D17 decision._
   inside Parsimonious's lexing. The §13.4 deferral stands (brainstorm Key
   Decisions — an intentional exclusion, not reopened); only the documented
   figure changes: Contract 09's known-limitation note states both depths.
+- **The limitation is `loads`-only.** `dumps` lexes candidate strings for rule D
+  and §11.2.4(a) and must not inherit it: a `RecursionError` from that probe
+  means "matches `structure`" (pass 4 below, Contract 07).
 
 ### `line_text` (Contract 05)
 
@@ -514,7 +517,7 @@ from reading. None changes a D1–D17 decision._
   `quoted_value`. **Mitigation (Contract 07)**: at a list-item inline position,
   when the chosen quoted rendering re-lexes as anything but
   `list_item > quoted_value` spanning the line, `dumps` emits the
-  double-quoted form with every `:` written `:`. With no literal `:`,
+  double-quoted form with every `:` written `\u003a`. With no literal `:`,
   `key_colon` cannot match and the line can only lex as a quoted value
   (0 failures in the same brute force). §11.2.1's single-quote rule is a
   preference, not a MUST, and its `loads(dumps(x)) == x` requirement is a MUST,
@@ -542,6 +545,58 @@ from reading. None changes a D1–D17 decision._
   agree. `load` cannot undo the translation. Documented in `load`'s docstring
   and the migration notes: for editor-grade positions pass a binary handle or
   `open(p, newline='')`. Pinned as a test.
+
+### Pass 4 (2026-09-23, outer iteration 3): the serializer's grammar probes
+
+Probed against the transcribed grammar with a reference renderer: every string
+up to length 5 on `ab:'" -#/\` plus TAB (177,156 strings) round-trips at the
+list-item position under pass 3's fallback (4,399 take the `:` form), and
+every one round-trips at the mapping-value position with no fallback. Both
+quote kinds plus colons, leading/trailing space or tab, leading `#`/`//`, and
+the empty string as bare `-` (Contract 03: `-` with no child is `""`) all hold.
+The brute force implemented the *intended* reading of Contract 07's steps; the
+findings below are where the written contract departs from it.
+
+- **`dumps` raises the host `RecursionError` on a representable value (High).**
+  Rule D ("would itself match `list_item`, `key_value`, or `section`") and
+  §11.2.4(a) are decided by lexing the raw string, and `structure` recurses in
+  Parsimonious once per inline `- `. `GRAMMAR['structure'].match('- ' * 150 +
+  'x')` raises `RecursionError` (100 levels pass). But the value *is*
+  representable: `- '- - … x'` loads fine, because a quote-led line fails
+  `structure` at its first character and the `*` repetitions inside
+  `single_quoted`/`double_quoted` are iterative (verified at 300 levels, both
+  quote kinds). So `dumps(['- ' * 150 + 'x'])` crashes on a ~300-byte string
+  that §11.2.1 requires it to serialize — a violation of the round-trip MUST,
+  not an instance of the deferred §13.4 limits. **Mitigation (Contract 07)**:
+  the rule-D / §11.2.4(a) probe catches `RecursionError` and treats it as
+  "matches `structure`" — a string whose lexing recurses that deep begins with
+  `- ` and is a list item by construction. At a list-item position that
+  means "quote it" (the quoted re-lex is shallow; a mapping value is exempt
+  from rule D and is never probed); at the root it means
+  `UnrepresentableValueError`. `dumps` never lets `RecursionError` escape. The
+  known limitation in Contract 09 is `loads`-only.
+- **Rule D's probe must accept a stranded prefix (Medium).** `k: "a" x` fails
+  `GRAMMAR['structure'].parse` (`IncompleteParseError`) but `match` returns the
+  prefix `k: "a" `. An implementation that asks "does the whole string parse as
+  structure" leaves it unquoted, emits `- k: "a" x`, and `loads` then raises
+  `MalformedQuotedStringError` (trailing content) on its own output. **Rule D
+  is decided by `match` (prefix), not `parse`**: any structure match, stranded
+  or not, requires quoting. Same for `k: 'v' x` and §11.2.4(a).
+- **Contract 07's steps 1–2 read literally force-quote every list item
+  (Medium, Congruence).** Pass 3 above scoped the re-lex to "the chosen quoted
+  rendering"; Contract 07's step 1 applied it after rules A–F unconditionally,
+  so a plain `hello` (re-lexes as `list_item > text`, not `quoted_value`) would
+  become `- "hello"` and the empty string `- ""` — the latter breaching rule A's
+  "never `''` or `""`". Contract 07 now runs the re-lex only when a rule
+  required quoting; its test obligation already allowed the unquoted `text`
+  outcome.
+- **The fallback's escaping is single-pass, and the corpus lacked a backslash
+  (Medium).** The `:` fallback composes with `\\` and `\"` escaping only if
+  every character is escaped in one pass. Substituting `:` first and escaping
+  `\` second turns the inserted `:` into `\\u003a`, which loads as the
+  literal text `:` — silent corruption. Contract 07's corpus had no
+  backslash, so that ordering bug would pass SC-003. Added to the corpus:
+  `a\: b`, `:` as literal text, and `a: 'b" \c` — each as a list item.
 
 ### Open items for the principal (not applied)
 
