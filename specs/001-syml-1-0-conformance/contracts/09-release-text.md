@@ -14,7 +14,9 @@ the feature must leave behind, each independently assertable.
 | `SYML-SPECIFICATION.md` header | labelled **Version 1.0**; status line names `syml` 1.0.0 as the conforming reference implementation | US9.2 |
 | `SYML-SPECIFICATION.md` §14 | the 1.1 and 1.0 rows folded into **one** 1.0 entry | US9.2 |
 | `SYML-SPECIFICATION.md` §15 | the "As of ..." status line updated | US9.2 |
-| `SYML-SPEC-REVIEW.md` | subject line updated to match | FR-014 |
+| `SYML-SPEC-REVIEW.md` | title and `**Subject:**` line say the reviewed text was the pre-release draft (labelled v1.0 when reviewed) and that the text released as 1.0 incorporates these findings. Both lines already read "v1.0" today, so "updated to match" is not a no-op: after the relabel two different texts would carry that label (pass 25) | FR-014 |
+| `README.md` | gains a serializer section (`dumps`/`dump`, the R-06 format choices Contract 07 points at, the `encoding='utf-8'` advice) and a link to `CHANGELOG.md`. Contract 07 and R-06 cite "the README's serializer section", which the 48-line README does not have (pass 25) | FR-011, FR-015 |
+| `pyproject.toml` classifiers | unchanged (`Development Status :: 4 - Beta`) unless the principal decides otherwise (plan.md open item 6, pass 25) | — |
 
 ## Spec edits this feature makes (FR-019's licence in use)
 
@@ -34,8 +36,10 @@ recorded with its driving behaviour, per FR-019.
 
 ## FR-015 — migration notes
 
-Location: `CHANGELOG.md` (created if absent) **or** README. Must list every
-user-visible change from 0.6.2 (US9.3, SC-006):
+Location: **`CHANGELOG.md`** (new), under a `1.0.0` heading. The earlier
+"`CHANGELOG.md` or README" left US9.3's binding without a file to read
+(pass 25); README links to it instead. Must list every user-visible change
+from 0.6.2 (US9.3, SC-006):
 
 1. Absent values: `None` → `""`, at every depth
 2. Tabs in indentation → `TabIndentationError`
@@ -93,6 +97,15 @@ user-visible change from 0.6.2 (US9.3, SC-006):
 15. `dump` writes through the handle's codec: open it with
     `encoding='utf-8'` (§13.3). A locale-default handle can write non-UTF-8
     bytes that `load(open(p, 'rb'))` then rejects (Contract 07)
+16. Node-tree and module internals (pass 25). Only `as_data()` and
+    `as_source()` on `parse`'s result are the supported tree surface, but
+    0.6.2 callers could reach the rest through `syml.parsers.parse`: a
+    node's `level` is now its own column (not its line's indent), and
+    `set_level` and `IndentNode` are gone; `incorporate_node` and
+    `can_add_node` take a second `doc` argument; `source` is a required
+    constructor field instead of being derived from `pnode`;
+    `KeyLeafNode.key` is removed (use `as_source()`); and `syml.utils`
+    (`split_lines`, `get_line`) is deleted (Contract 01)
 
 The traceability check is mechanical: every row of the audit's gap list (b)
 maps to a numbered entry here or is explicitly out of scope.
@@ -103,14 +116,15 @@ maps to a numbered entry here or is explicitly out of scope.
 | --- | --- | --- |
 | `todo.txt` | retired (deleted) or rewritten as a post-1.0 backlog holding **no** conformance claims | US9.4, SC-007 |
 | `CLAUDE.md` § "Spec vs. implementation" | rewritten to state the parser conforms; the "do not assume the parser matches the spec" guidance removed | US9.4 |
-| `docs/glossary.md` | four entries refreshed — see below | |
+| `docs/glossary.md` | seven entries refreshed, four added — see below | |
+| `.claude/skills/beads-task-chains/SKILL.md`, `.claude/skills/compound/SKILL.md` | stop naming `todo.txt` as a document or a conformance-findings source once it is deleted (pass 25); US9.4's "exactly one ledger" reads the repository, and the skills are in it | US9.4 |
 
 Recommendation: **delete** `todo.txt`. The audit's section (c) shows it is
 superseded or reversed on A1, A3, A4, A9, A10, and section E; what survives
 (B3) is FR-017. A rewritten file would carry no live conformance claim, which
 makes it a backlog under a misleading name.
 
-### Glossary entries going stale (flagged during planning)
+### Glossary entries going stale (flagged during planning; three more added in pass 25)
 
 | Entry | Why it goes stale |
 | --- | --- |
@@ -118,6 +132,9 @@ makes it a backlog under a misleading name.
 | `can_add_node` | described as "the per-node predicate a **container** implements"; `TextLeafNode` and `Mapping` now carry real logic (baseline, duplicate keys) |
 | `TextLeafNode` | described as "accepts further `TextLeafNode`s as children" with no conditions; it now carries `inline`, `quoted`, `anchor_level`, and `baseline` and declines more than it accepts |
 | `OutOfContextNodeError` | "listed in `unwrapped_exceptions` so Parsimonious does not wrap it" — the tuple now names the base, `(ParseError, RecursionError)`, and line-to-line incorporation raises it outside the visitor altogether (Contract 05), so the entry should say every `ParseError` passes the visitor unwrapped |
+| Line node | says every line lexes as `indent (comment / blank / structure / value)`; §4.1 has no `blank` rule and the last alternative is `data`, and blank lines are dropped before lexing (Contract 02; pass 25) |
+| Indentation level | "the leading-whitespace depth tagged onto each `SymlNode` when a line node is produced" is exactly the 0.6.2 behaviour R-11 removes: `level` is the node's own column (pass 25) |
+| `Pos` | "where a value or key began and ended in the source text" — now the **original** text, before BOM stripping and CRLF/CR normalization (FR-013; pass 25) |
 
 Add: `PositionMap`, `EncodingError`, `dumps`/`dump`, `Document` (original vs
 normalized).
@@ -171,11 +188,50 @@ principle IV as currently written.
 
 Also required by the Amendment Procedure: identify affected templates
 (`.specify/templates/*`) and update `CLAUDE.md` (which FR-016 already touches).
+The three templates (`checklist-`, `plan-`, `spec-template.md`) name neither
+`todo.txt` nor principle IV's wording, so none is affected (checked, pass 25).
 In the first commit, `CLAUDE.md` changes only to stop restating principle IV's
-old wording; the statement that the parser **conforms** lands with FR-016 at
+old wording and to replace the pragma bullet (below); the statement that the parser **conforms** lands with FR-016 at
 the end of the feature, when it is true. Rewriting "Spec vs. implementation" in
 the first commit would tell every worker in between that an unconformed parser
 matches the specification.
+
+**The first commit also retires the pragma guidance this feature contradicts
+(pass 25).** Three instructions a worker reads tell it to pragma an
+unreachable branch "as in `nodes.py` and `parsers.py`": constitution
+principle III's parenthetical, `CLAUDE.md` § Conventions, and the
+`pytest-unit-testing` skill's pragma section, whose worked example is
+`SymlNode.as_data` with `# pragma: nocover`. Contract 03 gives that exact
+method a direct test instead, and Contracts 03/08 add a permanent test that
+fails on any `src/` pragma outside `if TYPE_CHECKING:`. Left alone, the
+skill steers each worker into a commit the suite rejects, and after the
+feature all three point at a pattern that no longer exists. So in the same
+first commit: III drops the parenthetical and keeps its permission (a
+factual pointer, riding the 2.0.0 bump, no rule changes); the `CLAUDE.md`
+bullet and the skill section say that `src/` carries only `if TYPE_CHECKING:`
+pragmas, that the test in `tests/test_nodes.py` enforces it, and that an
+unreachable stub is deleted or tested directly (Contract 03 § Coverage
+without pragmas).
+
+## Leaf ordering for `/sp:05-tasks` (pass 25)
+
+The ordering constraints are stated here once; plan.md and quickstart.md
+point here.
+
+1. **First**: the FR-019 amendment commit — constitution 2.0.0 (IV, plus
+   III's parenthetical), `CLAUDE.md`'s principle-IV restatement and pragma
+   bullet, and the `pytest-unit-testing` skill's pragma section.
+2. Behaviour work in the plan's layer order (quickstart.md). Each spec edit
+   in the table above lands in the commit whose behaviour it describes; the
+   two "post-1.0" markings (§11.3 `DocumentLimitError`, §13.4) describe no
+   behaviour, so they land with the §11.3 `EncodingError` edit.
+3. `utils.py` and `tests/test_utils.py` are deleted in the commit that
+   moves `Pos.from_str_index` to LF-only counting (Contracts 01, 08).
+4. **Last**: FR-014's relabel and version bump, FR-015's `CHANGELOG.md` and
+   README section, FR-016's `todo.txt` deletion together with the
+   `CLAUDE.md` "parser conforms" rewrite and the two skills' `todo.txt`
+   references, and the glossary. US9's `@feature-exit` scenarios go green
+   only here.
 
 ## FR-020 — Constitution Check
 
@@ -201,7 +257,12 @@ that is tagged for release, and US9.1 turns it red on the first 1.0.1 bump.
   — the hyphen is not normalized — so register `feature-exit: ...` (with the
   hyphen) under `[tool.pytest.ini_options] markers` in pyproject; verified
   against the pinned pytest-bdd 8.1.0 with `--strict-markers`, both for
-  collection and for `-m feature-exit` selection. This is a separate
+  collection and for `-m feature-exit` selection. (`just acceptance` itself
+  passes `-o addopts=""`, which drops `--strict-markers`, so there an
+  unregistered tag is a `PytestUnknownMarkWarning`, not an error; verified,
+  pass 25. Registration is still right: it is what the repository's
+  convention requires, and it keeps any run that does apply the addopts
+  clean.) This is a separate
   mechanism from the project's own `acceptance` marker, which the
   `acceptance-tests` skill applies by hand as `pytestmark =
   pytest.mark.acceptance` at module scope in each binding file — a per-file

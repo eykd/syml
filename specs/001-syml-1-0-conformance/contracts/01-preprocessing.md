@@ -160,6 +160,17 @@ numbering.
 prerequisite for Contract 08 — audit gap #16 (`x` reported on line 3 instead of
 line 2) is caused by it, and no amount of position remapping fixes it.
 
+**`utils.py` is deleted, with `tests/test_utils.py` (pass 25).** "Replaced"
+left two readings open: rewrite both helpers LF-only, or remove them. After
+this feature neither has a caller in `src/`. `get_line`'s one caller,
+`nodes.fail_to_incorporate_node`, reads `original_line` (Contract 05)
+instead, and `Pos.from_str_index` counts `\n` itself (Contract 08). A
+rewritten `utils.py` would be a second LF splitter beside `split_lines_lf`,
+kept alive only by its own tests. So `src/syml/utils.py` and
+`tests/test_utils.py` are removed in the same commit, `split_lines_lf` is
+the one splitter, and `syml.utils` leaves the importable surface (Contract
+09 migration note 16).
+
 ## PositionMap
 
 ```python
@@ -204,7 +215,13 @@ to_original(Pos(index=i, line=l, column=c)) -> Pos(
 ## Test obligations
 
 - Every row of every table above, as a unit test.
-- `rg 'splitlines' src/` finds nothing.
+- No `.splitlines` **call** anywhere in `src/`, checked over the AST (an
+  `ast.Call` whose `func` is an `ast.Attribute` named `splitlines`), not with
+  `rg 'splitlines' src/` (pass 25). The contracts' own code blocks name the
+  method in order to forbid it (this contract's `split_lines_lf` docstring,
+  Contract 05's `original_line` docstring, Contract 08's `__add__` comment),
+  so a text search fails against a verbatim transcription (verified). The
+  AST check passes on that transcription and fails on a real call.
 - `to_original` round-trips against a brute-force reference implementation over
   a generated corpus mixing BOM, CRLF, bare CR, and `\u2028`.
 - The two `\r\r\n` and trailing-bare-`\r` rows are the red-team targets named in

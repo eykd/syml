@@ -186,7 +186,16 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
 
 ## Test obligations
 
+These live in `tests/test_api.py` (new; pass 25 — plan.md's test tree named
+no home for the `loads`/`load`/`parse` surface).
+
 - Every table row above.
+- An explicit `filename` wins over the handle's `.name`:
+  `load(named_handle, filename='x.syml')` puts `x.syml` in
+  `Source.filename` and in `ParseError.message` (pass 25). Without it no
+  obligation passes `filename` to `load`, the `if filename is None:` false
+  arm is never taken, and the branch-coverage gate fails on the first
+  commit that transcribes `load` (verified on the pass 25 assembly).
 - A leaf-walking helper asserting the no-`None` invariant over every acceptance
   fixture.
 - `load` with `StringIO`, `BytesIO`, a real text handle, and a real binary

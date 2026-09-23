@@ -37,6 +37,10 @@ double_quoted  = '"' (escape_seq / ~"[^\"\\\\\n]+")* '"'
 escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[0-9a-fA-F]{8}")
 ```
 
+In `parsers.py` the text above is the module constant `GRAMMAR_TEXT: str`,
+and `GRAMMAR = Grammar(GRAMMAR_TEXT)` (pass 25). The constant exists so the
+smoke test below can recompile the shipped text under an error filter.
+
 ### Deltas from today's grammar and why each matters
 
 | Today | Spec | Consequence of the change |
@@ -317,7 +321,17 @@ accepted); `visit_list_item` → `ListItem(level=0)`, then
   `GRAMMAR['line'].match(s).end` and equal named-node spans over every line
   up to length 6 on `'"\a :u0n-x`, each after `k: `, `- `, and `k:`. A
   100,000-character quoted value lexes with fewer than 100 parse nodes.
-- A grammar-load smoke test asserting `Grammar(...)` compiles without warnings.
+- A grammar-load smoke test: inside `warnings.catch_warnings()` with
+  `warnings.simplefilter('error')`, `Grammar(GRAMMAR_TEXT)` constructs
+  without raising (pass 25). `GRAMMAR_TEXT` is the module-level `str` that
+  `GRAMMAR = Grammar(GRAMMAR_TEXT)` is built from, so the test compiles the
+  shipped text and not a copy that can drift. The in-process test must
+  construct a `Grammar`: `syml` is already imported by collection time, so
+  re-importing it emits nothing, and `importlib.reload(syml.parsers)` would
+  replace `GRAMMAR` and `SymlParser` under every other test in a random
+  order. The `-W error` subprocess check above is the import-time half.
+  Verified that the error filter turns a `\Z` atom into `VisitationError` on
+  every construction, not only the first.
 - A test that `- "a` and `k: "a` raise `MalformedQuotedStringError` while
   `# "a` (comment) and `"a` (root scalar) do not — proving the quote-guard is
   not hung on the shared `text` expression.

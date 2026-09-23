@@ -97,7 +97,7 @@ v1.0.0, ratified 2026-09-13._
 | --- | --- | --- | --- |
 | I. Test-Driven Development | PASS | PASS | Every contract ends in a "Test obligations" block; `sp:05-tasks` turns them into a beads Test List. RED commits via `.venv/bin/python -m tools.commit_red`. |
 | II. Type Safety | PASS | PASS | New public types (`Document`, `PositionMap`, `SymlData`, `SymlInput`, six exception classes) are fully annotated; `load`'s `IO[str] \| IO[bytes]` is checked without a cast (Contract 06), and so is `dumps` over a `dict[str, str]`, which needs the separate `SymlInput` parameter alias because `list`/`dict` are invariant (Contract 07, red-team pass 20). |
-| III. Coverage and Lint Gates | PASS | PASS | FR-012 **removes** exemptions rather than adding them. Post-feature, the only permitted pragmas in `src/` are `if TYPE_CHECKING:` blocks. |
+| III. Coverage and Lint Gates | PASS | PASS | FR-012 **removes** exemptions rather than adding them. Post-feature, the only permitted pragmas in `src/` are `if TYPE_CHECKING:` blocks. That is stricter than III's text, which still allows a pragma on a provably unreachable branch, and a permanent test enforces it; the first commit updates the guidance that still teaches the old pattern (Contract 09, pass 25). |
 | IV. Spec vs Implementation Discipline | PASS | PASS | See below. |
 | V. Simplicity / YAGNI | PASS | PASS | See below. |
 | VI. Public API Stability | **PASS with declared breaks** | **PASS with declared breaks** | See the table below — this is FR-020. |
@@ -127,7 +127,9 @@ principle rests on, is a redefinition — not "materially expanded guidance"
 
 **Sequencing constraint**: the amendment must be the **first** implementation
 commit. Until it lands, any commit that edits specification text alongside a
-behaviour change violates IV as currently written.
+behaviour change violates IV as currently written. The full leaf ordering
+(what else rides in that first commit, and what must land last) is stated
+once, in Contract 09 § Leaf ordering (pass 25).
 
 ### Principle V — no new runtime dependency, no second leaf type
 
@@ -231,7 +233,7 @@ src/syml/
 ├── serializer.py         # NEW — §11.2 dumps/dump, quoting table, unrepresentables
 ├── exceptions.py         # §11.3 — seven classes with named attributes
 ├── basetypes.py          # Source, Pos (original-text coordinates)
-└── utils.py              # line access, LF-only (str.splitlines() removed)
+└── utils.py              # DELETED (Contract 01, pass 25): no caller left in src/
 
 tests/
 ├── test_preprocess.py    # NEW
@@ -241,32 +243,40 @@ tests/
 ├── test_serializer.py    # NEW
 ├── test_exceptions.py    # NEW
 ├── test_basetypes.py
-├── test_utils.py
+├── test_utils.py         # DELETED with utils.py (pass 25)
+├── test_api.py           # NEW — Contract 06: loads/load/parse (pass 25)
+├── test_fixture_escapes.py # NEW — the acceptance fixture decoder's rows (pass 25)
+├── fixture_escapes.py    # NEW helper, not collected — decode_fixture (pass 25)
+├── serialization_corpus.py # NEW helper, not collected — US7 CORPUS (pass 25)
 ├── test_spec_examples.py # NEW — extracts fenced syml blocks from the spec (R-08)
 └── tools/                # unchanged
 
 tests/acceptance/
-├── conftest.py           # + the shared escaped-string fixture decoder (R-05)
+├── conftest.py           # + the shared step calling tests/fixture_escapes.py (R-05, pass 25)
 └── test_us<nn>_<slug>.py # pytest-bdd bindings, marked `acceptance`
 
 specs/acceptance-specs/
 └── US<NN>-<slug>.feature # Gherkin, created by /sp:05-tasks
 
-docs/glossary.md          # four entries refreshed, four added (Contract 09)
-SYML-SPECIFICATION.md     # relabelled 1.0; §11.3, §13.4, §4.5 edits
-SYML-SPEC-REVIEW.md       # subject line updated
-CHANGELOG.md              # NEW (or README section) — migration notes (FR-015)
+docs/glossary.md          # seven entries refreshed, four added (Contract 09)
+SYML-SPECIFICATION.md     # relabelled 1.0; §11.3, §13.4, §4.5, §11.2.3 edits (Contract 09)
+SYML-SPEC-REVIEW.md       # title + subject: reviewed text was the pre-release draft (Contract 09)
+CHANGELOG.md              # NEW — migration notes (FR-015); pinned, not README (pass 25)
+README.md                 # + serializer section, link to CHANGELOG (Contract 09)
 todo.txt                  # retired (FR-016)
 pyproject.toml            # version = "1.0.0"
-.specify/memory/constitution.md  # amended to v2.0.0 (FR-019)
+.specify/memory/constitution.md  # amended to v2.0.0 (FR-019); III's stale parenthetical too (pass 25)
+CLAUDE.md                 # principle-IV restatement + pragma bullet first; "conforms" last (Contract 09)
+.claude/skills/pytest-unit-testing/SKILL.md  # pragma section, first commit (Contract 09, pass 25)
+.claude/skills/{beads-task-chains,compound}/SKILL.md  # todo.txt references, with FR-016
 ```
 
 **Module homes and import direction (red-team pass 17).** Every helper a
 contract calls has exactly one home, and runtime imports run one way only.
 In dependency order — `basetypes`, `exceptions`, `preprocess`, `nodes`,
 `parsers`, `serializer`, `__init__` — each module imports at run time only
-modules listed before it (plus `utils` and `quoting`, which import nothing
-from `syml`). A name used only in an annotation from a module further
+modules listed before it (plus `quoting`, which imports nothing from
+`syml`; `utils` is deleted, pass 25). A name used only in an annotation from a module further
 right is imported under `if TYPE_CHECKING:`.
 
 | Module | Defines (new or changed) |
@@ -276,7 +286,7 @@ right is imported under `if TYPE_CHECKING:`.
 | `preprocess.py` | `PositionMap`, `Document`, `preprocess`, `split_lines_lf`, `is_blank`, `original_line`, `encoding_error` |
 | `quoting.py` | `decode_single_quoted`, `decode_double_quoted`, `diagnose_malformed`, `QuotedStringDefect` |
 | `nodes.py` | the node classes; `fail_to_incorporate_node` |
-| `parsers.py` | `GRAMMAR` (the transcribed §4.1 `Grammar`), `SymlParser`, `parse`, `find_first`, `raise_trailing_content` |
+| `parsers.py` | `GRAMMAR_TEXT` (the transcribed §4.1 text, pass 25), `GRAMMAR` (`Grammar(GRAMMAR_TEXT)`), `SymlParser`, `parse`, `find_first`, `raise_trailing_content` |
 | `serializer.py` | `dumps`, `dump`, `structure_matches`, `key_is_representable` |
 
 `Line` and `pos_at` sit in `basetypes.py`, not `preprocess.py`, because
@@ -464,16 +474,50 @@ the unit run both deselects that marker and `--ignore`s the directory.
    inline step text arrives raw (verified with the installed parser). A cell
    `a\\: b` would reach the decoder as `a\: b`: double-decoded or rejected.
    Fixtures live only in inline step strings, decoded exactly once.
+   **Where the decoder lives, and what tests it (pass 25).** Placed in
+   `tests/acceptance/conftest.py`, the "anything else raises" rule would run
+   under no test at all: the unit run `--ignore`s that directory, coverage
+   omits `conftest.py` and measures only `src/` and `tools/`, and an
+   acceptance scenario only ever feeds it valid fixtures. It lives in
+   `tests/fixture_escapes.py` (`decode_fixture(s: str) -> str`; not collected,
+   inside the mypy file set), imported by the acceptance conftest's shared
+   step, with `tests/test_fixture_escapes.py` in the unit run asserting the
+   eight rows above and a `ValueError` for an unknown escape (`\q`) and a
+   trailing lone backslash.
+   **The empty document needs its own binding (pass 25).** US00's step
+   pattern, `parsers.parse('a SYML document containing "{text}"')`, cannot
+   match `""`: `parse`'s `{text}` needs at least one character, so
+   `Given a SYML document ""` fails as `StepDefinitionNotFoundError`, which
+   is also the ATDD RED marker and so reads as "not bound yet" (verified
+   against pytest-bdd 8.1.0). Bind the shared step with
+   `parsers.re(r'a SYML document "(?P<text>.*)"')`, or write US4.2 as
+   `Given the empty document`. Escapes (`\"`, `\\`, `\x20`, `\ufeff`), a
+   leading `#` inside the step string, and corpus-id outlines were all
+   verified to bind as described.
 2. **US7 scenario 1 is a property, not an example.** `loads(dumps(x)) == x` over
    a representable corpus: write it as a `Scenario Outline` whose `Examples:`
-   rows carry **corpus identifiers** that index a shared Python corpus fixture
-   (Contract 07 lists what the corpus must contain), not the strings themselves
-   and not one row. Pass 4 added backslash-bearing entries (`a\: b`,
+   rows carry **corpus identifiers** that index a shared Python corpus
+   (Contract 07 lists what the corpus must contain, and pins its home as the
+   module `tests/serialization_corpus.py`, not a fixture; pass 25), not the
+   strings themselves and not one row. Pass 4 added backslash-bearing entries (`a\: b`,
    `a: 'b" \c`) that note 1's cell hazard would corrupt.
 3. **US9's nine scenarios are repository-inspection steps**, not parser tests —
    they bind against file contents, `importlib.metadata.version('syml')`, and
    `git tag --list`. They belong in the acceptance suite, where a non-parser
    Given/When/Then reads naturally, rather than in the unit run.
+   Shelling out trips ruff in `tests/`, whose per-file ignores are only
+   `S101`, `D1`, `INP001`, `ARG001`: `import subprocess` is `S404` (preview),
+   the call is `S603`, and a bare `git` is `S607` (pass 25). The US9 binding
+   and Contract 02's `python -W error -c "import syml"` test take line-level
+   `noqa`s with the justification `tools/` already records, rather than a
+   directory-wide ignore.
+
+**Random order (pass 25).** `just acceptance` runs `-p no:random_order`, so
+the acceptance fixture rules never meet a shuffled order. They would
+survive one: the `context` fixture is function-scoped and nothing else
+carries state (verified with forced seeds). The unit suite does run
+shuffled; an assembly of every Contract 01-08 test obligation passed
+under five `--random-order-seed`s with no order dependence.
 
 **Separately from the ATDD loop** (R-08): `tests/test_spec_examples.py` runs in
 the ordinary unit suite and parametrizes every fenced ` ```syml ` block in
@@ -1509,6 +1553,97 @@ fixes.
   explicitly (§ Coverage) and adds a test obligation (a `from_text` call with
   no `substring`).
 
+### Pass 25 (2026-09-23, outer iteration 15): the test obligations as one suite
+
+Pass 23 ran coverage over tables and corpora; this pass ran it over the
+**obligations**. The Contract 01-08 code blocks were rebuilt into a scratch
+package (pass 23's assembly, unchanged in code by pass 24), with
+`# pragma: no cover` on the `if TYPE_CHECKING:` lines only. Every "Test
+obligations" bullet of Contracts 01-08 was then written as a pytest module
+under plan.md's test-file names: 406 tests. They ran under this repo's
+addopts (`--cov` with `branch = true`, `--random-order`, `--strict-markers`,
+`--strict-config`) with five `--random-order-seed`s, and mypy ran over the
+tests with this repo's settings. A throwaway pytest-bdd 8.1.0 project checked
+the acceptance strategy against the installed parser. Sanity for the two
+standing targets: `GRAMMAR['line'].match('k: "a" x').end == 7` of 8 (R-09),
+and `a\r\r\nb\r` has `crlf_indices == (2,)` and three breaks (R-02).
+
+No Critical or High finding. No obligation depends on test order. The
+recursion obligations keep their margins (block 400/500 against 481, inline
+50/200 against 118). Spec extraction finds 53 blocks under `**Output:**` and
+54 under a looser `**Output …:**` match, with no mismatch either way.
+
+- **The obligations alone do not reach 100% branch coverage (Medium,
+  Coverage).** Verified. Four sites were left: `load`'s
+  `if filename is None:` false arm (no obligation passes `filename` to
+  `load`), `Source.from_text`'s `substring` arm, its no-match `raise
+  ValueError`, and `Source.__repr__`. Today's `tests/test_basetypes.py` covers
+  the last three, but by whole-`Source` `==`, which Contract 08 says must go,
+  and nothing said to keep them. **Mitigation**: Contract 06 adds an
+  explicit-`filename` obligation. Contract 08 adds the three `basetypes`
+  obligations, keeps `Source + 5` → `TypeError`, pins
+  `from_str_index`'s past-end clamp (the existing test's expected line
+  becomes 7 under LF-only counting), and notes the `# type: ignore[index]`
+  that `{src: 1}["foo"]` needs under mypy (verified).
+- **A Contract 07 row contradicted rule D (Medium, Congruence).** The
+  list-item table gave `a: b` as a mapping value as `k: 'a: b'`. Rule D
+  exempts a mapping's inline value and no other rule applies, so a correct
+  `dumps` emits `k: a: b`, which loads back as `{'k': 'a: b'}`. The row
+  failed on the assembly. "Every row" was an obligation, so a worker would
+  either write a failing test or make `dumps` over-quote to pass it.
+  **Mitigation**: the row is corrected, and the table is now an explicit
+  obligation.
+- **`rg 'splitlines' src/` fails on the contracts' own code (Medium).**
+  Contract 01's `split_lines_lf` docstring, Contract 05's `original_line`
+  docstring, and Contract 08's `__add__` comment all name the method in order
+  to forbid it. A verbatim transcription fails the check (verified).
+  **Mitigation**: Contract 01 checks for a `.splitlines` call over the AST.
+  That passes on the transcription and fails on a real call.
+- **Worker guidance teaches the pragma the contracts forbid (Medium).**
+  Constitution III's parenthetical, `CLAUDE.md` § Conventions, and the
+  `pytest-unit-testing` skill all point to "the established pattern in
+  `nodes.py` and `parsers.py`". The skill's worked example is
+  `SymlNode.as_data` with `# pragma: nocover`, the exact stub Contract 03
+  tests directly and the permanent `rg` test rejects. **Mitigation**:
+  Contract 09 moves all three into the first commit. III keeps its
+  permission and drops only the file pointer. This plan's Principle III row
+  now says that the feature's rule is stricter.
+- **Hand-off gaps a task generator would have had to guess (Medium).**
+  (a) `utils.py`: "replaced" allowed either a rewrite or a deletion. Neither
+  helper keeps a caller, so `utils.py` and `tests/test_utils.py` are
+  deleted, `split_lines_lf` stays the one splitter, and migration note 16
+  records it (Contracts 01, 09). (b) Contract 06 had no test file, so it
+  now goes in `tests/test_api.py`. (c) US7's "shared corpus fixture" could
+  not be shared: US7's binding is under the ignored `tests/acceptance/` and
+  `test_serializer.py` cannot see a fixture from there. It is now the module
+  `tests/serialization_corpus.py` (Contract 07). (d) The fixture decoder's
+  "anything else raises" ran under no test, so it moves to
+  `tests/fixture_escapes.py` with unit tests (Acceptance Test Strategy note
+  1). (e) The ordering constraints were stated in three places and did not
+  cover `todo.txt`'s deletion or the pragma guidance. They are now one list,
+  Contract 09 § Leaf ordering.
+- **Low.**
+  - `Given a SYML document ""` cannot bind to US00's `parsers.parse` step
+    pattern, and the failure is `StepDefinitionNotFoundError`, the RED
+    marker. Verified. Note 1 now gives the `parsers.re` binding.
+  - Contract 09: `CHANGELOG.md` is pinned, so US9.3's binding has one file
+    to read. README's serializer section, which Contract 07 and R-06 cite,
+    is now listed as a deliverable. `SYML-SPEC-REVIEW.md`'s title and
+    subject already say "v1.0", so its required end state is now spelled
+    out. Three more glossary entries go stale (Line node, Indentation
+    level, `Pos`). Two skills name `todo.txt`. No template is affected.
+  - Migration note 16 covers the node-tree internals reachable through
+    `parse` (`level` semantics, `set_level`, the `doc` argument,
+    `KeyLeafNode.key`) and `syml.utils`.
+  - Contract 02 names `GRAMMAR_TEXT`, so the smoke test can recompile the
+    shipped grammar under an error filter without `importlib.reload`. A
+    reload would swap `GRAMMAR` under other tests in random order.
+  - Tests that shell out trip ruff `S404`/`S603`/`S607`, and `tests/`
+    ignores none of them. They take line-level `noqa`s (note 3).
+  - `just acceptance` passes `-o addopts=""` and so drops
+    `--strict-markers`. An unregistered `@feature-exit` there is a warning,
+    not an error. Registration stays (Contract 09).
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
@@ -1542,6 +1677,10 @@ fixes.
    root scalar, or a first root-mapping key, that begins with U+FEFF. That
    adds a normative condition to §11.2.3/§11.2.4, so it is left for the
    principal.
+6. **Should 1.0 change the `Development Status` classifier?** `pyproject.toml`
+   says `4 - Beta`. FR-014 pins only `version`, so Contract 09 leaves the
+   classifier unchanged. Moving to `5 - Production/Stable` is a release
+   judgement, not a conformance question (pass 25).
 
 ## Complexity Tracking
 

@@ -195,7 +195,7 @@ its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the
 | `a:b` | `- a:b` (no rule requires quoting, so no re-lex) |
 | `k: "a" x` | `- "k\u003a \"a\" x"` (rule D by prefix match; the single-quoted form strands) |
 | `""` (empty) | `-` (rule A; never re-lexed) |
-| `a: b` as a mapping value | `k: 'a: b'` (unaffected) |
+| `a: b` as a mapping value | `k: a: b` (unaffected, and **unquoted**: rule D exempts a mapping's inline value and no other rule applies; `loads('k: a: b')` is `{'k': 'a: b'}`) |
 
 ## Format choices (R-06) — implementation, not spec
 
@@ -359,8 +359,21 @@ loads(dumps(x)) == x     for every representable x
 
 Every value outside the representable set raises `UnrepresentableValueError`
 (or `TypeError` for a non-SYML type). US7.1 is a property over a corpus; plan
-it as a Scenario Outline with a shared corpus fixture, not as ten hand-written
+it as a Scenario Outline with a shared corpus, not as ten hand-written
 rows.
+
+**Where the corpus lives (pass 25).** A pytest fixture cannot be shared
+here: US7's binding sits under `tests/acceptance/`, which the unit run
+`--ignore`s, and `tests/test_serializer.py` cannot see a fixture defined in
+that directory's `conftest.py`. The corpus is therefore a plain module,
+`tests/serialization_corpus.py`, holding `CORPUS: dict[str, SymlInput]`
+(identifier → value) and `UNREPRESENTABLE: dict[str, object]` (the raising
+set, including the six keys named below). `tests/test_serializer.py`
+parametrizes over every `CORPUS` entry, so an entry is never covered only by
+acceptance. US7.1's `Examples:` rows name `CORPUS` keys, and the binding
+indexes `CORPUS[corpus_id]`, so a stale identifier fails with `KeyError`
+instead of passing. The module is not collected (its name does not start
+with `test_`) and is inside the mypy file set.
 
 **Corpus must include**: the empty string; strings with leading/trailing space
 and tab; strings containing `\n`, `\r`, NUL, and other C0 controls; strings
@@ -399,6 +412,9 @@ blank lines between top-level keys.
   string.
 - The re-lex runs only on quoted renderings: `dumps(["hello", ""])` is
   `- hello\n-\n`.
+- Every row of the list-item table above, asserted on `dumps` output
+  (pass 25: the mapping-value row read `k: 'a: b'` until then, which
+  contradicts rule D's exemption and fails against a correct `dumps`).
 - `dumps(['- ' * 200 + 'x'])` round-trips and `dumps('- ' * 200 + 'x')` raises
   `UnrepresentableValueError`; neither raises `RecursionError`.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.

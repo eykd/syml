@@ -64,7 +64,7 @@ with every leaf and every key a `Source` instead of a `str` (US8.1).
 | `Source.__add__` | dead `return self + other.text` after a `return`; the `str` branch's `end.index` omits the joining `\n`, `Source + ''` raises `IndexError`, and line counting goes through `splitlines()` | dead `return` deleted (`todo.txt` B3, FR-017). The `str` branch counts the joining `\n` and splits on `\n` only (below). **No parse path calls `__add__`**: `TextLeafNode.as_source()` builds its `Source` directly (Contract 03) |
 | `Source.__eq__` | `str(self) == str(other)`: `Source('1') == 1` and `Source('None') == None` are `True`, with unequal hashes | `str` and `Source` only; anything else is `NotImplemented`, so `Source('1') == 1` is `False` (pass 20) |
 | `Source.from_node` | `(pnode, filename)`; positions via `Pos.from_str_index(pnode.full_text, …)` | `(pnode, line, position_map, filename)`; positions via `pos_at` + `to_original` |
-| `Pos.from_str_index` | line/column by `utils.split_lines` (`splitlines`); also used by `nodes.fail_to_incorporate_node` on `pnode.full_text` | kept (with `Source.from_text`, which the existing tests use) but counts `\n` only (§13.3); **never** used for parse positions — on a per-line `full_text` it would report line 1 for every node. `OutOfContextNodeError` / `DuplicateKeyError` take their `position` from the node's stored `Source.start` |
+| `Pos.from_str_index` | line/column by `utils.split_lines` (`splitlines`); also used by `nodes.fail_to_incorporate_node` on `pnode.full_text` | kept (with `Source.from_text`, which the existing tests use) but counts `\n` only (§13.3) by counting in `text[:index]` itself, not through `utils` (deleted, Contract 01, pass 25); an index past the end clamps to `len(text)`; **never** used for parse positions — on a per-line `full_text` it would report line 1 for every node. `OutOfContextNodeError` / `DuplicateKeyError` take their `position` from the node's stored `Source.start` |
 
 ## Original-text coordinates (FR-013, R-02)
 
@@ -219,6 +219,29 @@ always passes `substring` left it unreached.
   (pass 23 widened this from `nodes.py` alone; Contract 03 § Coverage
   without pragmas lists what replaces each of today's pragmas).
 - `Source.from_text(text)` called with no `substring` (no pragma).
+- The rest of `basetypes.py` that no parse path reaches, each asserted
+  directly (pass 25: an assembly of Contracts 01-08 run under this repo's
+  branch coverage over **only** the obligations listed in Contracts 01-08
+  left exactly these uncovered, plus Contract 06's explicit-`filename`
+  branch). Today's `tests/test_basetypes.py` covers the first three, but by
+  whole-`Source` `==`, so each is rewritten to compare fields, not dropped:
+  - `Source.from_text(text, substring)` with a `substring`, asserting
+    `.start`/`.end` field by field (the `substring is None` false arm);
+  - `Source.from_text('foo', 'bar')` raises `ValueError` (no match);
+  - `repr()` of a `Source` with and without a `filename`;
+  - `Source + 5` raises `TypeError`. Today's explicit `raise TypeError`
+    after the `str` and `Source` branches stays; only the dead `return`
+    above it goes (FR-017).
+- `{src: 1}["foo"] == 1` is a mypy `index` error in the type-checked test
+  module (`dict[Source, int]` indexed by `str`; verified, pass 25), so it
+  carries `# type: ignore[index]`, as today's test does. §10.3's
+  interchangeability holds at run time and is not expressible to mypy.
+- `Pos.from_str_index(text, i)` with `i > len(text)` clamps to `len(text)`
+  and counts it the same way (pass 25). Today's
+  `test_returns_last_line_and_first_column_of_bad_index` text ends in `\n`,
+  so LF-only counting puts its end at line 7, column 0, where 0.6.2's
+  `splitlines(keepends=True)` walk said line 6. The test's expected line
+  changes to 7 with the counting; it is not a regression.
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,
