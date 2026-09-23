@@ -56,7 +56,10 @@ documents beyond the documented nesting limitation (SC-005, spec Edge Cases).
 
 ```python
 def load(file_obj, filename=None):
-    raw = file_obj.read()
+    try:
+        raw = file_obj.read()                   # a text handle decodes here
+    except UnicodeDecodeError as err:
+        raise EncodingError(...) from err       # R-04 over (err.object, err.start)
     if isinstance(raw, bytes):
         try:
             text = raw.decode('utf-8')          # strict: no errors= substitution
@@ -65,7 +68,8 @@ def load(file_obj, filename=None):
     else:
         text = raw
     if filename is None:
-        filename = getattr(file_obj, 'name', None)
+        name = getattr(file_obj, 'name', None)
+        filename = name if isinstance(name, (str, os.PathLike)) else None
     return loads(text, filename=filename)
 ```
 
@@ -79,13 +83,34 @@ both satisfy the protocol without inheriting from `TextIOBase`.
 | `open(p, 'rb')` | valid UTF-8 | identical to the text handle (US5.5) |
 | `open(p, 'rb')` | invalid UTF-8 | `EncodingError` (US5.6) |
 | `io.BytesIO(b'\xff\xfe')` | invalid | `EncodingError` |
+| `open(p, encoding='utf-8')` (text) | invalid UTF-8 | `EncodingError` — not the `UnicodeDecodeError` that `read()` raises |
 
-**Invariant (FR-010, US5.6)**: no U+FFFD replacement character and no unpaired
-surrogate appears in any result. `errors='replace'`, `errors='surrogateescape'`,
-and `errors='ignore'` are all forbidden — §11.1 names them.
+**Invariant (FR-010, US5.6)**: when `load` decodes bytes itself, it never
+substitutes: no U+FFFD replacement character and no unpaired surrogate enters a
+result that was not spelled in the input. `errors='replace'`,
+`errors='surrogateescape'`, and `errors='ignore'` are all forbidden — §11.1
+names them. The invariant is scoped to bytes `load` decodes: a valid UTF-8 file
+may legitimately contain U+FFFD, and a caller's own text handle opened with
+`errors='replace'` has substituted before `load` is called.
+
+**Text handles over invalid bytes (red-team pass 5).** A text handle decodes
+inside `read()`, so invalid bytes surface as `UnicodeDecodeError` from `load`'s
+first line — a non-`ParseError` escaping `load`, which FR-009 forbids and which
+disagrees with the `'rb'` row. `load` therefore wraps `read()` and raises
+`EncodingError`. `TextIOWrapper.read()` with no size decodes everything from the
+handle's position in one call, so `err.object` is those bytes and `err.start` a
+byte offset into them; R-04's derivation (Contract 05) applies unchanged. Verified
+on a 30 KB file: `err.object` is the whole file and `err.start` the offending
+byte's file offset. A handle already partly read reports positions relative to
+where `read()` began — the same caveat as the newline table below.
 
 `filename` defaults to `file_obj.name` when present (§11.1); a `BytesIO` has no
-`.name`, so `None` is the fallback.
+`.name`, so `None` is the fallback. `.name` is not always a path:
+`tempfile.TemporaryFile()` and `open(fd)` expose an **int** file descriptor
+(verified: `TemporaryFile('w+').name == 3`), and `getattr` hands mypy an `Any`,
+so the type checker cannot catch it. Only a `str` or `os.PathLike` name is used;
+anything else falls back to `None`, keeping `Source.filename` and every
+`ParseError` message within `StrPath | None`.
 
 ### Positions from text handles are in newline-translated text
 
@@ -96,11 +121,13 @@ text, not the file on disk that FR-013 targets. `line` and `column` still
 agree with the file, because the translation is one break for one break.
 `load` cannot recover the original, so this is documented rather than fixed:
 `load`'s docstring and the FR-015 migration notes say that editor-grade
-`Pos.index` values need a binary handle or `open(p, newline='')`.
+`Pos.index` values need a binary handle or `open(p, encoding='utf-8',
+newline='')` — the explicit encoding matters too, because the locale default is
+not UTF-8 everywhere (Windows before Python 3.15).
 
 | Handle over `b"a: b\r\nc: d"` | `Pos.index` of key `c` |
 | --- | --- |
-| `open(p, 'rb')` | 6 (on-disk offset) |
+| `open(p, 'rb')` | 6 (code-point offset into the decoded file; equals the byte offset only for ASCII) |
 | `open(p, newline='')` | 6 |
 | `open(p)` | 5 (translated text), `line` 2, `column` 0 |
 
@@ -124,6 +151,11 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
 - `load` with `StringIO`, `BytesIO`, a real text handle, and a real binary
   handle over the same content, asserting equal results.
 - `filename` propagation into `Source.filename` and into `ParseError.message`.
+- A handle whose `.name` is an `int` (`tempfile.TemporaryFile`) yields
+  `Source.filename is None`.
+- A UTF-8 text handle over invalid bytes raises `EncodingError` (not
+  `UnicodeDecodeError`) with the same `Pos` as the binary handle over the same
+  file.
 - The three-handle table above over a real CRLF file on disk, pinning that
   `as_data()` is equal across all three while `Pos.index` differs for the
   default text handle.

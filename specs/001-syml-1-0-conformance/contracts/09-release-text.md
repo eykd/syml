@@ -49,8 +49,11 @@ user-visible change from 0.6.2 (US9.3, SC-006):
 8. Parsimonious exceptions no longer escape; everything is a `ParseError`
 9. `ParseError` gains `.message` / `.position` / `.line_text`
 10. `Pos` coordinates now refer to the **original** text
-11. `load()` accepts binary streams; invalid UTF-8 → `EncodingError`
-12. New: `dumps`, `dump`
+11. `load()` accepts binary streams; invalid UTF-8 → `EncodingError`, from a
+    text handle too (Contract 06). `Pos.index` from a default `open(p)` text
+    handle is an offset into newline-translated text; editor-grade positions
+    need `open(p, 'rb')` or `open(p, encoding='utf-8', newline='')`
+12. New: `dumps`, `dump`, and `parse` promoted to a public export (§11.2)
 13. Known limitation: deep nesting raises the host `RecursionError` — past
     roughly 500 levels of **block** nesting (one level per line), but past
     only roughly 120 levels of **inline** nesting on a single line
@@ -103,7 +106,9 @@ must read it, not move it.
 ## FR-018 — release-ready, not released
 
 No `1.0.0` git tag; no distribution built or uploaded (US9.9). Publishing is a
-manual step after merge.
+manual step after merge, and its first action is a commit removing the
+`@feature-exit` scenarios (US9.1, US9.9 — see Test obligations) so that CI on
+the tagged commit stays green.
 
 ## FR-019 — constitution amendment
 
@@ -118,7 +123,10 @@ Amendment Procedure and Versioning Policy (US9.7). Required changes:
    before implementing against it" to permit a specification edit landing in the
    **same commit** as the behaviour change that exposed it.
 4. Keep the citation duty (every behaviour change cites a decision record). With
-   `todo.txt` retired, citations point at D1–D17 and at this feature's FR-NNN.
+   `todo.txt` retired, citations point at `SYML-SPEC-REVIEW.md`'s records — the
+   D1–D17 decisions **and** the B- and M-numbered findings plan.md's Spec
+   Conformance table already cites (B4, M12, M19, …) — and at this feature's
+   FR-NNN. Naming only "D1–D17" would leave those citations unrecognized.
 
 **Version bump**: **2.0.0** (MAJOR). The constitution's own Versioning Policy
 says MAJOR is for "backward-incompatible principle removals or **redefinitions**".
@@ -133,6 +141,11 @@ principle IV as currently written.
 
 Also required by the Amendment Procedure: identify affected templates
 (`.specify/templates/*`) and update `CLAUDE.md` (which FR-016 already touches).
+In the first commit, `CLAUDE.md` changes only to stop restating principle IV's
+old wording; the statement that the parser **conforms** lands with FR-016 at
+the end of the feature, when it is true. Rewriting "Spec vs. implementation" in
+the first commit would tell every worker in between that an unconformed parser
+matches the specification.
 
 ## FR-020 — Constitution Check
 
@@ -144,3 +157,20 @@ US9's nine scenarios are **repository-inspection** steps, not parser tests. They
 bind against file contents, `importlib.metadata.version('syml')`, and
 `git tag --list`. Keep them in the acceptance suite (`just acceptance`), where a
 non-parser Given/When/Then reads naturally, rather than in the unit run.
+
+### Two scenarios are true only until release (red-team pass 5)
+
+US9.1 (`version == 1.0.0`) and US9.9 (no `1.0.0` tag) describe the state "at
+the end of this feature", but `just acceptance` runs in CI on **every** push —
+`on: push`, which includes tag pushes, with `fetch-depth: 0`, so tags are
+present. Bound as permanent assertions, US9.9 turns CI red on the very commit
+that is tagged for release, and US9.1 turns it red on the first 1.0.1 bump.
+
+- Tag both scenarios `@feature-exit` in the `.feature` file, and register the
+  marker in pyproject (`--strict-markers`).
+- FR-018's manual release step starts by removing those two scenarios and their
+  bindings in a commit **before** creating the tag, so the tagged commit's CI
+  run does not carry them (recorded under FR-018 above).
+- US9.1 reads `pyproject.toml` with `tomllib` as well as
+  `importlib.metadata.version('syml')`, so an installed-metadata version that
+  lags an edited `pyproject.toml` cannot mask a wrong file.

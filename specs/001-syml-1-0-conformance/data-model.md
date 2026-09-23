@@ -203,7 +203,7 @@ registers is the node's own column (R-11), which is what makes
 | --- | --- | --- |
 | `filename` | `StrPath \| None` | |
 | `start`, `end` | `Pos` | original-text coordinates |
-| `text` | `str` | the decoded value — quoted values carry the **decoded** text, not the raw source slice |
+| `text` | `str` | the decoded value — quoted values carry the **decoded** text, not the raw source slice; their `start`/`end` span the raw token from opening to closing quote (Contract 08) |
 
 **Equality/hash**: by `text` only, unchanged (R-07, §10.3). The
 `# pragma: no cover` on `__hash__` is removed and it is tested. The dead

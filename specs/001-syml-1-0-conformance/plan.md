@@ -385,10 +385,20 @@ the unit run both deselects that marker and `--ignore`s the directory.
    it with an explicit, audited unescape table — **not** `codecs.decode(...,
    'unicode_escape')`, which round-trips through latin-1 and mangles the
    non-ASCII content US2/US3/US8 fixtures require. No triple-quoted docstring
-   arguments anywhere.
+   arguments anywhere. The decoder **raises** on any backslash sequence not in
+   its table, so a mangled fixture fails loudly instead of loading as something
+   else. **SYML text never goes in an `Examples:` table cell**: gherkin-official
+   (29.0.0, pinned via pytest-bdd 8.1.0) unescapes cells before pytest-bdd
+   substitutes them — `\\` becomes `\`, `\n` a real newline, `\|` a `|` — while
+   inline step text arrives raw (verified with the installed parser). A cell
+   `a\\: b` would reach the decoder as `a\: b`: double-decoded or rejected.
+   Fixtures live only in inline step strings, decoded exactly once.
 2. **US7 scenario 1 is a property, not an example.** `loads(dumps(x)) == x` over
-   a representable corpus: write it as a `Scenario Outline` over a shared corpus
-   fixture (Contract 07 lists what the corpus must contain), not as one row.
+   a representable corpus: write it as a `Scenario Outline` whose `Examples:`
+   rows carry **corpus identifiers** that index a shared Python corpus fixture
+   (Contract 07 lists what the corpus must contain), not the strings themselves
+   and not one row. Pass 4 added backslash-bearing entries (`a\: b`,
+   `a: 'b" \c`) that note 1's cell hazard would corrupt.
 3. **US9's nine scenarios are repository-inspection steps**, not parser tests —
    they bind against file contents, `importlib.metadata.version('syml')`, and
    `git tag --list`. They belong in the acceptance suite, where a non-parser
@@ -602,6 +612,37 @@ findings below are where the written contract departs from it.
   literal text `:` — silent corruption. Contract 07's corpus had no
   backslash, so that ordering bug would pass SC-003. Added to the corpus:
   `a\: b`, `:` as literal text, and `a: 'b" \c` — each as a list item.
+
+### Pass 5 (2026-09-23, outer iteration 4): load API, source tracking, release text
+
+Aimed at the surfaces iterations 1–3 had not attacked. No Critical or High
+finding. R-09's stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r`
+boundaries were not reopened by anything below.
+
+- **Quoted-value spans contradicted the span property (Medium, Congruence).**
+  data-model §4 makes a quoted value's `Source.text` the decoded string;
+  Contract 08's property asserted `original[start:end] == text` for every
+  single-line node, which no quoted value with quotes or escapes can meet.
+  Contract 08 now pins the span as opening quote to past the closing quote
+  (the `MalformedQuotedStringError` anchor), and the property decodes the raw
+  slice for quoted nodes rather than excluding them.
+- **Gherkin `Examples:` cells are pre-unescaped (Medium).** See Acceptance Test
+  Strategy notes 1–2: SYML text stays out of table cells; US7's outline rows
+  name corpus entries.
+- **A text handle over invalid UTF-8 leaked `UnicodeDecodeError` (Medium).**
+  `read()` decodes, so the error escaped `load` before its bytes branch —
+  against FR-009. Contract 06 wraps `read()` and raises `EncodingError`; R-04's
+  derivation applies to `(err.object, err.start)`, verified on a real file. The
+  no-U+FFFD invariant is scoped to bytes `load` decodes itself.
+- **US9.1 and US9.9 go false at release (Medium).** CI runs `just acceptance`
+  on every push, tag pushes included, with tags fetched. Contract 09 tags both
+  `@feature-exit` and makes their removal the first step of the manual release.
+- **`file_obj.name` can be an int (Low).** `TemporaryFile().name` is a file
+  descriptor; Contract 06 accepts only `str` / `os.PathLike`.
+- **Contract 09 congruence (Low).** The migration notes gain the text-handle
+  position caveat and `parse`'s promotion; the amended citation duty names the
+  B/M records plan.md already cites; the first commit does not make
+  `CLAUDE.md` claim conformance ahead of FR-016.
 
 ### Open items for the principal (not applied)
 

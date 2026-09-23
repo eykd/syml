@@ -77,9 +77,9 @@ position is not affected. The rule:
    `\u003a`, controls → their escapes. Substituting `:` first and escaping `\`
    afterwards turns the inserted escape into `\\u003a`, which loads as literal
    text.
-   With no literal `:`, `key_colon` cannot match, and a line starting `- "`
-   cannot lex as `list_item` or a comment, so the value is a `quoted_value`
-   by construction.
+   With no literal `:`, `key_colon` cannot match, and a value starting `"`
+   cannot lex as a nested `list_item` or a comment, so the list item's value is
+   a `quoted_value` by construction.
 
 This is conformant as written: §11.2.1's single-quote rule is a preference and
 its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the

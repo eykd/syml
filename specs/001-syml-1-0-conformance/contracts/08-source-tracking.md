@@ -75,6 +75,19 @@ Contract 03 lands that detection (FR-007), which is what closes the collision
 hazard. No change to `__eq__`/`__hash__` is needed or wanted — weakening them
 would break the interchangeability §10.3 asks for.
 
+## Quoted-value spans (red-team pass 5)
+
+A quoted value's `text` is the **decoded** string (data-model §4), so its span
+cannot also slice to `text`: for `k: "a\nb"` the raw token is six characters and
+the decoded text three. Pinned:
+
+- `start` is the **opening quote** — the same anchor Contract 05 uses for
+  `MalformedQuotedStringError`, so an editor jumping to a value or to an error
+  on it lands on the same column.
+- `end` is just past the **closing quote** (exclusive), before any trailing
+  ` *`.
+- `text` is the decoded value, so `str(source) == node.as_data()` still holds.
+
 ## Continuation spans
 
 When a `TextLeafNode` absorbs a continuation line:
@@ -114,8 +127,12 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,
-  `original[start.index:end.index] == source.text`, over a corpus that includes
-  CRLF, bare-CR, and BOM documents. This is the test that catches an exclusive
+  `original[start.index:end.index] == source.text` for an unquoted value, and
+  `decode(original[start.index:end.index]) == source.text` for a quoted one
+  (the raw slice runs quote to quote), over a corpus that includes CRLF,
+  bare-CR, and BOM documents **and quoted values on CRLF lines**. Excluding
+  quoted values instead would leave `end` unchecked on exactly the lines where
+  it lands one before a collapsed break. This is the test that catches an exclusive
   `end` mapped with `bisect_right` (Contract 01) — the start-only property above
   cannot, because a token's `start` never lands on a collapsed break unless the
   token is empty.
