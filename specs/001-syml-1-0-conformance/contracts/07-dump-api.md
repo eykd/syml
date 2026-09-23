@@ -12,16 +12,42 @@
 # src/syml/serializer.py, re-exported from syml/__init__.py
 
 def dumps(data: SymlData) -> str:
-    """Serialize to SYML text. Raises UnrepresentableValueError, TypeError."""
+    """Serialize to SYML text, so that loads(dumps(x)) == x.
+
+    Raises UnrepresentableValueError for a SYML value with no encoding
+    (§11.2.2-.4) and TypeError for anything that is not str, list, or dict,
+    including a non-str mapping key.
+
+    Output format (an implementation choice, not conformance): two-space
+    indentation, no blank lines, exactly one trailing newline, keys in
+    insertion order. The empty string serializes to the empty document ''.
+    When quoting is required, single quotes are preferred. At a list-item
+    position, a quoted value that would re-read as a mapping is written
+    double-quoted with every ':' escaped as \\u003a. If the output would
+    begin with U+FEFF, one extra U+FEFF is prepended, because loads strips
+    exactly one leading mark."""
 
 def dump(data: SymlData, file_obj: IO[str]) -> None:
-    """Serialize to SYML and write it to a text stream. A lone surrogate in
-    any string is written literally (SYML has no escape for one); a UTF-8
-    stream then raises its own UnicodeEncodeError, not a SYML error. A file
-    reopened with encoding='utf-8-sig' loses one leading U+FEFF to the
-    codec and one to §9.0, so a value's own leading U+FEFF does not survive
-    that round trip."""
+    """Serialize with dumps, then write the whole result in a single write()
+    call. If dumps raises, nothing is written. A lone surrogate in any string
+    is written literally (SYML has no escape for one); a UTF-8 stream then
+    raises its own UnicodeEncodeError, not a SYML error. A file reopened with
+    encoding='utf-8-sig' loses one leading U+FEFF to the codec and one to
+    §9.0, so a value's own leading U+FEFF does not survive that round trip."""
 ```
+
+The two docstrings above are the text the rest of this contract points at
+("documented in the `dumps` docstring"). The doubled backslash in `\\u003a`
+is deliberate: in a non-raw docstring a single one would be decoded to `:`. Each sentence is covered by a section
+below (red-team pass 16 wrote them out in full).
+
+**`dump` serializes before it writes (red-team pass 16).** A streaming `dump`
+that writes line by line would, on `dump({'a': '1', 'b': {}}, fp)`, write
+`a: 1` and then raise on the empty mapping. A caller who catches the error
+is left with a file that loads, with no error, as `{'a': '1'}`. So `dump` is
+`file_obj.write(dumps(data))`, and an `UnrepresentableValueError` or
+`TypeError` leaves the stream untouched. Whether the *file* survives is the
+caller's business (`open(p, 'w')` has already truncated it).
 
 `dump` takes a **text** stream only. The asymmetry with `load` (which takes both)
 is deliberate: `load`'s widening answers an installed base of `open(p, 'rb')`
@@ -34,6 +60,7 @@ callers; there is no equivalent argument in the write direction, and
 | --- | --- |
 | `str`, `list`, `dict` (recursively) | serialized |
 | `int`, `float`, `bool`, `None`, anything else | `TypeError` |
+| a mapping key that is not a `str` (`{1: 'v'}`, `{None: 'v'}`, `{b'k': 'v'}`) | `TypeError`, raised by an explicit `isinstance(k, str)` check **before** `key_is_representable` (pass 16) |
 
 `UnrepresentableValueError` means "this *is* a SYML value, but it has no
 encoding in this version". A non-string leaf is not a SYML value at all, so it
@@ -130,6 +157,29 @@ quote-led line fails `structure` at its first character. So:
 - The rule-D probe (and §11.2.4(a)'s, per line) catches `RecursionError` and
   treats it as **"matches `structure`"**. Only a `- `-led string can recurse
   that deep, so this is exact, not a guess.
+- It also catches parsimonious's `ParseError` and treats it as **"does not
+  match"**. `Expression.match` raises that exception whenever nothing matches
+  at offset 0, which is every ordinary list item: `hello`, `#x`, `'a'`, and
+  the empty string all raise it (verified). A probe that caught only
+  `RecursionError` would let a third-party exception out of `dumps(['hello'])`
+  (red-team pass 16). The probe, in full:
+
+```python
+def structure_matches(s: str) -> bool:
+    """Rule D and §11.2.4(a): does any prefix of `s` lex as `structure`?"""
+    try:
+        GRAMMAR['structure'].match(s)            # prefix match, stranded or not
+    except RecursionError:
+        return True                              # only a `- `-led string gets this deep
+    except parsimonious.exceptions.ParseError:
+        return False                             # nothing matched at offset 0
+    return True
+```
+
+  The step-1 re-lex, `GRAMMAR['line'].match('- ' + rendered)`, needs neither
+  catch. `line` always matches, because `data` matches the empty string, and
+  a quoted rendering fails `structure` at its first character, so it is
+  shallow.
 - At a list-item position the value is then quoted; the quoted re-lex is
   shallow. At the root it is `UnrepresentableValueError` (condition a).
 - The **probe** never lets `RecursionError` escape. This does not extend to
@@ -195,6 +245,10 @@ the same way under either reading of "whitespace" (R-01). The parsimonious
 | e | is exactly `''` or `""` |
 
 The empty string **is** representable — as the empty document (§7.4).
+`dumps('')` is `''`, with no trailing newline. It is the one output the
+"exactly one trailing newline" format choice does not apply to (pass 16).
+`'\n'` would also load as `""`, but it is a one-blank-line document, not the
+empty one.
 
 ### A leading U+FEFF (red-team pass 14)
 
@@ -208,7 +262,7 @@ with `-`, and every later key follows a line break.
 
 **Rule**: after rendering, if the output's first character is U+FEFF,
 `dumps` prepends one U+FEFF. §9.0 strips exactly that one (Contract 01's
-`"﻿﻿key: v"` row), so the value's own mark survives, and idempotence holds
+`"\ufeff\ufeffkey: v"` row), so the value's own mark survives, and idempotence holds
 because `dumps` makes the same choice again. This is an output-format
 choice, not a spec edit. Raising `UnrepresentableValueError` instead is
 plan.md open item 5.
@@ -280,6 +334,16 @@ blank lines between top-level keys.
 - `dumps(['- ' * 200 + 'x'])` round-trips and `dumps('- ' * 200 + 'x')` raises
   `UnrepresentableValueError`; neither raises `RecursionError`.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
+- Non-`str` keys (`{1: 'v'}`, `{None: 'v'}`, `{True: 'v'}`, `{b'k': 'v'}`,
+  `{('a',): 'v'}`) → `TypeError` raised by `dumps` itself, not by `re`.
+- `structure_matches` returns `False` for `hello`, `#x`, `'a'`, `''`, and
+  `True` for `a: b`, `k:`, `-`, `k: "a" x`, and `'- ' * 200 + 'x'`.
+  `dumps(['hello', '#x', 'plain text'])` raises nothing from
+  `parsimonious.exceptions`. That package is never seen by a `dumps` caller,
+  for any value, not only for keys.
+- `dumps('') == ''`.
+- `dump` over a `StringIO` with `{'a': '1', 'b': {}}` raises
+  `UnrepresentableValueError` and leaves `getvalue() == ''`.
 - `key_is_representable` against the six control/space keys above (all
   `False`), `''` (`False`), `'#k'` and `'//k'` (`False`), and `'k'`,
   `'emoji🎉key'`, `"'a"` (all `True`). No parsimonious exception leaves

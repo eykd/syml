@@ -57,10 +57,10 @@ def pos_at(line: Line, offset: int) -> Pos:
 
 | Input | Normalized | Note |
 | --- | --- | --- |
-| `"﻿key: value"` | `"key: value"` | exactly one stripped; `bom_offset = 1` |
-| `"﻿﻿key: v"` | `"﻿key: v"` | second is ordinary content |
-| `"key: ﻿"` | unchanged | not at index 0 |
-| `"﻿"` | `""` | the empty document (§7.4) → `loads` returns `""` |
+| `"\ufeffkey: value"` | `"key: value"` | exactly one stripped; `bom_offset = 1` |
+| `"\ufeff\ufeffkey: v"` | `"\ufeffkey: v"` | second is ordinary content |
+| `"key: \ufeff"` | unchanged | not at index 0 |
+| `"\ufeff"` | `""` | the empty document (§7.4) → `loads` returns `""` |
 | `""` | `""` | |
 
 ### Step 2 — line endings (§9.0.2, §4.8)
@@ -132,7 +132,7 @@ numbering.
 
 | Input | Lines | Note |
 | --- | --- | --- |
-| `"a: b c\nx: y"` | `["a: b c", "x: y"]` | US2 scenario 7, US8 scenario 4 |
+| `"a: b\u2028c\nx: y"` | `["a: b\u2028c", "x: y"]` | US2 scenario 7, US8 scenario 4 |
 
 `src/syml/utils.py`'s `split_lines`/`get_line` currently call
 `str.splitlines()`; §13.3 forbids it by name. Both are replaced. This is a
@@ -151,7 +151,7 @@ to_original(Pos(index=i, line=l, column=c)) -> Pos(
 
 | Original | Normalized `Pos` | Original `Pos` |
 | --- | --- | --- |
-| `"﻿key: value"`, value `value` | `(5, 1, 5)` | `(6, 1, 6)` |
+| `"\ufeffkey: value"`, value `value` | `(5, 1, 5)` | `(6, 1, 6)` |
 | `"a: b\r\nc: d"`, key `c` | `(5, 2, 0)` | `(6, 2, 0)` |
 | `"a: b\r\nc: d"`, value `b`'s exclusive **end** | `(4, 1, 4)` | `(4, 1, 4)` — the `\r`, so `original[3:4] == "b"` |
 | `"k:␠\r\nx: y"`, the empty value of `k:␠` (start = end) | `(3, 1, 3)` | `(3, 1, 3)` — the `\r` |
@@ -185,6 +185,6 @@ to_original(Pos(index=i, line=l, column=c)) -> Pos(
 - Every row of every table above, as a unit test.
 - `rg 'splitlines' src/` finds nothing.
 - `to_original` round-trips against a brute-force reference implementation over
-  a generated corpus mixing BOM, CRLF, bare CR, and ` `.
+  a generated corpus mixing BOM, CRLF, bare CR, and `\u2028`.
 - The two `\r\r\n` and trailing-bare-`\r` rows are the red-team targets named in
   research.md's open items.

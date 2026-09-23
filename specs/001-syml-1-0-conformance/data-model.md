@@ -29,7 +29,7 @@ form; every position reported to a caller refers to the original.
   counting `\r\n` as one.
 - A second U+FEFF immediately after a stripped one is ordinary content and
   survives into `normalized` (spec Edge Cases).
-- `original == ''` and `original == '﻿'` both normalize to `''`, which is
+- `original == ''` and `original == '\ufeff'` both normalize to `''`, which is
   the empty document (§7.4) and yields `""`.
 
 ### 1a. PositionMap
@@ -106,7 +106,7 @@ SymlNode
 | `TextLeafNode` | `baseline` | `int \| None` | `None` until fixed; see 3.3 (D11). Assigned on attach (`None` if `inline`, else the leaf's own level; `0` for a root scalar), fixed by the first continuation for inline |
 | `TextLeafNode` | `quoted` | `bool` | a quoted inline value accepts no continuation (§9.3, D2); set by `visit_quoted_value` |
 | `ContainerNode` | — | — | "closed" is derived: `bool(self.children)` |
-| `Mapping` | — | — | duplicate-key check at `can_add_node` time (FR-007, §10.3) |
+| `Mapping` | `keys` | `dict[str, KeyValue]` | key text → the first `KeyValue` holding it, filled by `Mapping.add_node`; makes the duplicate-key check at `can_add_node` time (FR-007, §10.3) a lookup instead of an O(*n*) scan per key (Contract 03, red-team pass 16) |
 
 ### 3.2 Acceptance rules (§9.3), as the implementation must encode them
 

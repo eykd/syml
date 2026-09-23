@@ -67,10 +67,10 @@ arguments.
 
 | Original document | Value | `Pos` |
 | --- | --- | --- |
-| `"﻿key: value"` | `value` | index 6, line 1, column 6 — counting the mark (US8.2) |
+| `"\ufeffkey: value"` | `value` | index 6, line 1, column 6 — counting the mark (US8.2) |
 | `"a: b\r\nc: d"` | `d` | index 9 — counting the carriage return (US8.3) |
 | `"a: b\r\nc: d"` | `b` | start index 3, **end** index 4 (the `\r`, exclusive) — not 5 |
-| `"a: b c\nx: y"` | key `x` | **line 2** — U+2028 does not terminate a line (US8.4, gap #16) |
+| `"a: b\u2028c\nx: y"` | key `x` | **line 2** — U+2028 does not terminate a line (US8.4, gap #16) |
 
 The third row is why §13.3's `splitlines()` prohibition is a prerequisite rather
 than an optimization: today it reports line 3, and no remapping layer can fix a

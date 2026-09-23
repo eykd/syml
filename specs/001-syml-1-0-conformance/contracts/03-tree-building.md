@@ -194,19 +194,42 @@ raises `DuplicateKeyError` **immediately** and does **not** fall through to
 §9.2's walk-up:
 
 ```python
-def can_add_node(self, node: SymlNode, doc: Document) -> bool:
-    if not (isinstance(node, KeyValue) and node.level == self.level):
-        return False                                          # walk up; NO duplicate check
-    for child in self.children:
-        if child.key.as_data() == node.key.as_data():         # code-point compare
+class Mapping(ParentNode):
+    keys: dict[str, KeyValue]    # key text -> first KeyValue holding it (red-team pass 16)
+
+    def can_add_node(self, node: SymlNode, doc: Document) -> bool:
+        if not (isinstance(node, KeyValue) and node.level == self.level):
+            return False                                      # walk up; NO duplicate check
+        first = self.keys.get(node.key.as_data())             # exact str equality = code-point compare
+        if first is not None:
             position = node.source.start
             raise DuplicateKeyError(
                 error_message('Duplicate key', doc.filename),       # Contract 05
                 position, original_line(doc, position.line),
-                key=node.key.as_data(), first_position=child.source.start,
+                key=node.key.as_data(), first_position=first.source.start,
             )
-    return True
+        return True
+
+    def add_node(self, node: SymlNode) -> SymlNode:
+        self.children.append(node)
+        node.parent = self
+        self.keys[node.key.as_data()] = node                  # only KeyValues reach here
+        return node.get_tip()
 ```
+
+**The duplicate check is a dict lookup, not a scan (red-team pass 16).** A
+scan over `self.children` makes a flat mapping of *n* keys cost O(*n*²) key
+comparisons. Measured on a prototype of this contract: 8,000 keys load in
+0.5 s, 32,000 in 6 s, 64,000 (a 630 KB document) in 24 s, and a document at
+§13.4's deferred 10 MiB size would run for well over an hour. With §13.4's
+limits deferred past 1.0, nothing else bounds it, so a small hostile document
+is a CPU-exhaustion input. `keys` is filled only in `Mapping.add_node`, which
+runs only after `can_add_node` returned `True`, so it always holds exactly the
+mapping's children and the first occurrence is the one reported. Python `str`
+equality and hashing are code-point exact (no case folding, no normalization),
+which is §8.3's comparison. `keys` defaults to an empty dict
+(`field(default_factory=dict)`), so the intermediary construction in
+§ Automatic container creation below is unchanged.
 
 **The level gate comes first.** §9.3's table scopes the duplicate check to
 `new_node.level == mapping.level`. Scanning before the level test would
@@ -323,6 +346,10 @@ incorporates the node into it.
   `hello` (root) → anchor -1, baseline 0; after a continuation the tip is still
   the first leaf, never the continuation child.
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
+- `Mapping.can_add_node` never iterates `children` (pass 16): after a parse,
+  every `Mapping`'s `keys` equals `{c.key.as_data(): c for c in children}`,
+  and the third of three identical keys reports the **first** occurrence as
+  `first_position`. A timing assertion is not part of the unit suite.
 - Root-scalar head indentation (pass 13): `"  hello"` → `"  hello"`,
   `"  hello\nworld"` → `"  hello\nworld"`, and `"\ufeff  hello"` →
   `"  hello"` whose `as_source().start` is index 1, column 1 (the first

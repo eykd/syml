@@ -53,7 +53,10 @@ to PyPI.
 0.6.2. Per-line lexing replaces one whole-document parse with N line parses;
 Parsimonious's cost is dominated by per-token work, so this is expected to be
 roughly neutral. Not measured as an acceptance criterion — no FR or SC mentions
-throughput.
+throughput. Every per-line and per-key step must stay O(1) amortized, because
+§13.4's size limits are deferred and nothing else bounds input size. Red-team
+pass 16 found the duplicate-key scan quadratic and made it a dict lookup
+(Contract 03).
 **Constraints**: §13.4's implementation limits (max depth 500, max line 1 MiB,
 max document 10 MiB) and `DocumentLimitError` are **deferred past 1.0** by
 decision. Nesting past ~500 levels of block nesting — or only ~120 levels of
@@ -380,14 +383,35 @@ the unit run both deselects that marker and `--ignore`s the directory.
 **Three strategy notes for `sp:05-tasks`:**
 
 1. **Fixture encoding (R-05).** Every SYML document in a `.feature` file is a
-   single-line double-quoted string using escapes (`\n`, `\t`, `\r`, `\x20`,
-   `﻿`, ` `). A shared step in `tests/acceptance/conftest.py` decodes
-   it with an explicit, audited unescape table — **not** `codecs.decode(...,
-   'unicode_escape')`, which round-trips through latin-1 and mangles the
-   non-ASCII content US2/US3/US8 fixtures require. No triple-quoted docstring
-   arguments anywhere. The decoder **raises** on any backslash sequence not in
-   its table, so a mangled fixture fails loudly instead of loading as something
-   else. **SYML text never goes in an `Examples:` table cell**: gherkin-official
+   single-line double-quoted string using escapes. A shared step in
+   `tests/acceptance/conftest.py` decodes it with an explicit, audited
+   unescape table — **not** `codecs.decode(..., 'unicode_escape')`, which
+   round-trips through latin-1 and mangles the non-ASCII content US2/US3/US8
+   fixtures require. The table is exactly these eight sequences, and this list
+   supersedes the shorter one in research.md R-05 (pass 16):
+
+   | Sequence | Decodes to | Needed by |
+   | --- | --- | --- |
+   | `\n`, `\t`, `\r` | LF, TAB, CR | every multi-line fixture; US2.3–5, US3.5–6 |
+   | `\\` | one backslash | SYML-level escapes: US6.2 `'hello\\nworld'`, US6.7 `"a\\xb"` |
+   | `\"` | `"` | every double-quoted SYML value inside the double-quoted step string |
+   | `\xHH` | U+00HH | the canonical trailing space `\x20` (US3.2, US3.7, US4.4); `\x01` (US3.9) |
+   | `\uXXXX` | U+XXXX | `\ufeff` (US2.1–2, US8.2), `\u2028` (US2.7, US8.4), `\u00a0` |
+   | `\UXXXXXXXX` | U+XXXXXXXX | astral-plane content |
+
+   Anything else after a backslash **raises**, so a mangled fixture fails
+   loudly instead of loading as something else. R-05's list had no `\xHH`,
+   which would have rejected every `\x20` fixture, and an earlier version
+   of this note listed two literal, invisible characters where `\ufeff` and
+   `\u2028` were meant. The decoder is fixture plumbing, not SYML's
+   §4.7 decoder. `\ud800` therefore decodes to a lone surrogate without
+   complaint. No acceptance fixture needs one: US6.7's `"\\ud800"` is a
+   literal SYML escape, and the US7 corpus is Python (note 2).
+   **Two levels of escaping are visible in the source**. US6.7's document
+   `k: "a\xb"` (SYML text with a literal backslash) is written
+   `Given a SYML document "k: \"a\\xb\""`. US3.9's `a\x01b: v` (a real
+   U+0001) is written `"a\x01b: v"`.
+   **SYML text never goes in an `Examples:` table cell**: gherkin-official
    (29.0.0, pinned via pytest-bdd 8.1.0) unescapes cells before pytest-bdd
    substitutes them — `\\` becomes `\`, `\n` a real newline, `\|` a `|` — while
    inline step text arrives raw (verified with the installed parser). A cell
@@ -996,7 +1020,7 @@ column 2).
   list starts with `-`, and any later key sits after a line break.
   **Mitigation (Contract 07)**: when the rendered document's first
   character is U+FEFF, `dumps` prepends one U+FEFF. §9.0 strips exactly that
-  one (Contract 01's `"﻿﻿key: v"` row), so the value's own mark survives.
+  one (Contract 01's `"\ufeff\ufeffkey: v"` row), so the value's own mark survives.
   This needs no spec edit: the output format is an implementation choice,
   and the round-trip MUST is met. Raising `UnrepresentableValueError` was
   considered and not applied. It would be a new unrepresentable condition in
@@ -1031,6 +1055,74 @@ in the visitor and the tree, and `load`'s early resolution.
 - **`utf-8-sig` defeats the U+FEFF prefix (Low).** A file written by `dump`
   and reopened with `encoding='utf-8-sig'` loses one mark to the codec and
   the other to §9.0. Contract 07 now tells the `dump` docstring to say so.
+
+### Pass 16 (2026-09-23, outer iteration 10): the prototype rebuilt against today's contracts
+
+Brought the pass-14 prototype up to the contracts as they stand after
+iterations 9 and 10. Contracts 01–04 had not changed since, and Contract 07
+was re-transcribed in full: the grammar key probe, the U+FEFF prefix, rule D
+by prefix match with its `RecursionError` catch, the `\u003a` fallback, and
+§11.2.4(a)–(e). All 53 specification examples still agree (the extraction
+floor holds at 53). So do 56 user-story and contract-table examples, which include every
+parser-level scenario in US1–US4 and US6. R-09 and R-02 sanity: `\r\r\n` and
+a trailing bare `\r` keep the break count equal before and after
+normalization, and `\ufeffa: 1\r\r\n  b: 2` still reports `b` at
+`Pos(10, 3, 2)`. Round trip: 784 values, built from the spec examples plus
+adversarial strings, each placed at the root, as a mapping value, as a list
+item, as a list-item mapping value, and nested. The strings covered U+0085,
+U+2028, U+2029, U+3000, U+00A0, and U+FEFF in values and keys, whitespace-only
+strings, lone surrogates, a 200,000-character string, a 100,000-character
+key, `'- ' * 200 + 'x'`, and nested empty containers. 659 round-trip and are
+idempotent, and 125 raise `UnrepresentableValueError`. Every one of the 125
+falls under a condition in §11.2.2–.4 or pass 14's key rule. None fails.
+
+- **The duplicate-key check is quadratic (Medium, Performance).** Contract 03
+  scanned `self.children` for every incoming key. Measured on the prototype:
+  64,000 keys (a 630 KB document) took 24 s. §13.4's size limits are deferred
+  past 1.0, so nothing bounds this, and a hostile document of about 1 MB
+  exhausts CPU. It is not a regression against 0.6.2, whose whole-document
+  parse is slower still (1,000 keys take 0.26 s, 8,000 did not finish in 10
+  minutes), which is why this is not rated High. **Mitigation (Contract 03,
+  data-model §3.1)**: `Mapping.keys: dict[str, KeyValue]` is filled in
+  `Mapping.add_node`, and `can_add_node` does a lookup after the level gate.
+  The same 64,000 keys now load in 1.4 s, and all example suites still
+  agree.
+- **The rule-D probe let a third-party exception out of `dumps` (Medium).**
+  `GRAMMAR['structure'].match(s)` *raises* parsimonious's `ParseError` when
+  nothing matches, which is the case for every ordinary list item (`hello`,
+  `#x`, `''`). Contract 07 stated only the `RecursionError` catch for this
+  probe, and its "no parsimonious exception leaves `dumps`" obligation was
+  scoped to keys. **Mitigation (Contract 07)**: `structure_matches` is now
+  given as code with both catches, and the test obligation covers every
+  value.
+- **The fixture decoder could not decode `\x20` (Medium, Congruence).**
+  Strategy note 1 called `\x20` canonical. R-05's audited table has no
+  `\xHH`, and the decoder raises on anything outside its table. Note 1 also
+  listed a literal U+FEFF and a literal U+2028, both invisible, where escapes
+  were meant, and it omitted `\\` and `\"`. Without those two, US6's SYML-level
+  escapes (`'hello\\nworld'`, `"a\\xb"`) cannot be written.
+  **Mitigation**: note 1 now carries the eight-sequence table, supersedes
+  R-05's list, and shows the two escaping levels with worked forms for US6.7
+  and US3.9. The table covers every string the acceptance fixtures need. The
+  US7 corpus stays in Python.
+- **`dump` could leave a truncated but loadable file (Medium).** Contract 07
+  did not say whether `dump` streams. A streaming `dump({'a': '1', 'b': {}},
+  fp)` writes `a: 1` before raising, and the file then loads as `{'a': '1'}`
+  with no error. **Mitigation (Contract 07)**: `dump` is one
+  `write(dumps(data))`, so nothing is written when `dumps` raises.
+- **The `dumps` docstring was a one-line stub (Low, Congruence).** Contract 07
+  pointed at it for the `\u003a` fallback, the format choices, and the U+FEFF
+  prefix, but the docstring shown said none of that (noted in commit e3f8f16).
+  The docstring now says all three, and `dump`'s says it writes once.
+- **Two Low pins (Contract 07).** A non-`str` key is a `TypeError` from an
+  explicit check. Today it is one only by accident, from `re`'s "expected
+  string or buffer". `dumps('')` is `''`, the empty document, with no
+  trailing newline.
+- **Invisible characters (Low).** Contracts 01, 06, 07, and 08,
+  data-model.md, and this plan had literal U+FEFF and U+2028 inside
+  backticked Python-literal cells. A reader sees `"key: value"` where the
+  input is `"\ufeffkey: value"`, and Contract 01's corpus note read "and `` ``".
+  All of them are now `\ufeff` / `\u2028` escapes.
 
 ### Open items for the principal (not applied)
 

@@ -40,7 +40,7 @@ Applies Contract 01's pre-processing, Contract 02's per-line lexing, Contract
 | --- | --- | --- |
 | `""` | `""` | FR-005, §7.4 (US4.2) |
 | `"# just a comment"` | `""` | FR-005, §7.4 (US4.3) |
-| `"﻿"` | `""` | FR-002 (US2.2) |
+| `"\ufeff"` | `""` | FR-002 (US2.2) |
 | `"empty:\nnext: value"` | `{"empty": "", "next": "value"}` | FR-005 (US4.1) |
 | `"hello"` | `"hello"` | §2.1 |
 | `"- a\n- b"` | `["a", "b"]` | §2.1 |
