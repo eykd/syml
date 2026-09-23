@@ -201,6 +201,7 @@ markers = [
     #         # ...
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "acceptance: pytest-bdd acceptance tests bound to specs/acceptance-specs/*.feature (run with `just acceptance`)",
+    "feature-exit: pytest-bdd acceptance scenarios true only until the 1.0.0 release tag is created (US9.1, US9.9); removed in the release commit before tagging",
 ]
 
 
