@@ -1750,6 +1750,8 @@ three seeds, with mypy and ruff unchanged from pass 25. R-09 sanity:
 
 ### Open items for the principal (not applied)
 
+> **Principal decision (2026-09-23, closing `/sp:04-red-team` at outer iteration 16):** migration from 0.6.2 is not a concern for this release. The migration notes in Contract 09 stay as documentation, but no task is to be scoped to preserving, detecting, or easing 0.6.2 behaviour, and open items 1–8 stay open for the principal; tasks target the grammar as printed.
+
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
    in one place and `diagnose_malformed` disappears. Simpler, but it departs
    from §4.1's grammar as printed; recorded, not adopted.
