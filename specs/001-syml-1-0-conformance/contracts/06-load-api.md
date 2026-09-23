@@ -10,7 +10,7 @@
 # and re-exported here: serializer.py needs them and precedes __init__.py in
 # the import order, plan.md § Project Structure; red-team pass 20)
 
-SymlData = str | list["SymlData"] | dict[str, "SymlData"]
+from .basetypes import SymlData, SymlInput  # noqa: F401 (re-export, __all__ below)
 
 def loads(document: str, filename: StrPath | None = None) -> SymlData: ...
 
