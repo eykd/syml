@@ -56,7 +56,8 @@ roughly neutral. Not measured as an acceptance criterion — no FR or SC mention
 throughput. Every per-line and per-key step must stay O(1) amortized, because
 §13.4's size limits are deferred and nothing else bounds input size. Red-team
 pass 16 found the duplicate-key scan quadratic and made it a dict lookup
-(Contract 03).
+(Contract 03); pass 18 cut quoted-value lexing from about 1 KB of parse
+nodes per character to one node per run (Contract 02).
 **Constraints**: §13.4's implementation limits (max depth 500, max line 1 MiB,
 max document 10 MiB) and `DocumentLimitError` are **deferred past 1.0** by
 decision. Nesting past ~500 levels of block nesting — or only ~120 levels of
@@ -161,8 +162,10 @@ the non-breaking alternative it rejected.
 caller-visible on the guarded surface):
 
 - `ParseError` gains named `.message`, `.position`, `.line_text`. The existing
-  positional `.args` tuple is preserved by `super().__init__(message, position,
-  line_text)`, so `e.args[1]` keeps working.
+  positional `.args` prefix is preserved by `super().__init__(message, position,
+  line_text, *extra)`, so `e.args[1]` keeps working. `DuplicateKeyError` and
+  `MalformedQuotedStringError` append their extra attributes to `.args`, so
+  every class survives `pickle` and `copy` (red-team pass 18, Contract 05).
 - Parsimonious exceptions no longer escape `loads`/`load`; code catching
   `parsimonious.exceptions.IncompleteParseError` will stop seeing it.
 - Absent values return `""` rather than `None` (FR-005) — the single largest
@@ -777,7 +780,9 @@ per-line loop connects to the rest. Each was verified against Parsimonious.
   decoder; a parent's `except` never runs.)* The subclass
   constructors now take their extra attributes keyword-only
   (`*, escape, code_point` / `*, key, first_position`), so `.args` stays three
-  elements. data-model §5's stale `contracts/errors.md` link now points at
+  elements. *(Reversed by pass 18: keyword-only extras break `pickle` and
+  `copy`, which call `cls(*e.args)`; the extras are now positional and in
+  `.args`.)* data-model §5's stale `contracts/errors.md` link now points at
   `05-errors.md`.
 
 ### Pass 8 (2026-09-23, outer iteration 6): the rest of the per-line plumbing sweep
@@ -1200,6 +1205,66 @@ trailing bare `\r` is one break on both sides.
   inline/block branch is irrelevant for a leaf that accepts nothing; and the
   new import order has no cycle (`nodes` reaches `original_line` and
   `error_message` through modules listed before it).
+
+### Pass 18 (2026-09-23, outer iteration 12): library behaviour under the error and quoting paths
+
+Treated Contracts 01-09, data-model, and this plan as one program, checking
+each mechanism against the library it leans on (codecs, `BaseException`
+pickling, Parsimonious's repetition nodes) rather than the outcome a
+UTF-8, single-process prototype sees. R-09 sanity: `k: "a" x` still strands
+at 7 of 8, just past the quote and its space. R-02 sanity: `a\r\r\nb\r` has
+three breaks both before and after normalization.
+
+- **`EncodingError`'s derivation raised from inside `load`'s handler (High).**
+  Contract 05 step 1 decoded the failing prefix with a hard-coded
+  `.decode('utf-8')` and called that "always succeeds". That holds only when
+  the failing codec was UTF-8. Pass 5 made `load` catch a text handle's
+  `UnicodeDecodeError` too, and a text handle decodes with its own encoding.
+  `open(p)` uses the locale's, which Contract 06 already notes is not UTF-8
+  on Windows before Python 3.15. Over a UTF-8 file containing `Á` (`C3 81`),
+  a cp1252 handle fails at `0x81` (undefined in cp1252), so the prefix ends
+  in the lone lead byte `0xC3`. Decoding it as UTF-8 raises a second
+  `UnicodeDecodeError` inside the `except` clause. That escapes `load` on
+  the default `load(open(p))` path of a supported platform, against FR-009.
+  A `utf-16-le` handle fails the same way (verified for both).
+  **Mitigation (Contracts 05, 06)**: decode the prefix with the codec that
+  failed, `err.object[:err.start].decode(err.encoding, errors='replace')`.
+  That codec already decoded exactly this prefix, so `replace` never fires on
+  a real failure. It is an argument, not a branch, and for `load`'s own
+  strict UTF-8 decode the result is unchanged. Contract 06 gains a cp1252
+  row and test, and scopes "same `Pos` as the binary handle" to
+  `encoding='utf-8'`, because `'utf-8-sig'` strips the mark before decoding.
+- **Quoted values cost about 1 KB of parse nodes per character
+  (Medium, Performance).** §4.1 prints the quoted bodies one character per
+  repetition, and Parsimonious builds a node and a cache entry for each. A
+  100,000-character value takes 66 MB (single) or 98 MB (double) and
+  0.8-1.3 s to lex, against nothing unquoted, so a 1 MiB quoted line needs
+  about 1 GB. §13.4's limits are deferred and nothing bounds it, the same
+  situation as pass 16's quadratic key scan. It is also a regression, since
+  0.6.2 read the same line as one regex match.
+  **Mitigation (Contract 02)**: a third transcription-level substitution
+  writes the negated classes as runs, `~"[^'\n]+"` and `~"[^\"\\\\\n]+"`.
+  The language is the same. A brute force over 5.8 million lines
+  (alphabet `'"\a :u0n-x`, after `k: `, `- `, and `k:`) found identical
+  `match` ends and named-node spans. No visitor reads inside a quoted
+  token. The same values now lex in about 1 ms. An as-printed oracle grammar
+  in the tests pins the equivalence. No spec edit is needed, because §4.1's
+  language is unchanged.
+- **Two exception classes could not be pickled or copied (Medium).** Pass 7
+  made `DuplicateKeyError`'s and `MalformedQuotedStringError`'s extras
+  keyword-only to keep `.args` at three elements. `pickle`, `copy.copy`, and
+  `copy.deepcopy` rebuild an exception as `cls(*e.args)`, and that call is
+  then a `TypeError` (verified on both classes). Such an error raised in a
+  `ProcessPoolExecutor` or `multiprocessing` worker cannot reach the parent
+  process. **Mitigation (Contract 05, data-model §5)**: the extras are
+  ordinary parameters appended to `.args`, and `ParseError.__init__` takes
+  `*extra`. Raise sites still pass them by keyword. `e.args[1]` is still the
+  `Pos`, which is all the Constitution Check promised. The round trips are a
+  test obligation for every class.
+- **`inline`'s setter was stated in two places (Low, Congruence).**
+  data-model §3.1 and Contract 03's surface named only
+  `visit_key_value`/`visit_list_item`, but pass 17's `visit_quoted_value`
+  sets `inline=True` at construction. Both now say so.
 
 ### Open items for the principal (not applied)
 

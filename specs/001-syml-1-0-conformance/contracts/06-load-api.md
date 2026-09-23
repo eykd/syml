@@ -62,7 +62,7 @@ def load(file_obj, filename=None):
     try:
         raw = file_obj.read()                   # a text handle decodes here
     except UnicodeDecodeError as err:
-        raise EncodingError(...) from err       # R-04 over (err.object, err.start)
+        raise EncodingError(...) from err       # R-04 over (err.object, err.start, err.encoding)
     if isinstance(raw, bytes):
         try:
             text = raw.decode('utf-8')          # strict: no errors= substitution
@@ -84,6 +84,7 @@ both satisfy the protocol without inheriting from `TextIOBase`.
 | `open(p, 'rb')` | invalid UTF-8 | `EncodingError` (US5.6) |
 | `io.BytesIO(b'\xff\xfe')` | invalid | `EncodingError` |
 | `open(p, encoding='utf-8')` (text) | invalid UTF-8 | `EncodingError` — not the `UnicodeDecodeError` that `read()` raises |
+| `open(p, encoding='cp1252')` (text; also `open(p)` under a cp1252 locale) | UTF-8 `Á` (`C3 81`): `0x81` is undefined in cp1252 | `EncodingError` at the `0x81` — position derived with the handle's codec, so no second `UnicodeDecodeError` escapes (Contract 05, pass 18) |
 
 **Invariant (FR-010, US5.6)**: when `load` decodes bytes itself, it never
 substitutes: no U+FFFD replacement character and no unpaired surrogate enters a
@@ -101,7 +102,14 @@ disagrees with the `'rb'` row. `load` therefore wraps `read()` and raises
 handle's position in one call, so `err.object` is those bytes and `err.start` a
 byte offset into them; R-04's derivation (Contract 05) applies unchanged. Verified
 on a 30 KB file: `err.object` is the whole file and `err.start` the offending
-byte's file offset. A handle already partly read reports positions relative to
+byte's file offset. The handle's codec need not be UTF-8, which is why the
+derivation decodes the prefix with `err.encoding` rather than `'utf-8'`
+(red-team pass 18): the prefix before a cp1252 failure can end in half a UTF-8
+sequence. For such a handle the position counts the code points the handle
+itself would have produced, and `line_text` is in that codec's reading.
+`encoding='utf-8-sig'` strips the mark before decoding, so its `err.object`
+starts after the BOM and its `index` is one less than a binary handle's over
+the same file. A handle already partly read reports positions relative to
 where `read()` began — the same caveat as the newline table below.
 
 `filename` defaults to `file_obj.name` when present (§11.1); a `BytesIO` has no
@@ -155,9 +163,11 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
   binary handle; with no filename the message is the bare description.
 - A handle whose `.name` is an `int` (`tempfile.TemporaryFile`) yields
   `Source.filename is None`.
-- A UTF-8 text handle over invalid bytes raises `EncodingError` (not
-  `UnicodeDecodeError`) with the same `Pos` as the binary handle over the same
-  file.
+- A UTF-8 text handle (`encoding='utf-8'`, not `'utf-8-sig'`) over invalid
+  bytes raises `EncodingError` (not `UnicodeDecodeError`) with the same `Pos`
+  as the binary handle over the same file.
+- A cp1252 text handle over UTF-8 `key: Á` raises `EncodingError`, and no
+  `UnicodeDecodeError` escapes `load` (Contract 05's derivation, pass 18).
 - The three-handle table above over a real CRLF file on disk, pinning that
   `as_data()` is equal across all three while `Pos.index` differs for the
   default text handle.

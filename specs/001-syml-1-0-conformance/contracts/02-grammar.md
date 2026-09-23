@@ -8,8 +8,10 @@
 
 ## Grammar
 
-Transcribed from §4.1 as printed, with **two** substitutions — see "Escaping
-inside `~"..."` atoms" below. Both are transcription-level, not normative.
+Transcribed from §4.1 as printed, with **three** substitutions — two in
+"Escaping inside `~"..."` atoms" below, and the run atoms in "Run atoms inside
+quoted strings" (red-team pass 18). All three are transcription-level, not
+normative: each accepts exactly the language §4.1 prints.
 
 ```peg
 document       = (line "\n")* line?
@@ -30,8 +32,8 @@ value          = structure / (quoted_value ~" *") / data
 data           = text
 
 quoted_value   = single_quoted / double_quoted
-single_quoted  = "'" ("''" / ~"[^'\n]")* "'"
-double_quoted  = '"' (escape_seq / ~"[^\"\\\\\n]")* '"'
+single_quoted  = "'" ("''" / ~"[^'\n]+")* "'"
+double_quoted  = '"' (escape_seq / ~"[^\"\\\\\n]+")* '"'
 escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[0-9a-fA-F]{8}")
 ```
 
@@ -70,6 +72,42 @@ Python escapes. `\Z` is the only remaining landmine, and it is the same defect
 class as audit gap #20 — so the FR-017 test obligation
 (`python -W error -c "import syml"`) must pass with the grammar loaded, not just
 with the module imported lazily.
+
+### Run atoms inside quoted strings (red-team pass 18)
+
+§4.1 prints the quoted-string bodies one character per repetition:
+`("''" / ~"[^'\n]")*` and `(escape_seq / ~"[^\"\\\\\n]")*`. Parsimonious
+builds a parse node, and a packrat cache entry, for every repetition, so a
+quoted value costs about 600 bytes per character (single) and 1,000 (double)
+to lex, against nothing for the same text unquoted. Measured on the pinned
+Parsimonious: a 100,000-character quoted value takes 66 MB / 0.8 s
+(single) and 98 MB / 1.3 s (double) in `GRAMMAR['line'].match` alone, before
+the visitor walks the same nodes. §13.4's size limits are deferred, so
+nothing bounds it: a 1 MiB quoted line needs about 1 GB, and
+`MalformedQuotedStringError`'s unterminated case pays the same cost before it
+falls through.
+
+The transcription therefore writes each negated class as a **run**
+(`~"[^'\n]+"`, `~"[^\"\\\\\n]+"`). This is transcription-level:
+
+- **Same language.** `(A / B+)*` and `(A / B)*` accept the same strings, and
+  under PEG's greedy, no-backtrack repetition they stop at the same offset:
+  a run ends exactly where the one-character form would next try `''` or
+  `escape_seq` (a quote, a backslash, or end of line).
+- **Same parse tree above the quoted token.** Brute force over every line
+  whose tail is up to six characters on `'"\a :u0n-x` after `k: `, `- `, and `k:`
+  (5,846,151 lines): identical `match(...).end` everywhere, and identical
+  `(expr_name, start, end)` for every named node (0 differences).
+- **Nothing reads inside a quoted token.** `visit_quoted_value` decodes
+  `node.text` (Contract 05), `diagnose_malformed` scans the text itself
+  (Contract 04), and `find_first` stops at `quoted_value`. The anonymous
+  per-character children were only ever visited to return `None`.
+
+After the change the same 100,000-character values lex in about 1 ms with
+no measurable allocation. An escape-dense value still costs one node per
+escape (about 640 bytes for each `\n`, since `escape_seq` stays as printed).
+The block-nesting and inline `- ` recursion figures are unchanged: the
+quoted-string repetition was already iterative.
 
 ### Key class
 
@@ -272,6 +310,11 @@ accepted); `visit_list_item` → `ListItem(level=0)`, then
 
 - Every row of both tables above.
 - `python -W error -c "import syml"` exits 0 (FR-017, audit gap #20).
+- Run-atom oracle (pass 18): the test module builds §4.1's grammar **as
+  printed** (one-character quoted atoms) beside `GRAMMAR`, and asserts equal
+  `GRAMMAR['line'].match(s).end` and equal named-node spans over every line
+  up to length 6 on `'"\a :u0n-x`, each after `k: `, `- `, and `k:`. A
+  100,000-character quoted value lexes with fewer than 100 parse nodes.
 - A grammar-load smoke test asserting `Grammar(...)` compiles without warnings.
 - A test that `- "a` and `k: "a` raise `MalformedQuotedStringError` while
   `# "a` (comment) and `"a` (root scalar) do not — proving the quote-guard is

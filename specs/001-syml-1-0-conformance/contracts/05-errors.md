@@ -15,8 +15,10 @@ class ParseError(ValueError):
     position: Pos
     line_text: str
 
-    def __init__(self, message: str, position: Pos, line_text: str) -> None:
-        super().__init__(message, position, line_text)
+    def __init__(
+        self, message: str, position: Pos, line_text: str, *extra: object
+    ) -> None:
+        super().__init__(message, position, line_text, *extra)   # .args: pickle/copy rebuild from it
         self.message = message
         self.position = position
         self.line_text = line_text
@@ -69,9 +71,11 @@ rest of `syml` at run time (plan.md § Project Structure, module homes).
 sites pass `doc.filename`, `preprocess` passes its own `filename` argument, and
 `load` passes the filename it resolved before calling `read()` (Contract 06).
 
-`super().__init__(message, position, line_text)` preserves the existing `.args`
-tuple, so current `except ParseError as e: e.args[1]` code keeps working while
-gaining the named attributes §11.3 requires.
+`super().__init__(message, position, line_text, *extra)` preserves the
+existing `.args` prefix, so current `except ParseError as e: e.args[1]` code
+keeps working while gaining the named attributes §11.3 requires. The two
+subclasses with extra attributes append them to `.args` (§ Subclass
+constructors, red-team pass 18).
 
 | Class | `position` anchors at | Extra attributes |
 | --- | --- | --- |
@@ -85,11 +89,29 @@ gaining the named attributes §11.3 requires.
 
 `UnicodeDecodeError.start` is a **byte** offset, not a code-point index.
 
-1. `prefix = err.object[: err.start].decode('utf-8')` — always succeeds (UTF-8
-   is self-synchronizing; `err.start` is a sequence boundary). This derivation
-   is over `(err.object, err.start)` alone and does not depend on where the
-   bytes came from — a binary handle, or (Contract 06) the bytes a text
-   handle's `read()` decoded internally.
+1. `prefix = err.object[: err.start].decode(err.encoding, errors='replace')`
+   — decoded with **the codec that failed**, not with a hard-coded `'utf-8'`
+   (red-team pass 18). The derivation is over `(err.object, err.start,
+   err.encoding)` alone and does not depend on where the bytes came from — a
+   binary handle, or (Contract 06) the bytes a text handle's `read()` decoded
+   internally. That codec decoded exactly `err.object[:err.start]` without
+   error before it stopped, so `errors='replace'` never substitutes on a real
+   decode failure; it is an argument, not a branch, and it guarantees this
+   step cannot raise a second `UnicodeDecodeError` from inside `load`'s own
+   handler. For `load`'s own strict decode `err.encoding` is `'utf-8'`, and
+   the result is exactly the UTF-8 prefix (UTF-8 is self-synchronizing and
+   `err.start` is a sequence boundary).
+
+   **Why not `.decode('utf-8')`.** A text handle decodes with *its* encoding,
+   and `open(p)` uses the locale's, which is not UTF-8 everywhere (Contract
+   06: Windows before Python 3.15). Over a UTF-8 file containing `Á`
+   (`C3 81`), a cp1252 handle's `read()` raises `UnicodeDecodeError('charmap',
+   …, start=6)` at the undefined byte `0x81`, so the prefix ends with the lone
+   lead byte `0xC3`. Decoding that prefix as UTF-8 raises a second
+   `UnicodeDecodeError` inside `load`'s `except` clause, and a
+   non-`ParseError` escapes `load` (FR-009). Verified, together with a
+   `utf-16-le` handle whose prefix is invalid UTF-8. With the failing codec
+   both derive a position and raise `EncodingError`.
 2. `index` = `len(prefix)` in code points.
 3. `line` = 1 + line breaks in `prefix`, counting `\r\n`, bare `\r`, and `\n`
    each as one. (The raw text has not been normalized — it cannot be decoded.)
@@ -169,14 +191,40 @@ by `nodes.py` without a cycle; `find_first` and `raise_trailing_content` in
 
 ### Subclass constructors
 
-The subclasses with extra attributes take them as **keyword-only** arguments
-after the three base ones, and call `super().__init__(message, position,
-line_text)` so `.args` keeps its three-element shape on every class:
+The subclasses with extra attributes take them as **ordinary positional-or-keyword**
+parameters after the three base ones, with no defaults, and pass all five to
+`super().__init__` so they land in `.args`:
 
 ```python
-MalformedQuotedStringError(message, position, line_text, *, escape, code_point)
-DuplicateKeyError(message, position, line_text, *, key, first_position)
+MalformedQuotedStringError(message, position, line_text, escape, code_point)
+DuplicateKeyError(message, position, line_text, key, first_position)
+
+class DuplicateKeyError(ParseError):
+    def __init__(self, message: str, position: Pos, line_text: str,
+                 key: str, first_position: Pos) -> None:
+        super().__init__(message, position, line_text, key, first_position)
+        self.key = key
+        self.first_position = first_position
 ```
+
+Every raise site still passes the extras by keyword (`key=…, first_position=…`,
+`escape=…, code_point=…`), which reads the same as before.
+
+**Why not keyword-only (red-team pass 18, correcting pass 7).** Pass 7 made the
+extras keyword-only to keep `.args` at three elements. But `pickle` and
+`copy.copy`/`copy.deepcopy` rebuild an exception through
+`BaseException.__reduce__`, which is `(type(self), self.args, self.__dict__)`:
+the class is called as `cls(*self.args)`. With keyword-only extras that call is
+`DuplicateKeyError(message, position, line_text)`, a `TypeError` (verified on
+both classes, for `pickle.loads(pickle.dumps(e))` and `copy.copy(e)`). So a
+`DuplicateKeyError` or `MalformedQuotedStringError` raised in a
+`ProcessPoolExecutor` or `multiprocessing` worker could not reach the parent
+process, and `copy.copy(e)` failed. With the extras in `.args` all three
+round-trips return an equal exception (verified). `e.args[1]` is still the
+`Pos`, which is the compatibility §11.3 and plan.md's Constitution Check
+promise; `len(e.args)` was never promised. A custom `__reduce__` would also
+work, but it is one more method to cover and nothing needs the three-element
+shape.
 
 ### Decoder failures cross the visitor as `ParseError`s
 
@@ -333,6 +381,14 @@ D7 stands: §8.1 and §8.2 both raise `OutOfContextNodeError`; there is no
 - `EncodingError` on a multi-byte prefix: `position.index` is a code-point
   index, not a byte offset. A fixture with a non-ASCII character before the bad
   byte is mandatory — this is the trap R-04 names.
+- `EncodingError`, never `UnicodeDecodeError`, from `load` over a text handle
+  whose encoding is not UTF-8: `io.TextIOWrapper(io.BytesIO('key: Á\n'.encode()),
+  encoding='cp1252')` (position index 6, line 1, column 6, `line_text`
+  `'key: Ã'`), and a `utf-16-le` handle over bytes that are invalid UTF-8
+  (pass 18).
+- Every class survives `pickle.loads(pickle.dumps(e))`, `copy.copy(e)`, and
+  `copy.deepcopy(e)` with equal type, `.args`, and attributes (pass 18);
+  `e.args[1]` is the `Pos` on every class.
 - Sweep: every document in the audit's corpus plus every acceptance fixture,
   asserting that any exception raised is a `ParseError` (SC-005).
 - Each of the seven classes is raised by at least one scenario (SC-005).

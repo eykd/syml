@@ -22,7 +22,8 @@ class SymlNode:
 
 
 class TextLeafNode(SymlNode):
-    inline: bool = False       # set True by visit_key_value / visit_list_item
+    inline: bool = False       # set True by visit_key_value / visit_list_item (unquoted),
+                               # or at construction by visit_quoted_value (Contract 05)
     quoted: bool = False       # set True by visit_quoted_value (implies inline)
     anchor_level: int = -1     # set on attach (below); the default IS the root-scalar value
     baseline: int | None = 0   # set on attach; None = inline, not yet fixed (D11)
