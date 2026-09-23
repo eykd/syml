@@ -106,7 +106,9 @@ byte's file offset. The handle's codec need not be UTF-8, which is why the
 derivation decodes the prefix with `err.encoding` rather than `'utf-8'`
 (red-team pass 18): the prefix before a cp1252 failure can end in half a UTF-8
 sequence. For such a handle the position counts the code points the handle
-itself would have produced, and `line_text` is in that codec's reading.
+itself would have produced. `line_text` is in the failing codec's reading,
+which for cp1252 is the generic `'charmap'` codec, so bytes 0x80-0x9F appear
+as C1 controls (pass 19; positions are unaffected).
 `encoding='utf-8-sig'` strips the mark before decoding, so its `err.object`
 starts after the BOM and its `index` is one less than a binary handle's over
 the same file. A handle already partly read reports positions relative to

@@ -1266,6 +1266,25 @@ three breaks both before and after normalization.
   `visit_key_value`/`visit_list_item`, but pass 17's `visit_quoted_value`
   sets `inline=True` at construction. Both now say so.
 
+### Pass 19 (2026-09-23, outer iteration 12): second-order check of pass 18
+
+No Critical or High finding. The run atoms leave `diagnose_malformed`,
+`find_first`, Contract 07's re-lex, and Contract 08's quoted spans unchanged:
+none reads inside a quoted token, and the oracle compared every named node,
+`escape_seq` included. Widening `.args` changes no `message` or `line_text`,
+and nothing asserts `str(e)` or `len(e.args)`. R-09 and R-02 were not
+touched.
+
+- **`err.encoding` can name no codec (Low).** It is a free string, so a
+  custom file-like can raise `UnicodeDecodeError('no-such-codec', …)` and
+  pass 18's `.decode(err.encoding, …)` then raises `LookupError` (verified).
+  Contract 05 falls back to UTF-8 with `errors='replace'` on `LookupError`.
+  The branch is tested with a fake handle.
+- **cp1252 reports as `'charmap'` (Low).** Decoding with it reads bytes
+  0x80-0x9F as C1 controls, so `line_text` can differ from the handle's own
+  reading (`€` becomes U+0080). Positions are exact, because every byte is
+  one code point in both codecs. Contracts 05 and 06 now say so.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

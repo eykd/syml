@@ -102,6 +102,19 @@ constructors, red-team pass 18).
    the result is exactly the UTF-8 prefix (UTF-8 is self-synchronizing and
    `err.start` is a sequence boundary).
 
+   **`err.encoding` may not name a registered codec (red-team pass 19).**
+   `UnicodeDecodeError` takes its encoding label as a free string, so a
+   custom file-like or a third-party codec can raise one labelled, say,
+   `'no-such-codec'`, and `.decode()` then raises `LookupError` (verified).
+   Step 1 therefore catches `LookupError` and falls back to
+   `.decode('utf-8', errors='replace')`, which cannot raise. The fallback is
+   a real branch and is tested with a fake handle whose `read()` raises such
+   an error, so no pragma is needed. For charmap codecs such as cp1252,
+   `err.encoding` is the generic `'charmap'`, which reads bytes 0x80-0x9F as
+   C1 controls rather than cp1252's glyphs (`€` becomes U+0080). Every byte
+   is still one code point, so `position` is unaffected; only those
+   characters of `line_text` differ.
+
    **Why not `.decode('utf-8')`.** A text handle decodes with *its* encoding,
    and `open(p)` uses the locale's, which is not UTF-8 everywhere (Contract
    06: Windows before Python 3.15). Over a UTF-8 file containing `Á`
@@ -386,6 +399,8 @@ D7 stands: §8.1 and §8.2 both raise `OutOfContextNodeError`; there is no
   encoding='cp1252')` (position index 6, line 1, column 6, `line_text`
   `'key: Ã'`), and a `utf-16-le` handle over bytes that are invalid UTF-8
   (pass 18).
+- A file-like whose `read()` raises `UnicodeDecodeError('no-such-codec', …)`
+  makes `load` raise `EncodingError`, not `LookupError` (pass 19).
 - Every class survives `pickle.loads(pickle.dumps(e))`, `copy.copy(e)`, and
   `copy.deepcopy(e)` with equal type, `.args`, and attributes (pass 18);
   `e.args[1]` is the `Pos` on every class.
