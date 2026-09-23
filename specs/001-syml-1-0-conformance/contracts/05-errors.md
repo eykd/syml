@@ -62,6 +62,8 @@ def error_message(description: str, filename: StrPath | None) -> str:
     """`description` alone when filename is None, else f'{filename}: {description}'."""
 ```
 
+`error_message` lives in `exceptions.py`, which imports nothing from the
+rest of `syml` at run time (plan.md § Project Structure, module homes).
 `description` is the fixed text each raise site names below
 (`'Failed to incorporate a node'`, `'Duplicate key'`, and so on). The parsed-line
 sites pass `doc.filename`, `preprocess` passes its own `filename` argument, and
@@ -160,7 +162,10 @@ if pnode.end < len(line.text):                       # stranded: §4.7 trailing 
 through `pos_at(line, …)` — never `quote.start + line.start` alone, which is an
 index with no line or column. `find_first` and `original_line` are defined
 above; neither is provided by parsimonious or Contract 01. Every raise site
-uses the same two helpers.
+uses the same two helpers. Homes (red-team pass 17): `original_line` in
+`preprocess.py`, beside the normalization regex it must share and importable
+by `nodes.py` without a cycle; `find_first` and `raise_trailing_content` in
+`parsers.py`, which alone calls them.
 
 ### Subclass constructors
 
@@ -178,12 +183,46 @@ DuplicateKeyError(message, position, line_text, *, key, first_position)
 Contract 04's `decode_double_quoted(raw)` is position-free, so it cannot build
 a `MalformedQuotedStringError` (whose `.position` is never `None`). It raises a
 module-private `QuotedStringDefect(ValueError)` carrying `escape` and
-`code_point`; the calling `visit_key_value` / `visit_list_item` catches it
-**inside the same method** and re-raises `MalformedQuotedStringError` anchored
-at the opening quote. It must not be allowed to leave the `visit_*` method:
-`QuotedStringDefect` is not in `unwrapped_exceptions`, so Parsimonious would
-wrap it in `VisitationError` (verified 2026-09-23) and a third-party exception
-would escape `loads`.
+`code_point`. The method that **calls the decoder** catches it and re-raises
+`MalformedQuotedStringError`, anchored at the opening quote. That method is
+`visit_quoted_value`, which builds the quoted `TextLeafNode` (Contract 02 §
+Who sets `level`) and so is the only place the decoded text is needed:
+
+```python
+def visit_quoted_value(self, node: Node, children: list[Any]) -> TextLeafNode:
+    raw = node.text                                  # quotes included (Contract 04)
+    position = self.doc.position_map.to_original(pos_at(self.line, node.start))
+    try:
+        text = (decode_single_quoted(raw) if raw[0] == "'"
+                else decode_double_quoted(raw))
+    except QuotedStringDefect as defect:            # converted HERE, not in a parent
+        raise MalformedQuotedStringError(
+            error_message('Malformed quoted string', self.doc.filename),
+            position, original_line(self.doc, position.line),
+            escape=defect.escape, code_point=defect.code_point,
+        ) from defect
+    source = Source.from_node(node, self.line, self.doc.position_map, self.doc.filename)
+    return TextLeafNode(pnode=node, level=node.start, quoted=True, inline=True,
+                        source=dataclasses.replace(source, text=text))  # decoded text (Contract 08)
+```
+
+**Why not in `visit_key_value` / `visit_list_item` (red-team pass 17).**
+Parsimonious's `NodeVisitor.visit` evaluates `method(node, [self.visit(n) for
+n in node])`: every child is visited, and any child exception wrapped, **before**
+the parent's method body runs. A `QuotedStringDefect` leaving
+`visit_quoted_value` is therefore wrapped in `VisitationError` by the child's
+own `visit` frame, and a `try`/`except` in `visit_key_value` never executes
+(verified: with the catch in the parent, `k: "\ud800"`, `- "\ud800"`, and
+`- - k: "\U00110000"` all escape as `parsimonious.exceptions.VisitationError`,
+and neither parent method runs; with the catch in `visit_quoted_value`, all
+three surface as the `ParseError` subclass). `QuotedStringDefect` is **not**
+added to `unwrapped_exceptions`: that would let a private class escape `loads`
+whenever the conversion is missed.
+
+The quote-guard (Contract 04) is unaffected. It raises
+`MalformedQuotedStringError` directly from `visit_key_value` /
+`visit_list_item`, and a `ParseError` passes every enclosing `visit` frame
+unwrapped.
 
 - **Exactly one `quoted_value`** is in a stranded prefix: the grammar admits a
   quoted value only in `key_value`'s first alternative and `value`'s second,
@@ -280,6 +319,10 @@ D7 stands: §8.1 and §8.2 both raise `OutOfContextNodeError`; there is no
 - For every `ParseError` raised from a parsed line (all classes except
   `EncodingError`), `e.line_text[e.position.column]` is the anchor character
   named in the attribute table — asserted on LF, CRLF, and BOM-bearing inputs.
+- The decoder rows (`\ud800` and `\U00110000`) at a `key:` position, after
+  `- `, and nested as `- - k:` each raise `MalformedQuotedStringError` with
+  `code_point` set and `position.column` at the opening quote, and nothing from
+  `parsimonious.exceptions` (red-team pass 17: the conversion site).
 - `MalformedQuotedStringError` for `key: "a" trailing`, `- k: 'it''s' x`, and
   `k: "a"\tx` has `position.column` at the **opening** quote (5, 5, 3), not at
   the strand point.

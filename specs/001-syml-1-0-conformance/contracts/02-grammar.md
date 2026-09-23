@@ -211,7 +211,7 @@ line-local `pnode.start`:
 | `KeyLeafNode` | `visit_key` | the `key` node's `start` (never incorporated; carried for `Source` only) |
 | `ListItem` | `visit_list_item` | the `list_item` node's `start` — the `-` column |
 | `TextLeafNode` (unquoted) | `visit_text` | the `text` node's `start` |
-| `TextLeafNode` (quoted) | `visit_quoted_value` | the `quoted_value` node's `start` — the opening quote |
+| `TextLeafNode` (quoted) | `visit_quoted_value`, which also decodes the value and converts a decoder defect to `MalformedQuotedStringError` itself (Contract 05) | the `quoted_value` node's `start` — the opening quote |
 | `Comment` | `visit_comment` | the `comment` node's `start` (never incorporated) |
 | `Mapping` / `List` intermediary | §9.4 auto-creation (Contract 03) | the triggering node's `level` |
 | `Root` | the per-line loop | `0` |

@@ -57,6 +57,9 @@ to the `\r`, keeping `index` consistent with `line`/`column` and making
 
 One physical line of `normalized`, terminated by a single U+000A. Produced by
 splitting on `\n` **only** — never `str.splitlines()` (§13.3, audit gap #16).
+A `NamedTuple` in `basetypes.py`, beside `Pos` and `pos_at`, so
+`Source.from_node` never imports `preprocess` at run time (Contract 01,
+red-team pass 17).
 
 | Field | Type | Notes |
 | --- | --- | --- |

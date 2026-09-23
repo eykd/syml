@@ -43,6 +43,16 @@ def is_blank(text: str) -> bool:
     tab scan and Contract 02's per-line loop."""
 
 
+
+
+# src/syml/basetypes.py  (beside Pos; NOT in preprocess.py — see below)
+
+class Line(NamedTuple):
+    text: str
+    start: int
+    number: int
+
+
 def pos_at(line: Line, offset: int) -> Pos:
     """A line-local offset as a NORMALIZED Pos:
     Pos(line.start + offset, line.number, offset). Callers pass the result
@@ -50,6 +60,17 @@ def pos_at(line: Line, offset: int) -> Pos:
 ```
 
 `Line` is `(text: str, start: int, number: int)` — see `data-model.md` §2.
+
+**`Line` and `pos_at` live in `basetypes.py` (red-team pass 17).** Both are
+position primitives, and `Source.from_node` (Contract 08, `basetypes.py`) calls
+`pos_at` at run time, while `preprocess.py` constructs `Pos` at run time. With
+`pos_at` in `preprocess.py` the two modules import each other and the second
+`from … import` fails on a partially initialized module. The import direction
+is one-way: `preprocess` imports `basetypes`; `basetypes` names `PositionMap`
+only under `if TYPE_CHECKING:` (the one permitted pragma site, plan.md
+§ Project Structure). Everything else on this surface stays in
+`preprocess.py`, including `original_line` (Contract 05), which shares the
+normalization regex.
 
 ## Behaviour
 

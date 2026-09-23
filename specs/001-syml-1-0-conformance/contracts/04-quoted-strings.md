@@ -25,8 +25,10 @@ def decode_double_quoted(raw: str) -> str:
     syntactically valid; raises the module-private QuotedStringDefect (with
     .escape and .code_point) only for a code point above U+10FFFF or a
     surrogate. It is position-free, so it cannot build a
-    MalformedQuotedStringError itself; the calling visit_* method converts
-    it, anchored at the opening quote (Contract 05).
+    MalformedQuotedStringError itself; its one caller, visit_quoted_value,
+    converts it, anchored at the opening quote (Contract 05). A parent
+    visit_* cannot: Parsimonious wraps a child's exception before the
+    parent's method runs.
     """
 
 def diagnose_malformed(text: str) -> str | None:
@@ -176,7 +178,7 @@ this path — it would have matched `quoted_value` — so the scan must be writt
 without that branch rather than with a pragma (constitution III). Out-of-range
 code points (`\U00110000`) and surrogates (`\ud800`) **do** match the grammar
 and are reported through `decode_double_quoted` (its `QuotedStringDefect`,
-converted by the visitor per Contract 05) as specified above; the two paths
+converted by `visit_quoted_value` per Contract 05) as specified above; the two paths
 partition the malformed cases between them.
 
 Alternative considered and **not applied**: widen `escape_seq` to

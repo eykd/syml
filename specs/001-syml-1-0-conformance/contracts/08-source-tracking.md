@@ -36,8 +36,10 @@ class Source:
         filename: StrPath | None = None,
     ) -> Source:
         """start/end = position_map.to_original(pos_at(line, pnode.start/end))
-        (Contract 01). Never reads pnode.full_text, which is the LINE under
-        per-line lexing (Contract 02)."""
+        (Contract 01; pos_at is defined in this module). text = pnode.text.
+        Never reads pnode.full_text, which is the LINE under per-line lexing
+        (Contract 02). position_map is a TYPE_CHECKING-only import: this
+        module must not import preprocess at run time (Contract 01)."""
 ```
 
 `parse(document, filename).as_source()` returns the same shape as `as_data()`
@@ -106,6 +108,10 @@ the decoded text three. Pinned:
 - `end` is just past the **closing quote** (exclusive), before any trailing
   ` *`.
 - `text` is the decoded value, so `str(source) == node.as_data()` still holds.
+  `from_node` yields the raw token text, so `visit_quoted_value` replaces it
+  with `dataclasses.replace(source, text=decoded)` (`Source` is frozen), in
+  the same method that decodes and converts decoder defects (Contract 05,
+  red-team pass 17).
 
 ## Continuation spans
 

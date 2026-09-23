@@ -237,6 +237,29 @@ pyproject.toml            # version = "1.0.0"
 .specify/memory/constitution.md  # amended to v2.0.0 (FR-019)
 ```
 
+**Module homes and import direction (red-team pass 17).** Every helper a
+contract calls has exactly one home, and runtime imports run one way only.
+In dependency order — `basetypes`, `exceptions`, `preprocess`, `nodes`,
+`parsers`, `serializer`, `__init__` — each module imports at run time only
+modules listed before it (plus `utils` and `quoting`, which import nothing
+from `syml`). A name used only in an annotation from a module further
+right is imported under `if TYPE_CHECKING:`.
+
+| Module | Defines (new or changed) |
+| --- | --- |
+| `basetypes.py` | `Pos`, `Source` (+ `from_node`), `StrPath`, `Line`, `pos_at` |
+| `exceptions.py` | the seven classes, `error_message` |
+| `preprocess.py` | `PositionMap`, `Document`, `preprocess`, `split_lines_lf`, `is_blank`, `original_line` |
+| `quoting.py` | `decode_single_quoted`, `decode_double_quoted`, `diagnose_malformed`, `QuotedStringDefect` |
+| `nodes.py` | the node classes; `fail_to_incorporate_node` |
+| `parsers.py` | `GRAMMAR` (the transcribed §4.1 `Grammar`), `SymlParser`, `parse`, `find_first`, `raise_trailing_content` |
+| `serializer.py` | `dumps`, `dump`, `structure_matches`, `key_is_representable` |
+
+`Line` and `pos_at` sit in `basetypes.py`, not `preprocess.py`, because
+`Source.from_node` calls `pos_at` at run time while `preprocess` builds `Pos`
+at run time; placed in `preprocess.py` they made the two modules import each
+other (Contract 01).
+
 **Structure Decision**: the existing `src/` library layout is kept unchanged.
 Three new modules are added, each owning one specification section with a clean
 boundary: `preprocess.py` owns §9.0 and §13.3 (nothing downstream ever sees a
@@ -749,7 +772,9 @@ per-line loop connects to the rest. Each was verified against Parsimonious.
   `None`. A private exception leaving a `visit_*` method would be wrapped in
   `VisitationError` (verified). **Mitigation**: the decoder raises a private
   `QuotedStringDefect`, which the calling `visit_key_value`/`visit_list_item`
-  converts **within the same method** (Contracts 04, 05). The subclass
+  converts **within the same method** (Contracts 04, 05). *(Corrected by
+  pass 17: the converting method is `visit_quoted_value`, which calls the
+  decoder; a parent's `except` never runs.)* The subclass
   constructors now take their extra attributes keyword-only
   (`*, escape, code_point` / `*, key, first_position`), so `.args` stays three
   elements. data-model §5's stale `contracts/errors.md` link now points at
@@ -1123,6 +1148,58 @@ falls under a condition in §11.2.2–.4 or pass 14's key rule. None fails.
   backticked Python-literal cells. A reader sees `"key: value"` where the
   input is `"\ufeffkey: value"`, and Contract 01's corpus note read "and `` ``".
   All of them are now `\ufeff` / `\u2028` escapes.
+
+### Pass 17 (2026-09-23, outer iteration 11): Parsimonious's visit order
+
+Treated Contracts 01-09 and data-model as one program again, this time
+checking each contract's *mechanism* against Parsimonious's `NodeVisitor`
+rather than its intended outcome. R-09 holds by construction: the only `line`
+path that can stop short of end of line is `quoted_value ~" *"`; every other
+path ends in `text` or `&eol`. R-02 holds: `a: b\r\r\nc` normalizes to
+`a: b\n\nc` with `crlf_indices == (5,)`, three lines on both sides, and a
+trailing bare `\r` is one break on both sides.
+
+- **Decoder defects escaped `loads` as `VisitationError` (High).** Pass 7
+  had `visit_key_value` / `visit_list_item` catch the private
+  `QuotedStringDefect` "inside the same method". But Contract 02 has
+  `visit_quoted_value` build the quoted `TextLeafNode`, and Contract 08 needs
+  its `Source.text` decoded, so the decoder runs in `visit_quoted_value`.
+  Parsimonious's `visit` runs `method(node, [self.visit(n) for n in node])`:
+  a child's exception is wrapped by the child's own `visit` frame before the
+  parent's method body starts, so the parent's `except` never runs. Verified
+  against the transcribed grammar: with the catch in the parent,
+  `k: "\ud800"`, `- "\ud800"`, and `- - k: "\U00110000"` all escape as
+  `parsimonious.exceptions.VisitationError` (FR-009), and neither parent
+  method executes. Two Contract 04 table rows would have failed. The
+  pass-14/16 prototypes must have converted in `visit_quoted_value`, so they
+  tested the intended behaviour, not the written mechanism.
+  **Mitigation (Contracts 02, 04, 05, 08)**: `visit_quoted_value` decodes,
+  converts `QuotedStringDefect` to `MalformedQuotedStringError` itself
+  (anchor: `to_original(pos_at(self.line, node.start))`, the opening quote),
+  and stores the decoded text with `dataclasses.replace(source, text=...)`.
+  With the catch there, all three inputs raise the `ParseError` subclass.
+  `QuotedStringDefect` stays out of `unwrapped_exceptions`. Pass 1's
+  precedence rule still holds (`k: "\ud800" x` is trailing content), because
+  stranding is checked before any visit. Contract 05 gains a test obligation
+  for the decoder rows at `key:`, `- `, and `- - k:` positions.
+- **`basetypes` and `preprocess` imported each other (Medium).**
+  `Source.from_node` (`basetypes.py`) calls Contract 01's `pos_at`
+  (`preprocess.py`) at run time, and `preprocess` constructs `Pos`
+  (`basetypes.py`) at run time. That is a circular import, so the second
+  `from … import` fails on a partly initialized module. No contract said
+  where `original_line`, `error_message`, `find_first`,
+  `raise_trailing_content`, or `GRAMMAR` live either. `original_line` placed
+  in `parsers.py`, next to its first definition in Contract 05, would have
+  made `nodes` and `parsers` import each other. **Mitigation**: `Line` and
+  `pos_at` move to `basetypes.py` (Contract 01, data-model §2), and
+  § Project Structure now gives every helper's module and the one-way import
+  order.
+- **Second-order check (no finding).** A quoted leaf built with
+  `inline=True` in `visit_quoted_value` changes nothing downstream: D6's skip
+  tests `quoted` and so never drops `key: ""`; `ContainerNode.add_node`'s
+  inline/block branch is irrelevant for a leaf that accepts nothing; and the
+  new import order has no cycle (`nodes` reaches `original_line` and
+  `error_message` through modules listed before it).
 
 ### Open items for the principal (not applied)
 
