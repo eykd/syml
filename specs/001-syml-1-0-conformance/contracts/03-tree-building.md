@@ -13,7 +13,8 @@
 class SymlNode:
     pnode: PNode | None        # None only on Root (§ Automatic container creation)
     source: Source             # constructor field, built by the visitor (Contract 08)
-    level: int | None          # the node's OWN column (R-11), not the line's indent
+    level: int                 # the node's OWN column (R-11); required, set by the
+                               # visit_* that builds it (Contract 02 § Who sets level)
     def can_add_node(self, node: SymlNode, doc: Document) -> bool: ...
     def add_node(self, node: SymlNode) -> SymlNode: ...       # returns the TIP
     def incorporate_node(self, node: SymlNode, doc: Document) -> SymlNode: ...
@@ -21,10 +22,58 @@ class SymlNode:
 
 
 class TextLeafNode(SymlNode):
-    anchor_level: int          # owning KeyValue/ListItem level; -1 for a root scalar
-    baseline: int | None       # None until fixed (D11)
-    quoted: bool               # a quoted inline value accepts no continuation
+    inline: bool = False       # set True by visit_key_value / visit_list_item
+    quoted: bool = False       # set True by visit_quoted_value (implies inline)
+    anchor_level: int = -1     # set on attach (below); the default IS the root-scalar value
+    baseline: int | None = 0   # set on attach; None = inline, not yet fixed (D11)
 ```
+
+### Where `anchor_level` and `baseline` are assigned (red-team pass 11)
+
+The visitor cannot set them for a bare line: `visit_text` does not know
+whether its line will become a root scalar, a block value, or a continuation
+candidate. The visitor knows only `inline` / `quoted`, so it sets those; the
+**accepting node** sets the rest when it attaches the leaf:
+
+```python
+class ContainerNode(SymlNode):                  # KeyValue, ListItem
+    def add_node(self, node: SymlNode) -> SymlNode:
+        self.children.append(node)
+        node.parent = self
+        if isinstance(node, TextLeafNode):
+            node.anchor_level = self.level
+            node.baseline = None if node.inline else node.level   # inline vs block (§9.3)
+        return node.get_tip()
+
+
+class Root(ContainerNode):
+    def add_node(self, node: SymlNode) -> SymlNode:
+        self.children.append(node)
+        node.parent = self
+        # a root scalar keeps the defaults: anchor_level -1, baseline 0 (§9.3)
+        return node.get_tip()
+
+
+class TextLeafNode(SymlNode):
+    def add_node(self, node: SymlNode) -> SymlNode:        # a continuation line
+        if self.baseline is None:
+            self.baseline = node.level                     # first continuation fixes it
+        self.children.append(node)
+        node.parent = self
+        return self                                        # tip unchanged (§9.3)
+
+    def get_tip(self) -> SymlNode:
+        return self                                        # continuations are never tips
+```
+
+`Root` never receives an inline leaf: inline leaves are attached inside
+`visit_key_value` / `visit_list_item`, before the line's top node reaches the
+per-line loop. `ParentNode` (`Mapping`, `List`) never accepts a
+`TextLeafNode`. A continuation child's own `anchor_level` / `baseline` are never
+read, because it is never a tip; `as_data` reads only its `level` and text
+(`' ' * (child.level - self.baseline) + text`). `baseline` is always an `int`
+by the time a continuation child exists, so that subtraction never sees
+`None`.
 
 `incorporate_node` is §9.2 verbatim: accept → `add_child`; else walk to the
 parent; else `OutOfContextNodeError`. `add_child` returns the **tip** of the
@@ -183,6 +232,9 @@ Each row is an acceptance scenario. `→` is `loads`.
 | `p:\n  a: 1\n  a: 2` | `DuplicateKeyError` | per-mapping, nested too | Edge Cases |
 | `p:\n  a: 1\na: 2` | `{"p": {"a": "1"}, "a": "2"}` | the inner mapping declines on level **before** any duplicate scan (§9.3) | §8.3 |
 | `empty:\nnext: value` | `{"empty": "", "next": "value"}` | | US4.1 |
+| `key:␠\n  nested: content` | `{"key": {"nested": "content"}}` | empty unquoted inline `text` dropped by the visitor; `key` stays open (D6, Contract 02) | US3.7 |
+| `-␠\n  x` | `["x"]` | same normalization for a list item (D6) | §9.3 |
+| `key: ""\n  x: y` | `OutOfContextNodeError` | a quoted empty value is a real child and closes `key` (§9.3, §4.7) | §9.3 |
 | `- item1\n\n- item2\n\n\n- item3` | `["item1", "item2", "item3"]` | blanks ignored (§4.4) | §4.4 |
 | `a:\n        \n  b: c\n  d: e` | `{"a": {"b": "c", "d": "e"}}` | whitespace-only line never affects indentation | US3.8 |
 
@@ -214,7 +266,13 @@ incorporates the node into it.
 ## Test obligations
 
 - Every acceptance table row and every worked case above.
-- `set_level` no longer recurses into children for inline structures (R-11).
+- `set_level` is gone (R-11): no node's `level` is `None` or changed after
+  construction; `-   name: Alice` gives `ListItem`/`Mapping`/`KeyValue`/leaf
+  levels 0/4/4/10 (Contract 02 § Who sets `level`).
+- `anchor_level`/`baseline` per origin: `key: a` → anchor 0, baseline `None`
+  until `  b` fixes it to 2; `key:\n  a` → anchor 0, baseline 2 at attach;
+  `hello` (root) → anchor -1, baseline 0; after a continuation the tip is still
+  the first leaf, never the continuation child.
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
 - A dedented key equal to a key in a deeper mapping on the walk-up path
   (`p:\n  a: 1\na: 2`) is **not** a duplicate. This pins the level-gate

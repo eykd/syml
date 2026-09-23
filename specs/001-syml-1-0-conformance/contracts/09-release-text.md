@@ -86,7 +86,7 @@ makes it a backlog under a misleading name.
 | --- | --- |
 | `incorporate_node` | described as climbing "by indentation level"; §9.2 climbs by **acceptance**, and level is now the node's own column (R-11) |
 | `can_add_node` | described as "the per-node predicate a **container** implements"; `TextLeafNode` and `Mapping` now carry real logic (baseline, duplicate keys) |
-| `TextLeafNode` | described as "accepts further `TextLeafNode`s as children" with no conditions; it now carries `anchor_level`, `baseline`, and `quoted` and declines more than it accepts |
+| `TextLeafNode` | described as "accepts further `TextLeafNode`s as children" with no conditions; it now carries `inline`, `quoted`, `anchor_level`, and `baseline` and declines more than it accepts |
 | `OutOfContextNodeError` | "listed in `unwrapped_exceptions` so Parsimonious does not wrap it" — with per-line lexing (R-09) and a full wrapping boundary, that sentence describes an implementation detail that changes |
 
 Add: `PositionMap`, `EncodingError`, `dumps`/`dump`, `Document` (original vs

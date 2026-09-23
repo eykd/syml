@@ -84,7 +84,6 @@ the tab scan. A line of only spaces and a tab is blank and raises nothing
 
 ```
 SymlNode
-├── IndentNode
 ├── ContainerNode        # holds at most one value; "closed" once it does
 │   ├── Root             # level 0, anchor_level -1
 │   ├── KeyValue         # + key: KeyLeafNode
@@ -92,7 +91,7 @@ SymlNode
 ├── ParentNode           # holds many same-level children
 │   ├── Mapping
 │   └── List
-├── TextLeafNode         # + anchor_level, baseline, quoted
+├── TextLeafNode         # + inline, quoted, anchor_level, baseline
 │   └── Comment
 └── KeyLeafNode
 ```
@@ -101,10 +100,11 @@ SymlNode
 
 | Node | Field | Type | Why |
 | --- | --- | --- | --- |
-| `SymlNode` | `level` | `int \| None` | **semantics change**: the node's *own* column, not the line's indent (R-11, §9's Level definition, M23) |
-| `TextLeafNode` | `anchor_level` | `int` | level of the owning `KeyValue`/`ListItem`; `-1` for a root scalar (§9.3) |
-| `TextLeafNode` | `baseline` | `int \| None` | `None` until fixed; see 3.3 (D11) |
-| `TextLeafNode` | `quoted` | `bool` | a quoted inline value accepts no continuation (§9.3, D2) |
+| `SymlNode` | `level` | `int` | **semantics change**: the node's *own* column, not the line's indent (R-11, §9's Level definition, M23). **Required** at construction, set by the building `visit_*` from its own line-local `pnode.start`; never `None`, never reassigned — `set_level` is deleted (Contract 02 § Who sets `level`) |
+| `TextLeafNode` | `inline` | `bool` | `True` when built at an inline position; set by `visit_key_value`/`visit_list_item`. Decides, at attach time, whether the baseline starts unset (inline) or fixed (block) |
+| `TextLeafNode` | `anchor_level` | `int` | level of the owning `KeyValue`/`ListItem`; `-1` for a root scalar (§9.3). Assigned by the accepting node's `add_node`, not the visitor (Contract 03 § Where `anchor_level` and `baseline` are assigned); default `-1` |
+| `TextLeafNode` | `baseline` | `int \| None` | `None` until fixed; see 3.3 (D11). Assigned on attach (`None` if `inline`, else the leaf's own level; `0` for a root scalar), fixed by the first continuation for inline |
+| `TextLeafNode` | `quoted` | `bool` | a quoted inline value accepts no continuation (§9.3, D2); set by `visit_quoted_value` |
 | `ContainerNode` | — | — | "closed" is derived: `bool(self.children)` |
 | `Mapping` | — | — | duplicate-key check at `can_add_node` time (FR-007, §10.3) |
 

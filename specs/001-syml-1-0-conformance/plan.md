@@ -830,6 +830,55 @@ boundaries still hold, unaffected by this pass.
   §9.2's full algorithm for `- key: v` / `- - x`. **Mitigation**: Contract 05
   now names both receivers explicitly and notes which one can recurse.
 
+### Pass 11 (2026-09-23, outer iteration 7): who assigns node state
+
+Swept Contracts 01-09 and data-model as one program. R-09's stranded-prefix
+claim and the `\r\r\n` / trailing-bare-`\r` boundaries still hold
+(re-probed: `k: "a" x` strands at 7, right after the quote and its space;
+`a\r\r\nb\r` has three breaks both before and after normalization).
+
+- **No node's `level` was set before the inline `incorporate_node` calls
+  (High).** Contract 05 rule 2 has `visit_list_item` call
+  `li.incorporate_node(value, self.doc)` inside the visit, and Contract 03's
+  table compares `node.level > self.level`. But no artifact said who sets
+  `level` on a fresh `KeyValue`/`ListItem`/`TextLeafNode`. Today the only
+  assignment is `visit_line`'s `set_level(indent.level)`, which runs *after*
+  those calls. So for `- key: v` both operands are `None` at the moment of
+  the call, and `None > None` is a `TypeError`. That is not in
+  `unwrapped_exceptions`, so a `VisitationError` would escape `loads`
+  (FR-009). Today's code hides this with `node.level is None or …` guards and
+  `node.set_level(self.level)` inheritance, and that inheritance is M23, the
+  bug R-11 removes. **Mitigation**: `level: int` is a required constructor
+  argument, set by the building `visit_*` from its own line-local
+  `pnode.start`. Contract 02 now has a per-node table and a worked trace of
+  `-   name: Alice\n  role: admin` (US1.8). `set_level`, `visit_line`'s level
+  write, `IndentNode`, and the `None` guards are deleted. data-model §3.1
+  matches.
+- **`anchor_level` and `baseline` had no assignment site either (High).** Same
+  defect class. `visit_text` cannot know whether a bare line will be a root
+  scalar, a block value, or a continuation. **Mitigation**: a new `inline:
+  bool` field, set by `visit_key_value`/`visit_list_item`. The accepting
+  node's `add_node` assigns `anchor_level`/`baseline`: `KeyValue`/`ListItem`
+  use their own level, with baseline `None` if inline and the leaf's level if
+  block; `Root` keeps the defaults `-1`/`0`. `TextLeafNode.add_node` fixes an
+  unset baseline and returns `self`, so the tip is unchanged (§9.3).
+  Contract 03, data-model §3.1, and Contract 09's field list match.
+- **D6 had no implementation home, and Contract 02 mislabelled `key:␠`
+  (High).** The table said `key:␠` lexes as `section`. In fact it lexes as
+  `key_value`'s second alternative with an **empty** `text` (verified;
+  `section`'s `&eol` fails on the space), and `-␠` likewise. Contract 05
+  rule 2 attached every inline value "uniformly". An empty leaf would
+  therefore close the node, and US3.7 (`key:␠\n  nested: content`) would
+  raise `OutOfContextNodeError`. **Mitigation**: `visit_key_value` and
+  `visit_list_item` skip incorporating an empty **unquoted** leaf (§9.3's
+  normalization). `key: ""` is still a real child. Contract 02's rows are
+  corrected, and the D6 fixtures (`-␠\n  x`, `- - ␠\n    x`, and
+  `key: ""\n  x: y`) are worked cases and test obligations. This transcribes
+  D6 and does not change it.
+- **Contract 05 named a `section` child that is not on the `key_value` path
+  (Low).** `key_value` contains `key_colon`, and `section` only matches a
+  valueless line. Reworded.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

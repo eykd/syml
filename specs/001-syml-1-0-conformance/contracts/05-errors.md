@@ -201,15 +201,22 @@ exception escaping `loads`. Two rules close that:
 2. Line-to-line tree incorporation (`incorporate_node`, Contract 03) runs in
    the per-line loop, **outside** `NodeVisitor.visit`. Each visit that builds a
    value-holding container attaches its own child the same way, still
-   **inside** the visit: `visit_key_value` builds an empty `section`
-   (`KeyValue`) and calls `section.incorporate_node(value, self.doc)`, and
+   **inside** the visit: `visit_key_value` takes the empty `KeyValue` its
+   `key_colon` child built (there is no `section` child on this path —
+   `section` only matches a valueless line) and calls
+   `section.incorporate_node(value, self.doc)` on it, and
    `visit_list_item` builds an empty `li` (`ListItem`) and calls
    `li.incorporate_node(value, self.doc)` — uniformly, whether `value` is a
    leaf (`TextLeafNode`) or, for `list_item`'s inline nesting (`- key: v`,
    `- - x`), itself a `structure` needing §9.2's full walk-up/auto-wrap
    algorithm. (`key_value`'s own value slot is never a `structure` — its
    grammar alternatives are only `quoted_value` or `data` — so `section`'s
-   call always resolves in one step; `li`'s can recurse.) That is safe
+   call always resolves in one step; `li`'s can recurse.) Two exceptions to
+   "uniformly": a zero-length **unquoted** leaf value is not incorporated at
+   all (D6, Contract 02 § Zero-length inline values), and neither call can
+   see a `None` level, because every operand's `level` is set at
+   construction (Contract 02 § Who sets `level`) — a `None` reaching `>` would
+   be a `TypeError`, which is **not** in `unwrapped_exceptions`. That is safe
    because everything either call can raise is a `ParseError` or a
    `RecursionError`, and both are in `unwrapped_exceptions` (rule 1).
 

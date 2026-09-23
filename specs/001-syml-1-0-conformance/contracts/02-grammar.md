@@ -170,6 +170,19 @@ pnode.start`, line `line.number`, column `pnode.start`), which
 Do not "fix" this by renaming grammar rules: the grammar is a transcription of
 §4.1 and stays one.
 
+### Zero-length inline values are dropped by the visitor (D6, §9.3)
+
+The grammar cannot express D6: `key:␠` and `-␠` both lex with an **empty**
+`text` child (the lexing table below). §9.3 normalizes a zero-length
+*unquoted* inline value to "no inline value at all", so `visit_key_value`
+(second alternative) and `visit_list_item` (`"-" ws value` whose `value` is
+an unquoted `TextLeafNode`) **skip** the inline `incorporate_node` call when
+that leaf's text is `""`, and return the still-empty `KeyValue` / `ListItem`.
+The node stays open: a following block line or nested structure is accepted
+exactly as after `key:` / `-`. A quoted value is never normalized — `key: ""`
+and `- ''` are real children and close the node (§4.7). The quote-guard runs
+first and cannot fire on an empty `text`.
+
 ## Level computation (R-11, §9's "Level" definition)
 
 A node's `level` is the 0-indexed column where **its own** marker or content
@@ -186,19 +199,60 @@ line's indent. That is audit gap #14 / M23 exactly:
 | `"- name: Alice\nrole: admin"` | parses | `OutOfContextNodeError` |
 | `"- name: Alice\n  role: admin"` | parses | parses — `name` is at column 2 |
 
+### Who sets `level`, and when (red-team pass 11)
+
+`level` is a **required constructor argument** (`level: int`, no `None`), set
+by the `visit_*` method that builds the node, from that node's **own**
+line-local `pnode.start`:
+
+| Node | Built by | `level =` |
+| --- | --- | --- |
+| `KeyValue` | `visit_key_colon` (`section` and both `key_value` alternatives reach it) | the `key_colon` node's `start` — the key's column |
+| `KeyLeafNode` | `visit_key` | the `key` node's `start` (never incorporated; carried for `Source` only) |
+| `ListItem` | `visit_list_item` | the `list_item` node's `start` — the `-` column |
+| `TextLeafNode` (unquoted) | `visit_text` | the `text` node's `start` |
+| `TextLeafNode` (quoted) | `visit_quoted_value` | the `quoted_value` node's `start` — the opening quote |
+| `Comment` | `visit_comment` | the `comment` node's `start` (never incorporated) |
+| `Mapping` / `List` intermediary | §9.4 auto-creation (Contract 03) | the triggering node's `level` |
+| `Root` | the per-line loop | `0` |
+
+Parsimonious visits bottom-up, so every child node — with its `level` — exists
+before the parent's `visit_*` runs. That ordering is what makes the **inline**
+`incorporate_node` calls inside `visit_key_value` / `visit_list_item`
+(Contract 05 rule 2) sound: both operands already carry their final level at
+the moment of the call. Nothing assigns or reassigns `level` afterwards:
+`set_level` is **deleted**, `visit_line` no longer touches levels (it returns
+its structure/data child unchanged), and `IndentNode` / `visit_indent` become
+dead and are removed. Today's `node.level is None or …` guards in
+`can_add_node` and the `node.set_level(self.level)` inheritance in `add_node`
+are deleted with them — the inheritance **is** M23, and without the guards a
+`None` would reach `>`/`==` as a `TypeError`, which Parsimonious wraps in
+`VisitationError` (not in `unwrapped_exceptions`), breaking FR-009.
+
+Worked trace, `"-   name: Alice\n  role: admin"` (US1 scenario 8), line 1:
+`visit_text` → `TextLeafNode(level=10)`; `visit_key_colon` → `KeyValue(level=4)`;
+`visit_key_value` → `KeyValue(4).incorporate_node(TextLeafNode(10))` (10 > 4,
+accepted); `visit_list_item` → `ListItem(level=0)`, then
+`ListItem(0).incorporate_node(KeyValue(4))` → auto-creates `Mapping(level=4)`
+(0 < 4) and adds the `KeyValue` to it; the tip is the `Alice` leaf. Line 2:
+`KeyValue(level=2)` walks up past that leaf (not a `TextLeafNode`), the closed
+`KeyValue(4)`, `Mapping(4)` (2 ≠ 4), the closed `ListItem(0)`,
+`List(0)` (not a `ListItem`), and `Root` (not empty) →
+`OutOfContextNodeError`.
+
 ## Lexing outcomes (§7.6 table plus the audit's additions)
 
 | Input line | Lexes as | Result |
 | --- | --- | --- |
 | `key: value` | `key_value` | `{"key": "value"}` |
 | `key:` | `section` | key with no inline value |
-| `key:␠` | `section` (D6) | identical to `key:` — US3 scenario 7 |
+| `key:␠` | `key_value` (second alternative, **empty** `text` at column 5 — not `section`, whose `&eol` fails on the space; verified) | normalized by the visitor to no inline value (D6, below) — identical to `key:`, US3 scenario 7 |
 | `key:value` | `data` | scalar `"key:value"` — US3 scenario 3 |
 | `key:\tv` | `data` (D5) | scalar `"key:\tv"` — US3 scenario 5 |
 | `key: \tv` | `key_value` | `{"key": "\tv"}` — US3 scenario 6 |
 | `key:"value"` | `key_value` (quoted, `ws?`) | `{"key": "value"}` — §7.5 |
 | `-` | `list_item` (`&eol`) | takes a block value — US3 scenario 1 |
-| `-␠` | `list_item` (`ws value`, empty `data`) | one empty-string item — US3 scenario 2 |
+| `-␠` | `list_item` (`ws value`, **empty** `text`) | normalized to no inline value (D6, below): one empty-string item when nothing follows (US3 scenario 2); `-␠\n  x` → `["x"]` |
 | `-item` | `data` | scalar `"-item"` — US3 scenario 4 |
 | `-42` | `data` | scalar `"-42"` |
 | `- item # not a comment` | `list_item` | `["item # not a comment"]` (§4.3) |
@@ -223,6 +277,12 @@ line's indent. That is audit gap #14 / M23 exactly:
   `# "a` (comment) and `"a` (root scalar) do not — proving the quote-guard is
   not hung on the shared `text` expression.
 - US3's nine acceptance scenarios.
+- D6 through `loads`: `"key:␠\n  nested: content"` → `{"key": {"nested": "content"}}`;
+  `"-␠\n  x"` → `["x"]`; `"- - ␠\n    x"` → `[["x"]]`; `"key: \"\"\n  x: y"` →
+  `OutOfContextNodeError` (quoted empty is a real child).
+- Level assignment: for `"-   name: Alice"`, the `ListItem`, `Mapping`,
+  `KeyValue`, and `TextLeafNode` carry levels 0, 4, 4, 10; no node in any
+  parsed tree has `level is None`.
 - Through `loads`: `"  \t  \nkey: v"` → `{"key": "v"}` and
   `"key: a\n  \t\n  b"` → `{"key": "a\nb"}` (the `is_blank` skip; Contract 01).
 - A two-line document's second-line key reports `line == 2` from
