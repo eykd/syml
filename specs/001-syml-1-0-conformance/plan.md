@@ -239,7 +239,9 @@ Three new modules are added, each owning one specification section with a clean
 boundary: `preprocess.py` owns §9.0 and §13.3 (nothing downstream ever sees a
 `\r` or a BOM, per §4.1's opening premise); `quoting.py` owns §4.7's decode
 table (pure functions, no parser state); `serializer.py` owns §11.2 (the inverse
-direction, sharing nothing with the parser but the quoting table's definitions).
+direction, sharing nothing with the parser but the quoting table's definitions
+and a read-only use of `GRAMMAR['line']` to re-lex list-item renderings —
+Contract 07's one exception to the single-quote preference).
 Splitting them out rather than growing `parsers.py` keeps each under the
 100%-coverage gate with tests that name one specification section, and keeps
 `parsers.py` about lexing only.
