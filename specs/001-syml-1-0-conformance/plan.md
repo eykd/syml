@@ -39,9 +39,11 @@ taxonomy, `dumps`/`dump`, original-text `Pos` — sits on those three.
 ## Technical Context
 
 **Language/Version**: Python ≥ 3.12 (`requires-python = ">=3.12"`)
-**Primary Dependencies**: `parsimonious>=0.10,<0.11` (PEG). `regex>=2024.11.6`
-is declared but unused by `src/`; this feature does not start using it — see
-Constitution Check, principle V.
+**Primary Dependencies**: `parsimonious>=0.10,<0.11` (PEG), which compiles
+every grammar atom with the third-party `regex` module and requires it.
+syml's own direct `regex>=2024.11.6,<2025` line is unused by `src/`, and its
+cap has no Python 3.14 wheel, so this feature removes the line (Contract 09,
+red-team pass 26) — see Constitution Check, principle V.
 **Storage**: N/A (in-memory parsing library)
 **Testing**: pytest (random order, 100% branch coverage gate at commit/CI),
 pytest-bdd for acceptance (`just acceptance`), mypy strict over `src/`,
@@ -57,7 +59,10 @@ throughput. Every per-line and per-key step must stay O(1) amortized, because
 §13.4's size limits are deferred and nothing else bounds input size. Red-team
 pass 16 found the duplicate-key scan quadratic and made it a dict lookup
 (Contract 03); pass 18 cut quoted-value lexing from about 1 KB of parse
-nodes per character to one node per run (Contract 02).
+nodes per character to one node per run, and pass 26 to five nodes per
+quoted value, escape-dense ones included (Contract 02). Pass 26 also
+stopped every node from keeping its parse node. Peak memory is still a
+few hundred bytes per input byte, which Contract 09 note 13 documents.
 **Constraints**: §13.4's implementation limits (max depth 500, max line 1 MiB,
 max document 10 MiB) and `DocumentLimitError` are **deferred past 1.0** by
 decision. Nesting past ~500 levels of block nesting — or only ~120 levels of
@@ -133,10 +138,20 @@ once, in Contract 09 § Leaf ordering (pass 25).
 
 ### Principle V — no new runtime dependency, no second leaf type
 
-- **No new runtime dependency.** `regex` is already declared but unused by
-  `src/`; R-01 rejects starting to use it (Parsimonious compiles atoms with
-  `re`, so `\p{White_Space}` would mean replacing the grammar engine). D15's set
-  is enumerated inline instead. Complexity Tracking is therefore empty.
+- **No new runtime dependency, and one fewer declared.** `regex` is declared
+  but unused by `src/`. **Correction (red-team pass 26):** this bullet and
+  research.md R-01's last alternative said Parsimonious compiles its atoms
+  with `re`. Parsimonious 0.10.0 does `import regex as re` in
+  `expressions.py` and requires `regex>=2022.3.15`, so every grammar atom
+  already runs on `regex`, and `\p{White_Space}` would compile in one.
+  D15's enumerated set stands anyway. It is the exact set D15 names, it
+  does not tie the key class to the `regex` module's Unicode tables, and
+  `re` and `regex` agree on it for every code point, as they do on `\Z`
+  (verified). R-01's decision is unaffected; only its stated reason for
+  rejecting `\p{White_Space}` was wrong, and research.md is left for the
+  principal. syml's own `regex` line adds nothing Parsimonious does not
+  already require, and its `<2025` cap blocks Python 3.14 wheel installs,
+  so Contract 09 removes it. Complexity Tracking is therefore empty.
 - **Every leaf value stays a plain `str`.** FR-005 strengthens this: absent
   values become `""` rather than `None`, removing the one non-string leaf that
   exists today.
@@ -237,7 +252,7 @@ src/syml/
 
 tests/
 ├── test_preprocess.py    # NEW
-├── test_parsers.py
+├── test_parsers.py       # TestSymlParser's fixture goes; two documents re-indented (Contract 03, pass 26)
 ├── test_nodes.py         # currently 0 bytes; populated (FR-017)
 ├── test_quoting.py       # NEW
 ├── test_serializer.py    # NEW
@@ -264,7 +279,7 @@ SYML-SPEC-REVIEW.md       # title + subject: reviewed text was the pre-release d
 CHANGELOG.md              # NEW — migration notes (FR-015); pinned, not README (pass 25)
 README.md                 # + serializer section, link to CHANGELOG (Contract 09)
 todo.txt                  # retired (FR-016)
-pyproject.toml            # version = "1.0.0"
+pyproject.toml            # version = "1.0.0"; direct `regex` line removed (Contract 09, pass 26)
 .specify/memory/constitution.md  # amended to v2.0.0 (FR-019); III's stale parenthetical too (pass 25)
 CLAUDE.md                 # principle-IV restatement + pragma bullet first; "conforms" last (Contract 09)
 .claude/skills/pytest-unit-testing/SKILL.md  # pragma section, first commit (Contract 09, pass 25)
@@ -1662,6 +1677,77 @@ recursion obligations keep their margins (block 400/500 against 481, inline
     `--strict-markers`. An unregistered `@feature-exit` there is a warning,
     not an error. Registration stays (Contract 09).
 
+### Pass 26 (2026-09-23, outer iteration 16): hostile input, the old tests, and the 0.6.2 user
+
+The pass 25 assembly was copied and attacked from outside: hostile input
+sizes, Python 3.12, 3.13, and 3.14 (each with Parsimonious 0.10.0), today's
+`tests/`, and 37 realistic documents run through both 0.6.2 and the
+assembly. The fixes were then applied to a copy of the assembly and the
+pass 25 suite re-run: 411 tests pass at 100% line and branch coverage under
+three seeds, with mypy and ruff unchanged from pass 25. R-09 sanity:
+`GRAMMAR['line'].match('k: "a" x').end` is 7 of 8. R-02 sanity:
+`preprocess('a\r\r\nb\r')` has `crlf_indices == (2,)` and three breaks.
+
+- **A valueless key in a list item changes silently (High, Migration).**
+  R-11 measures a child against the key's own column, so `- server:\n
+  host: x` is `[{'server': '', 'host': 'x'}]` in 1.0, where 0.6.2 gave
+  `[{'server': {'host': 'x'}}]`, and nothing raises. With a list or text
+  under the key (`- foo:\n  - bar`) it is `OutOfContextNodeError`. This
+  follows §9.3 as printed ("strictly greater than a KeyValue's level"),
+  but no migration note said it and no obligation pinned it. Two of
+  today's tests assert the 0.6.2 reading. A worker who sees them go red
+  with no guidance could "fix" `level` and undo R-11. **Mitigation**:
+  Contract 03 gains the five-row table and a disposition for
+  `tests/test_parsers.py`. Contract 09 gains note 17. Open item 7 asks the
+  principal whether §9.3 means this. The plan implements §9.3 as printed.
+- **`dumps` wrote a `(str, Enum)` member as `Color.RED` (High,
+  Correctness).** An f-string renders a mixin member by its name on 3.12
+  and later, so `dumps({'color': Color.RED})` gave `color: Color.RED`. That
+  loads back unequal, and nothing raised. A subclass overriding `split`
+  and `startswith` got `'- b'` through as a root scalar, which loads as
+  `['b']`. **Mitigation (Contract 07)**: every key, value, and root scalar
+  is read through `str.__str__(s)` before any rule sees it. Verified on
+  the rebuilt assembly: `c: red`, `red: x`, `- red`, and `red` all round
+  trip, and the `'- b'` subclass raises `UnrepresentableValueError`.
+- **Silent value changes missing from the migration notes (Medium).**
+  From the 37-document diff: `path: "C:\new\temp"` now decodes to a
+  newline and a tab, `path: "C:\Users\me"` now raises, an indented root
+  scalar keeps its indentation, CRLF values lose their trailing `\r`, and
+  a leading U+FEFF no longer joins the first key. **Mitigation (Contract
+  09)**: notes 4 and 7 are sharpened and note 18 is added. The note on
+  traceability says why the audit-gap check cannot find these: they are
+  side effects of fixes, not gaps.
+- **Escape-dense quoted values still cost about 1 KB per character
+  (Medium, Performance).** Pass 18 left `escape_seq` as printed. A 0.6 MB
+  line of `a\n` pairs took 2.9 s and 565 MB, against 0.00 s and 28 MB in
+  0.6.2. **Mitigation (Contract 02)**: each quoted body is now one regex
+  atom that holds `escape_seq`'s alternatives. The equivalence was checked
+  by brute force over 4,444,444 lines up to length 6, with 0 differences
+  in match ends or named spans down to `quoted_value`. The same line now
+  takes 0.06 s and 62 MB. Contracts 04 and 07 no longer name `escape_seq`
+  as a grammar rule.
+- **Nodes kept their parse nodes (Medium, Performance).** Nothing reads
+  `pnode` after construction, and it was 36% of a parsed tree's retained
+  memory. **Mitigation (Contract 03, data-model §3.1)**: the field is
+  removed, and migration note 16 says so. On the rebuilt assembly a
+  100,000-line document went from 5.0 s / 314 MB to 3.7 s / 218 MB (0.6.2
+  took 24.6 s for a tenth of it).
+- **Principle V misstated Parsimonious's engine, and the `regex` pin blocks
+  Python 3.14 (Medium, Packaging).** `parsimonious/expressions.py` does
+  `import regex as re`. On 3.14, `--only-binary` resolution of syml's
+  `regex>=2024.11.6,<2025` fails. **Mitigation**: the Principle V bullet is
+  corrected, since R-01's decision stands but its stated reason was wrong.
+  research.md still carries that reason and is left for the principal.
+  Contract 09 removes syml's direct `regex` line, and Parsimonious's own
+  requirement, which has no cap, supplies it.
+- **Low.** Note 13 now states how the recursion limits scale:
+  block ≈ limit/2 and inline ≈ limit/8, the same on 3.12, 3.13, and 3.14.
+  No crash was seen at a raised limit of 1,000,000 with 50,000 levels. It
+  also states the memory cost an embedder should bound. A cyclic structure
+  passed to `dumps` raises `RecursionError` (Contract 07). Every C0 and C1
+  control, and the Unicode separators and spaces, round-trip at all five
+  positions (3,440 cases, 0 failures). Nothing needed.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
@@ -1699,6 +1785,20 @@ recursion obligations keep their margins (block 400/500 against 481, inline
    says `4 - Beta`. FR-014 pins only `version`, so Contract 09 leaves the
    classifier unchanged. Moving to `5 - Production/Stable` is a release
    judgement, not a conformance question (pass 25).
+7. **Does §9.3 mean a child at a list-item key's own column to be a
+   sibling?** `- server:\n  host: x` is `[{'server': '', 'host': 'x'}]`
+   under §9.3 as printed with R-11's own-column `level`. YAML and 0.6.2
+   both nest it. No example in the specification shows a valueless inline
+   key with block content, so the text decides it alone. The plan
+   implements it as printed, pins it (Contract 03), and documents it as a
+   silent change (Contract 09 note 17, pass 26). Nesting it instead would
+   need a normative §9.3 edit, and it would add a special case to R-11.
+8. **Should CI test more than Python 3.12?** `requires-python = ">=3.12"`
+   is open-ended, and the design's figures were measured on 3.12, 3.13, and
+   3.14 (pass 26). CI's matrix is `["3.12"]` only. Adding versions is a
+   workflow change, and it may surface dev-group pins (`pytest-cov<6`,
+   `ruff<0.7`, and others) that have nothing to do with conformance. So it
+   is left as a release judgement, beside item 6.
 
 ## Complexity Tracking
 

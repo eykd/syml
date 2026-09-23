@@ -153,7 +153,8 @@ reintroducing exactly the silent fallthrough D2 removed.
 
 ### What the quote-guard reports: diagnosing the fallthrough
 
-The grammar's `escape_seq` only admits the eight valid escapes, so a double-
+§4.1's `escape_seq` (the last three alternatives of Contract 02's `double_quoted`
+body atom since pass 26) only admits the eight valid escapes, so a double-
 quoted value containing an **invalid or incomplete** escape (`k: "a\xb"`,
 `k: "a\u12"`) never matches `double_quoted` at all: `quoted_value` fails, the
 line falls through to `key_colon ws data`, and the value reaches the

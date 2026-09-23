@@ -108,6 +108,7 @@ SymlNode
 | `TextLeafNode` | `anchor_level` | `int` | level of the owning `KeyValue`/`ListItem`; `-1` for a root scalar (§9.3). Assigned by the accepting node's `add_node`, not the visitor (Contract 03 § Where `anchor_level` and `baseline` are assigned); default `-1` |
 | `TextLeafNode` | `baseline` | `int \| None` | `None` until fixed; see 3.3 (D11). Assigned on attach (`None` if `inline`, else the leaf's own level; `0` for a root scalar), fixed by the first continuation for inline |
 | `TextLeafNode` | `quoted` | `bool` | a quoted inline value accepts no continuation (§9.3, D2); set by `visit_quoted_value` |
+| `SymlNode` | `pnode` | — | **removed** (red-team pass 26): read only by the `visit_*` that builds the node; storing it kept a Parsimonious subtree alive per node, 36% of a parsed tree's retained memory (Contract 03) |
 | `ContainerNode` | — | — | "closed" is derived: `bool(self.children)` |
 | `Mapping` | `keys` | `dict[str, KeyValue]` | key text → the first `KeyValue` holding it, filled by `Mapping.add_node`; makes the duplicate-key check at `can_add_node` time (FR-007, §10.3) a lookup instead of an O(*n*) scan per key (Contract 03, red-team pass 16) |
 
@@ -188,7 +189,8 @@ registers is the node's own column (R-11), which is what makes
 `source` is a constructor field, no longer derived in `__post_init__`.
 Contract 08's `Source.from_node` needs a `line` that `incorporate_node` does
 not have. An intermediary therefore copies the triggering node's `Source`.
-`Root` has `pnode=None` and an empty `Source` at `Pos(0, 1, 0)` (Contract 03).
+`Root` has an empty `Source` at `Pos(0, 1, 0)` (Contract 03). No node stores
+its parse node (pass 26).
 
 ### 3.5 Rendering
 

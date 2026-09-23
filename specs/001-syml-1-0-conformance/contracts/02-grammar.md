@@ -9,9 +9,10 @@
 ## Grammar
 
 Transcribed from §4.1 as printed, with **three** substitutions — two in
-"Escaping inside `~"..."` atoms" below, and the run atoms in "Run atoms inside
-quoted strings" (red-team pass 18). All three are transcription-level, not
-normative: each accepts exactly the language §4.1 prints.
+"Escaping inside `~"..."` atoms" below, and the quoted-body atoms in "Quoted
+bodies are single atoms" (red-team pass 18, completed in pass 26). All three
+are transcription-level, not normative: each accepts exactly the language
+§4.1 prints.
 
 ```peg
 document       = (line "\n")* line?
@@ -32,10 +33,12 @@ value          = structure / (quoted_value ~" *") / data
 data           = text
 
 quoted_value   = single_quoted / double_quoted
-single_quoted  = "'" ("''" / ~"[^'\n]+")* "'"
-double_quoted  = '"' (escape_seq / ~"[^\"\\\\\n]+")* '"'
-escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[0-9a-fA-F]{8}")
+single_quoted  = "'" ~"(?:''|[^'\n])*" "'"
+double_quoted  = '"' ~"(?:[^\"\\\\\n]|\\\\[\\\\/\"nrt]|\\\\u[0-9a-fA-F]{4}|\\\\U[0-9a-fA-F]{8})*" '"'
 ```
+
+§4.1's `escape_seq` rule does not appear: its three alternatives are the
+last three alternatives of the `double_quoted` body atom (pass 26, below).
 
 In `parsers.py` the text above is the module constant `GRAMMAR_TEXT: str`,
 and `GRAMMAR = Grammar(GRAMMAR_TEXT)` (pass 25). The constant exists so the
@@ -77,7 +80,7 @@ class as audit gap #20 — so the FR-017 test obligation
 (`python -W error -c "import syml"`) must pass with the grammar loaded, not just
 with the module imported lazily.
 
-### Run atoms inside quoted strings (red-team pass 18)
+### Quoted bodies are single atoms (red-team passes 18 and 26)
 
 §4.1 prints the quoted-string bodies one character per repetition:
 `("''" / ~"[^'\n]")*` and `(escape_seq / ~"[^\"\\\\\n]")*`. Parsimonious
@@ -91,8 +94,10 @@ nothing bounds it: a 1 MiB quoted line needs about 1 GB, and
 `MalformedQuotedStringError`'s unterminated case pays the same cost before it
 falls through.
 
-The transcription therefore writes each negated class as a **run**
-(`~"[^'\n]+"`, `~"[^\"\\\\\n]+"`). This is transcription-level:
+Pass 18 therefore wrote each negated class as a **run**
+(`~"[^'\n]+"`, `~"[^\"\\\\\n]+"`); pass 26, at the end of this section,
+folds each whole body into one atom on the same argument. The run form was
+transcription-level:
 
 - **Same language.** `(A / B+)*` and `(A / B)*` accept the same strings, and
   under PEG's greedy, no-backtrack repetition they stop at the same offset:
@@ -108,10 +113,47 @@ The transcription therefore writes each negated class as a **run**
   per-character children were only ever visited to return `None`.
 
 After the change the same 100,000-character values lex in about 1 ms with
-no measurable allocation. An escape-dense value still costs one node per
-escape (about 640 bytes for each `\n`, since `escape_seq` stays as printed).
-The block-nesting and inline `- ` recursion figures are unchanged: the
-quoted-string repetition was already iterative.
+no measurable allocation. The block-nesting and inline `- ` recursion figures
+are unchanged: the quoted-string repetition was already iterative.
+
+**Pass 26: the escape-dense case, and the whole body as one atom.** Pass 18
+left `escape_seq` as printed, so an escape-dense value still cost one
+repetition node, one `escape_seq` subtree, and their cache entries per
+escape. Measured on the pass 25 assembly (Python 3.12, Parsimonious 0.10.0):
+`k: "` + 200,000 × `\n` + `"` (0.4 MB) took 2.5 s and 320 MB peak RSS in
+`loads`; 200,000 × `a\n` (0.6 MB) took 2.9 s and 565 MB. 0.6.2 read both
+lines in under 10 ms and 29 MB, because it had no quoted-string rule. A
+1 MiB hostile line therefore still costs about 1 GB, the figure pass 18
+rated Medium for the plain case. So each quoted body is now **one** regex
+atom:
+
+- `single_quoted` = `"'" ~"(?:''|[^'\n])*" "'"` and `double_quoted` =
+  `'"' ~"(?: run | \\[\\/"nrt] | \\uXXXX | \\UXXXXXXXX )*" '"'`
+  (exact text in the grammar block above). `escape_seq`'s three
+  alternatives are the body atom's last three, in the same order.
+- **Same language, same stop point.** Parsimonious compiles atoms with the
+  `regex` module (`import regex as re` in `parsimonious/expressions.py`;
+  plan.md Principle V). The atom's `*` is greedy and nothing follows it
+  inside the atom, so it stops at the first position where no alternative
+  matches. That is exactly where the PEG repetition stops: a closing quote,
+  a backslash that starts no valid escape, or end of line. There is no
+  backtracking to exploit, because the atom always succeeds (possibly
+  empty) and ordered choice picks the first alternative, as PEG does.
+  Brute force over every tail up to length 6 on `'"\ :un0-x` after `k: `,
+  `- `, `k:`, and nothing (4,444,444 lines): identical `match(...).end`
+  and identical `(expr_name, start, end)` for every named node down to
+  `quoted_value`, against the pass 18 grammar (0 differences).
+- **Measured after the change** (Python 3.12, 3.13, and 3.14): a 1 MB line
+  of `a\n` pairs lexes in 55-71 ms, 500,000 `\n` escapes in 43-49 ms,
+  170,000 `\u0041` escapes in 23-26 ms, 350,000 `a''` pairs in 57-73 ms,
+  and the same 500,000 escapes with no closing quote (the quote-guard path)
+  in 46-50 ms. A quoted value is five parse nodes however long it is. End
+  to end through `loads` on the rebuilt assembly, the two lines measured
+  above take 0.04 s / 59 MB and 0.06 s / 62 MB peak RSS (were 2.5 s /
+  320 MB and 2.9 s / 565 MB).
+- Nothing downstream changes, for the reason pass 18 gave: the decoders and
+  `diagnose_malformed` read the token's text, and `find_first` stops at
+  `quoted_value`.
 
 ### Key class
 
@@ -132,7 +174,7 @@ it falls through to `data`.
 ```python
 doc = preprocess(text, filename)            # Contract 01
 visitor = SymlParser(doc)                   # holds position_map, original, filename
-root = Root(pnode=None, level=0, source=Source(      # Contract 03: no document-level pnode
+root = Root(level=0, source=Source(         # Contract 03: nodes store no pnode (pass 26)
     filename=doc.filename, start=Pos(0, 1, 0), end=Pos(0, 1, 0), text=''))
 tip: SymlNode = root                        # NOT `root = tip = Root(...)`: mypy would type
                                             # tip as Root and reject the reassignment (pass 23)
@@ -316,11 +358,16 @@ accepted); `visit_list_item` → `ListItem(level=0)`, then
 
 - Every row of both tables above.
 - `python -W error -c "import syml"` exits 0 (FR-017, audit gap #20).
-- Run-atom oracle (pass 18): the test module builds §4.1's grammar **as
-  printed** (one-character quoted atoms) beside `GRAMMAR`, and asserts equal
-  `GRAMMAR['line'].match(s).end` and equal named-node spans over every line
-  up to length 6 on `'"\a :u0n-x`, each after `k: `, `- `, and `k:`. A
-  100,000-character quoted value lexes with fewer than 100 parse nodes.
+- Quoted-body oracle (passes 18 and 26): the test module builds §4.1's
+  grammar **as printed** (one-character quoted atoms and `escape_seq`)
+  beside `GRAMMAR`, and asserts equal `GRAMMAR['line'].match(s).end` and
+  equal `(expr_name, start, end)` spans for every named node, **not
+  descending below `quoted_value`** (the as-printed tree has `escape_seq`
+  nodes inside a quoted token and `GRAMMAR`'s has none), over every line up
+  to length 6 on `'"\a :u0n-x`, each after `k: `, `- `, and `k:`. A
+  100,000-character quoted value lexes with fewer than 100 parse nodes, and
+  so does an escape-dense one (`k: "` + 50,000 × `\n` + `"`) and a
+  single-quoted one of 50,000 `''` pairs (pass 26).
 - A grammar-load smoke test: inside `warnings.catch_warnings()` with
   `warnings.simplefilter('error')`, `Grammar(GRAMMAR_TEXT)` constructs
   without raising (pass 25). `GRAMMAR_TEXT` is the module-level `str` that

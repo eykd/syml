@@ -288,7 +288,7 @@ def visit_quoted_value(self, node: Node, children: list[Any]) -> TextLeafNode:
             escape=defect.escape, code_point=defect.code_point,
         ) from defect
     source = Source.from_node(node, self.line, self.doc.position_map, self.doc.filename)
-    return TextLeafNode(pnode=node, level=node.start, quoted=True, inline=True,
+    return TextLeafNode(level=node.start, quoted=True, inline=True,  # no pnode field (Contract 03, pass 26)
                         source=dataclasses.replace(source, text=text))  # decoded text (Contract 08)
 ```
 

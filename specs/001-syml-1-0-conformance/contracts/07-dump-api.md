@@ -25,7 +25,8 @@ def dumps(data: SymlInput) -> str:
     position, a quoted value that would re-read as a mapping is written
     double-quoted with every ':' escaped as \\u003a. If the output would
     begin with U+FEFF, one extra U+FEFF is prepended, because loads strips
-    exactly one leading mark."""
+    exactly one leading mark. A str subclass, such as a (str, Enum)
+    member, is written as its string value."""
 
 def dump(data: SymlInput, file_obj: IO[str]) -> None:
     """Serialize with dumps, then write the whole result in a single write()
@@ -127,6 +128,26 @@ accepts, so it is recorded here as a deliberate choice, not an oversight.
 | `str`, `list`, `dict` (recursively) | serialized |
 | `int`, `float`, `bool`, `None`, anything else | `TypeError` |
 | a mapping key that is not a `str` (`{1: 'v'}`, `{None: 'v'}`, `{b'k': 'v'}`) | `TypeError`, raised by an explicit `isinstance(k, str)` check **before** `key_is_representable` (pass 16) |
+| a `str` subclass as a key, value, list item, or root scalar (a `(str, Enum)` member, a `StrEnum` member, any subclass) | serialized as its string value: read through `str.__str__(s)` first (pass 26, below) |
+
+**`str` subclasses are read through `str.__str__` (red-team pass 26).**
+`isinstance(v, str)` admits a subclass, and a subclass can override the
+methods the rules and the renderer call. The common case is a `(str,
+Enum)` mixin, which configuration code uses for fixed choices. Since Python
+3.12, `format()` of such a member gives `'Color.RED'`, not `'red'`. Run on
+the pass 25 assembly, whose renderer interpolates with f-strings,
+`dumps({'color': Color.RED})` wrote `color: Color.RED`, and so did a key or
+a list item. `loads` then returned `{'color': 'Color.RED'}`, which is not
+equal to the input, and nothing raised. A subclass that overrides
+`split` or `startswith` can also steer the §11.2.4 checks past a value
+they should reject. So `dumps` converts every key, every string value, and
+the root scalar to an exact `str` with `str.__str__(s)` **before** any rule,
+probe, or rendering sees it. `str.__str__` ignores a subclass's `__str__`
+and `__format__` overrides and returns the value (verified on 3.12 for a
+`(str, Enum)` member and a subclass overriding both). `str(s)` is not
+enough, because for the mixin it is `'Color.RED'` too. Because
+`Color.RED == 'red'`, `loads(dumps(x)) == x` then holds. A `StrEnum`
+member already formats as its value, so it passes either way.
 
 `UnrepresentableValueError` means "this *is* a SYML value, but it has no
 encoding in this version". A non-string leaf is not a SYML value at all, so it
@@ -169,7 +190,8 @@ position is not affected. The rule:
 2. If the result is anything other than a `list_item` whose value is one
    `quoted_value` spanning to end of line, emit the **double-quoted** form
    instead, with every `:` written as the four-hex-digit unicode escape
-   `\u003a` (`escape_seq`'s `\uXXXX` alternative, Contract 02) rather than a
+   `\u003a` (§4.1 `escape_seq`'s `\uXXXX` alternative, part of Contract 02's
+   `double_quoted` body atom) rather than a
    literal `:` (and control characters escaped as rule C already requires).
    Escaping is **one pass per character** — `\` → `\\`, `"` → `\"`, `:` →
    `\u003a`, controls → their escapes. Substituting `:` first and escaping `\`
@@ -255,6 +277,9 @@ def structure_matches(s: str) -> bool:
   probe that hits the limit only because the data is already deep
   over-quotes a harmless list item, which is safe — quoting never breaks the
   round-trip — and never reaches the root position, which is not nested.
+- A **cyclic** structure (`a = []; a.append(a)`) has no SYML encoding and
+  no end. The walk raises `RecursionError`, the same deferral (verified,
+  pass 26). `dumps` does not track the objects it has visited.
 
 ## Unrepresentable values
 
@@ -436,6 +461,12 @@ blank lines between top-level keys.
   `parsimonious.exceptions`. That package is never seen by a `dumps` caller,
   for any value, not only for keys.
 - `dumps('') == ''`.
+- `str` subclasses (pass 26): with `class Color(str, Enum): RED = 'red'`,
+  `dumps` of `{'c': Color.RED}`, `{Color.RED: 'x'}`, `[Color.RED]`, and
+  `Color.RED` emits `c: red`, `red: x`, `- red`, and `red`, each
+  round-tripping. A subclass overriding `__str__` and `__format__` is
+  written as its value. A subclass whose `split` returns `['x']` does not
+  get `'- b'` past §11.2.4(a): `dumps` raises `UnrepresentableValueError`.
 - `dump` over a `StringIO` with `{'a': '1', 'b': {}}` raises
   `UnrepresentableValueError` and leaves `getvalue() == ''`.
 - Typing (pass 20): mypy strict accepts `dumps(cfg)` for `cfg: dict[str,

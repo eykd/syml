@@ -11,7 +11,7 @@
 
 ```python
 class SymlNode:
-    pnode: PNode | None        # None only on Root (§ Automatic container creation)
+    # no `pnode` field (pass 26): the parse node is read at construction only
     source: Source             # constructor field, built by the visitor (Contract 08)
     level: int                 # the node's OWN column (R-11); required, set by the
                                # visit_* that builds it (Contract 02 § Who sets level)
@@ -375,10 +375,18 @@ incorporates the node into it.
   `Source.from_node(pnode, self.line, self.doc.position_map, self.doc.filename)`
   (Contract 08) and passes it in.
 - An intermediary copies the triggering node's `Source`:
-  `Mapping(pnode=node.pnode, source=node.source, level=node.level)` (and the
-  same for `List`). No `line` is needed.
-- `pnode` becomes `PNode | None`, and it is `None` only on `Root`.
-  `Root(pnode=None, level=0, source=Source(filename=doc.filename,
+  `Mapping(source=node.source, level=node.level)` (and the same for
+  `List`). No `line` is needed.
+- **`pnode` is not stored (red-team pass 26).** Once `source` and `level`
+  are constructor fields, nothing reads a node's parse node after the
+  `visit_*` that built it: `Source.from_node` takes it as an argument,
+  `raise_trailing_content` takes the line's match as an argument, and the
+  intermediaries above copied it only to fill the field. Keeping it pinned
+  a Parsimonious subtree to every node for the life of the tree. On a
+  20,000-line `kN: v` document it was 36% of the retained tree (51.4 MB
+  with it, 32.8 MB without; the input is 0.19 MB). `SymlNode` therefore
+  has no `pnode` field, and the `visit_*` methods pass none.
+- `Root(level=0, source=Source(filename=doc.filename,
   start=Pos(0, 1, 0), end=Pos(0, 1, 0), text=''))` is the "`Source` over the
   empty span" that data-model §3.5 promises for an empty or comment-only
   document; `level=0` is required per Contract 02's "Who sets `level`" table
@@ -418,6 +426,34 @@ rows' lines uncovered in `nodes.py`:
   until `  b` fixes it to 2; `key:\n  a` → anchor 0, baseline 2 at attach;
   `hello` (root) → anchor -1, baseline 0; after a continuation the tip is still
   the first leaf, never the continuation child.
+- A valueless inline key on a list item takes block content only **deeper
+  than the key's own column** (R-11 with §9.3's "strictly greater than a
+  KeyValue's level"; red-team pass 26). Nothing else pins this, and the
+  0.6.2 results differ, one of them silently (Contract 09 note 17):
+
+  | Input | 0.6.2 | 1.0 |
+  | --- | --- | --- |
+  | `"- foo:\n  a: b"` | `[{'foo': {'a': 'b'}}]` | `[{'foo': '', 'a': 'b'}]` — `a` is `foo`'s sibling, **no error** |
+  | `"- foo:\n  - bar"` | `[{'foo': ['bar']}]` | `OutOfContextNodeError` |
+  | `"- foo:\n  bar"` | `[{'foo': 'bar'}]` | `OutOfContextNodeError` |
+  | `"- foo:\n    - bar"` | `[{'foo': ['bar']}]` | `[{'foo': ['bar']}]` |
+  | `"- foo:\n    a: b"` | `[{'foo': {'a': 'b'}}]` | `[{'foo': {'a': 'b'}}]` |
+
+- **Disposition of today's `tests/test_parsers.py` (pass 26).** Run against
+  the pass 25 assembly, its `TestSymlParser` class cannot construct its
+  fixture: `parsers.SymlParser()` takes a `Document` now (Contract 02), and
+  the class's tests call `parser.parse(text)`, which the per-line visitor
+  no longer has. The fixture goes, and each test calls `parsers.parse`.
+  With that change, two of the twelve then fail on the rule above, because
+  each puts a list under `- foo:` at the key's column:
+  `test_it_should_parse_a_nested_list_with_mapping` and
+  `test_it_should_parse_comments_and_blanks`. Both keep their expected data
+  with the block re-indented to column 4, and the table above pins the old
+  indentation's error. Neither is a regression, and neither is a reason to
+  change `level`. Their `as_source()` assertions compare whole `Source`s,
+  which never checks a position (Contract 08). They are kept, and the
+  position obligations live in Contract 08. The other ten tests pass
+  unchanged, as do `TestSimpleParserFunction`'s three.
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
 - `Mapping.can_add_node` never iterates `children` (pass 16): after a parse,
   every `Mapping`'s `keys` equals `{c.key.as_data(): c for c in children}`,

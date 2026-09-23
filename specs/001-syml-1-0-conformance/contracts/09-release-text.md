@@ -17,6 +17,7 @@ the feature must leave behind, each independently assertable.
 | `SYML-SPEC-REVIEW.md` | title and `**Subject:**` line say the reviewed text was the pre-release draft (labelled v1.0 when reviewed) and that the text released as 1.0 incorporates these findings. Both lines already read "v1.0" today, so "updated to match" is not a no-op: after the relabel two different texts would carry that label (pass 25) | FR-014 |
 | `README.md` | gains a serializer section (`dumps`/`dump`, the R-06 format choices Contract 07 points at, the `encoding='utf-8'` advice) and a link to `CHANGELOG.md`. Contract 07 and R-06 cite "the README's serializer section", which the 48-line README does not have (pass 25) | FR-011, FR-015 |
 | `pyproject.toml` classifiers | unchanged (`Development Status :: 4 - Beta`) unless the principal decides otherwise (plan.md open item 6, pass 25) | — |
+| `pyproject.toml` `dependencies` | `parsimonious>=0.10.0,<0.11` only. The direct `regex>=2024.11.6,<2025` line is removed. `src/` never imports `regex`. Parsimonious 0.10.0 requires it (`regex>=2022.3.15`, no upper bound) and compiles every grammar atom with it. syml's own `<2025` cap is what blocks Python 3.14: no `regex` release below 2025 has a 3.14 wheel, so `uv pip install --only-binary :all: 'regex>=2024.11.6,<2025'` is unsatisfiable on 3.14, while `requires-python = ">=3.12"` claims 3.14 (verified, pass 26). `uv.lock` is regenerated in the same commit (pre-commit's `uv-lock` hook) | `python -c "import syml"` on a Python 3.14 environment built from wheels only |
 
 ## Spec edits this feature makes (FR-019's licence in use)
 
@@ -45,12 +46,22 @@ from 0.6.2 (US9.3, SC-006):
 2. Tabs in indentation → `TabIndentationError`
 3. Duplicate keys → `DuplicateKeyError`
 4. Quoted inline values now decode — and an apostrophe-initial inline value
-   (`key: 'Tis`) is now `MalformedQuotedStringError`
+   (`key: 'Tis`) is now `MalformedQuotedStringError`. More generally, an
+   inline value (after `key: ` or `- `) that begins with `'` or `"` must
+   be exactly one well-formed quoted string, or it raises: trailing text
+   (`title: "Hello" world`) and an invalid escape
+   (`path: "C:\Users\me"`, where `\U` wants eight hex digits) both do.
+   A double-quoted value whose backslashes happen to form valid escapes
+   changes **silently**: `path: "C:\new\temp"` was the literal text with
+   its quotes and is now `C:`, a newline, `ew`, a tab, `emp` (pass 26).
+   Write such values unquoted or single-quoted
 5. `-` / `key:value` fallthrough: bare `-` takes a block value; `key:value` is a
    scalar instead of raising
 6. Sibling indentation is now exact (`==`), and a closed key/item accepts nothing
 7. Multiline values preserve indentation past the baseline; a below-baseline
-   line terminates the value
+   line terminates the value. A root scalar's baseline is column 0, so an
+   indented root scalar keeps its indentation: `  hello` was `'hello'` and
+   is `'  hello'` (pass 26)
 8. Parsimonious exceptions no longer escape; everything is a `ParseError`
 9. `ParseError` gains `.message` / `.position` / `.line_text`, and its
    constructor now requires them: `ParseError('msg')` (valid in 0.6.2, where
@@ -86,7 +97,18 @@ from 0.6.2 (US9.3, SC-006):
     A deeply inline-nested *string* is not affected in the dump direction:
     `dumps` serializes `'- - … x'` as a quoted value (Contract 07). Deeply
     nested *data* (roughly 1,000 levels of lists or mappings) may raise
-    `RecursionError` from `dumps` as well — same deferral.
+    `RecursionError` from `dumps` as well — same deferral. The figures
+    scale with `sys.getrecursionlimit()`: about limit/2 block levels and
+    limit/8 inline levels, identical on Python 3.12, 3.13, and 3.14 (limit
+    300: 148 and 36; limit 10,000: 4,998 and 1,248). With the limit raised
+    to 1,000,000, 50,000 levels of inline nesting and of nested lists in
+    `dumps` completed without a crash on 3.12 and 3.14 (pass 26). A cyclic
+    structure passed to `dumps` raises the same `RecursionError`. Also state
+    the memory cost, which nothing bounds while §13.4 is deferred: the
+    parse tree takes a few hundred bytes per input byte (about 170 bytes
+    per byte retained, measured on a 20,000-line document after pass 26),
+    so an application that parses untrusted input should bound its size
+    before calling `loads`
 14. Typing (red-team pass 20): `loads`/`load` return `SymlData`
     (`str | list[SymlData] | dict[str, SymlData]`) instead of
     `list[Any] | dict[str, Any] | str`, so a typed caller narrows each level
@@ -104,11 +126,35 @@ from 0.6.2 (US9.3, SC-006):
     `set_level` and `IndentNode` are gone; `incorporate_node` and
     `can_add_node` take a second `doc` argument; `source` is a required
     constructor field instead of being derived from `pnode`;
-    `KeyLeafNode.key` is removed (use `as_source()`); and `syml.utils`
+    `KeyLeafNode.key` is removed (use `as_source()`); nodes no longer store
+    their Parsimonious `pnode` (pass 26); and `syml.utils`
     (`split_lines`, `get_line`) is deleted (Contract 01)
+17. A valueless key inside a list item (`- key:`) takes block content only
+    **deeper than the key's own column**, not deeper than the `-` (§9.3
+    measured from the key, R-11). A line at the key's column is that key's
+    **sibling**. This changes one common layout **silently**:
+    `- server:\n  host: x` was `[{'server': {'host': 'x'}}]` and is
+    `[{'server': '', 'host': 'x'}]`, with no error. The same layout with a
+    list or text under the key (`- key:\n  - x`, `- key:\n  text`) now
+    raises `OutOfContextNodeError`. Fix: indent the block past the key
+    (`- server:\n    host: x`), which both versions read the same way
+    (red-team pass 26; Contract 03's table)
+18. §9.0 pre-processing changes values with no error: a CRLF or CR file no
+    longer leaves `\r` at the end of every value (`k: v\r\n` was
+    `{'k': 'v\r'}`), and one leading U+FEFF is stripped rather than joining
+    the first key (`\ufeffkey: v` was `{'\ufeffkey': 'v'}`) (pass 26)
 
 The traceability check is mechanical: every row of the audit's gap list (b)
 maps to a numbered entry here or is explicitly out of scope.
+
+**The gap list does not find every change (red-team pass 26).** Notes 4,
+7, 17, and 18 were found by running 0.6.2 and the pass 25 assembly over
+the same 37 realistic documents and diffing the results. The audit's gaps
+are what 0.6.2 got wrong. A side effect of a fix is not a gap, so the
+check above cannot find one (note 17 comes from R-11, and note 18 from
+§9.0). `CHANGELOG.md` gives each of notes 4, 7, 17, and 18 its old and new
+result, in the form written above, so a 0.6.2 user can find their own
+layout.
 
 ## FR-016 — one conformance ledger
 
@@ -227,7 +273,8 @@ point here.
    behaviour, so they land with the §11.3 `EncodingError` edit.
 3. `utils.py` and `tests/test_utils.py` are deleted in the commit that
    moves `Pos.from_str_index` to LF-only counting (Contracts 01, 08).
-4. **Last**: FR-014's relabel and version bump, FR-015's `CHANGELOG.md` and
+4. **Last**: FR-014's relabel and version bump (with the `dependencies`
+   row above), FR-015's `CHANGELOG.md` and
    README section, FR-016's `todo.txt` deletion together with the
    `CLAUDE.md` "parser conforms" rewrite and the two skills' `todo.txt`
    references, and the glossary. US9's `@feature-exit` scenarios go green
