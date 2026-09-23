@@ -140,6 +140,29 @@ end = Pos(index=self.end.index + 1 + len(other),  # +1: the joining '\n'
 text = f'{self.text}\n{other}'                    # '' is valid: one empty line
 ```
 
+The whole method, so the other two arms are not lost in transcription
+(pass 25: an assembly that transcribed only the `str` arm turned `Source + 5`
+into an `AttributeError`):
+
+```python
+def __add__(self, other: Source | str) -> Source:
+    if isinstance(other, str):
+        ...                                   # the str arm above
+        return Source(filename=self.filename, start=self.start, end=end, text=text)
+    if isinstance(other, Source):
+        return Source(filename=self.filename, start=self.start, end=other.end,
+                      text=f'{self.text}\n{other}')
+    raise TypeError('Tried to add invalid type to Source', type(other))  # kept from 0.6.2
+```
+
+`Pos.from_str_index`, LF-only with 0.6.2's past-end clamp (pass 25):
+
+```python
+index = min(index, len(text))
+before = text[:index]
+return cls(index, before.count('\n') + 1, index - (before.rfind('\n') + 1))
+```
+
 ## Quoted-value spans (red-team pass 5)
 
 A quoted value's `text` is the **decoded** string (data-model §4), so its span

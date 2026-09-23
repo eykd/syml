@@ -484,6 +484,17 @@ the unit run both deselects that marker and `--ignore`s the directory.
    step, with `tests/test_fixture_escapes.py` in the unit run asserting the
    eight rows above and a `ValueError` for an unknown escape (`\q`) and a
    trailing lone backslash.
+   **Import form (pass 25, verified).** `tests/` and `tests/acceptance/` have
+   no `__init__.py`, and the two runs see different `sys.path`s. `from
+   tests.fixture_escapes import …` imports under pytest but makes mypy
+   report `tests/fixture_escapes.py` as "found twice under different module
+   names" (`mypy_path` already holds `./tests`). A bare `from
+   fixture_escapes import …` passes mypy and the unit run but fails under
+   `just acceptance`, whose prepend import mode adds `tests/acceptance/`,
+   not `tests/`. So pyproject's `[tool.pytest.ini_options] pythonpath`
+   becomes `[".", "tests"]`, which `-o addopts=""` does not touch, and
+   every import of `fixture_escapes` and `serialization_corpus` uses the
+   bare form. With that, mypy and both runs pass.
    **The empty document needs its own binding (pass 25).** US00's step
    pattern, `parsers.parse('a SYML document containing "{text}"')`, cannot
    match `""`: `parse`'s `{text}` needs at least one character, so
@@ -1640,6 +1651,13 @@ recursion obligations keep their margins (block 400/500 against 481, inline
     reload would swap `GRAMMAR` under other tests in random order.
   - Tests that shell out trip ruff `S404`/`S603`/`S607`, and `tests/`
     ignores none of them. They take line-level `noqa`s (note 3).
+  - Second-order check of the new obligations (same pass). Run against the
+    assembly, `Source + 5` gave `AttributeError`, because Contract 08 showed
+    only `__add__`'s `str` arm, and `from_str_index` had no clamp. Contract
+    08 now shows the whole method and the clamp. With both, 411 tests pass
+    at 100% line and branch coverage under three seeds. The shared helper
+    modules also needed a pinned import form and a `pythonpath` entry
+    (note 1).
   - `just acceptance` passes `-o addopts=""` and so drops
     `--strict-markers`. An unregistered `@feature-exit` there is a warning,
     not an error. Registration stays (Contract 09).

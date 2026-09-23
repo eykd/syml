@@ -373,7 +373,9 @@ parametrizes over every `CORPUS` entry, so an entry is never covered only by
 acceptance. US7.1's `Examples:` rows name `CORPUS` keys, and the binding
 indexes `CORPUS[corpus_id]`, so a stale identifier fails with `KeyError`
 instead of passing. The module is not collected (its name does not start
-with `test_`) and is inside the mypy file set.
+with `test_`) and is inside the mypy file set. Import it as `from serialization_corpus import …`,
+with `tests` on pytest's `pythonpath` (plan.md Acceptance Test Strategy
+note 1 gives the reason: the `tests.`-prefixed form fails mypy).
 
 **Corpus must include**: the empty string; strings with leading/trailing space
 and tab; strings containing `\n`, `\r`, NUL, and other C0 controls; strings
