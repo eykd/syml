@@ -906,6 +906,51 @@ and after normalization) and still hold.
   the D13 isinstance-only acceptance are stated identically in Contract 03's
   "TextLeafNode continuation" table and data-model §3.3; no drift found there.
 
+### Pass 13 (2026-09-23, outer iteration 8): hand-executing the acceptance examples
+
+Treated Contracts 02 + 03 as one program and hand-executed every US1, US3,
+US4 and US6 acceptance example through it, plus §5.3's and §6.3's worked
+examples. All produce the specified tree or error (US1.1-10, US3.1-9,
+US4.1-4, US6.5/6/8/9/10, `- - ␠\n    x`, §6.3's deep nesting). R-09 still
+holds (the only partial `line` match is a closed `quoted_value` plus ` *`,
+reached via `key_value`'s first alternative or `value`'s second); `\r\r\n`
+and a trailing bare `\r` still count identically before and after
+normalization.
+
+- **A root scalar's indented head line lost its indentation (High).** §5.3
+  is explicit: "`  hello\nworld` is `"  hello\nworld"`, and the one-line
+  document `  hello` is `"  hello"`." Contract 03 rendered only continuation
+  children with `' ' * (level - baseline)`; the head rendered as its stored
+  `Source`, which starts at the `text` token (column 2). The result was a
+  silently wrong value, and no user-story scenario exercised it (US1.6's head
+  is at column 0). **Mitigation**: Contract 03 gives `TextLeafNode.as_data`
+  in full, prefixing the head with `' ' * (level - baseline)` **unless it is
+  inline** — an inline head shares its line with `key:`/`-` and must not be
+  prefixed (`key: a\n  b` would otherwise gain three spaces). The prefix is
+  non-zero only for a root scalar, since a block head has `level ==
+  baseline`. `as_source()` widens the head's span left by the same count,
+  exact in original coordinates because the span is the line's space-only
+  indent run. Contract 08's continuation-span rule and property test, and
+  data-model §3.3/§4, now say the root-scalar `start` is the first preserved
+  space. `dumps` is untouched: §11.2.4 already makes such a root scalar
+  unrepresentable. This implements D11 and §5.3 as written; no decision
+  changes.
+- **`KeyLeafNode.key` still called the retired `Source.from_node` signature
+  (Medium).** Today's property rebuilds `Source.from_node(self.pnode,
+  filename=...)`. Contract 08 changed `from_node` to four arguments and pass 9
+  made `source` a constructor field, but no contract retired this second
+  caller. Every key's `Source` flows through it, including
+  `Mapping.can_add_node`'s duplicate compare. **Mitigation**: Contract 03
+  deletes the property; `KeyLeafNode.as_source()` returns the stored
+  `self.source` and `as_data()` its text.
+- **An absent value's empty `Source` had no position (Medium).** Contract 03
+  and data-model §3.5 promised "an empty `Source`" for a childless
+  `KeyValue`/`ListItem` but pinned a position only for `Root`. Contract 08's
+  editor use case needs one. **Mitigation**: zero-width at the container's
+  own `source.end` (just past `key:`'s colon, `-`'s marker, or `-␠`'s
+  consumed space). `Root`'s existing `Pos(0, 1, 0)` span is the same rule.
+  Both are test obligations.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

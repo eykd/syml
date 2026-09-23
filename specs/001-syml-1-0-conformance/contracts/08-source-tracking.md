@@ -111,7 +111,10 @@ the decoded text three. Pinned:
 
 When a `TextLeafNode` absorbs a continuation line:
 
-- `start` stays at the value's first character
+- `start` stays at the value's first character — for a root scalar whose
+  head line is indented, that is the first **preserved indent space**, not the
+  `text` token, because `as_data()` keeps that indentation (§5.3; Contract 03
+  § Root-scalar head indentation, red-team pass 13)
 - `end` moves to the last accepted character
 - `text` equals what `as_data()` returns for the same node, **including the
   indentation preserved past the baseline** (Contract 03, D11)
@@ -138,15 +141,17 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
 ## Test obligations
 
 - Every table row above.
-- `as_source()` over every shape: root scalar, list, mapping, nested, multiline
-  continuation, quoted value, key.
+- `as_source()` over every shape: root scalar (indented head included), list,
+  mapping, nested, multiline continuation, quoted value, key, and an absent
+  value (`key:`, `-`: zero-width at the container's `source.end`).
 - `Source("foo") == "foo"` and `{Source("foo"): 1}["foo"] == 1`.
 - `Source.__hash__` exercised directly (no pragma).
 - `rg 'pragma: no ?cover' src/syml/nodes.py` finds only `TYPE_CHECKING` blocks.
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,
-  `original[start.index:end.index] == source.text` for an unquoted value, and
+  `original[start.index:end.index] == source.text` for an unquoted value
+  (an indented root scalar included — its span starts at the indent), and
   `decode_single_quoted(slice) == source.text` or `decode_double_quoted(slice)
   == source.text` for a quoted one — dispatched on `slice[0]`, `'` or `"` —
   where `slice = original[start.index:end.index]` (Contract 04: both decoders

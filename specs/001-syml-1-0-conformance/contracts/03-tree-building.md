@@ -64,7 +64,36 @@ class TextLeafNode(SymlNode):
 
     def get_tip(self) -> SymlNode:
         return self                                        # continuations are never tips
+
+    def as_data(self) -> str:                              # red-team pass 13
+        # The head line keeps its own indentation past the baseline only when
+        # it occupies a line of its own (§5.3). That is non-zero for a root
+        # scalar alone: a block head has level == baseline, and an inline head
+        # shares its line with `key:` / `-`, so it is never prefixed (for
+        # `key: a\n  b`, level 5 - baseline 2 would wrongly add three spaces).
+        head = '' if self.inline else ' ' * (self.level - self.baseline)
+        return '\n'.join(
+            [head + self.source.text]
+            + [' ' * (c.level - self.baseline) + c.source.text for c in self.children]
+        )
 ```
+
+**Root-scalar head indentation (§5.3, red-team pass 13).** §5.3 says a root
+scalar's baseline is 0 "whatever its first line's indentation", and that the
+first line's own indentation beyond 0 "is preserved as literal leading
+whitespace, exactly like any later line": `  hello\nworld` is
+`"  hello\nworld"`, and the one-line document `  hello` is `"  hello"`. The
+head leaf's stored `Source` starts at its `text` token (column 2), so
+rendering only the continuation children with a prefix — as earlier passes
+wrote — silently drops those two spaces. The `head` term above closes that.
+`as_source()` mirrors it: the head's `Source` is widened left by the same `n =
+self.level - self.baseline` columns, to `Pos(start.index - n, start.line,
+start.column - n)` with the `n` spaces prepended to `text`. That arithmetic is
+exact in original coordinates because the widened span is the line's own
+indent run — U+0020 only (a tab there is `TabIndentationError`), after any BOM
+on line 1, before any collapsed break — which `PositionMap` maps one-for-one.
+`dumps` never needs this path: a root scalar with leading whitespace is
+unrepresentable (§11.2.4, Contract 07), which is intentional.
 
 `Root` never receives an inline leaf: inline leaves are attached inside
 `visit_key_value` / `visit_list_item`, before the line's top node reaches the
@@ -189,6 +218,14 @@ is the existing `str` conversion `Mapping.as_data`/`as_source` already use
 (`c.key.as_data()` / `c.key.as_source()`), reused here so the comparison and
 the `DuplicateKeyError.key: str` attribute agree on the same text.
 
+**`KeyLeafNode` reads its stored `Source` (red-team pass 13).** Today's
+`KeyLeafNode.key` property rebuilds `Source.from_node(self.pnode,
+filename=self.filename)` — the retired two-argument signature, which on a
+per-line `pnode` would also report line 1 for every key (Contract 08). It is
+deleted: `KeyLeafNode.as_source()` returns `self.source` (built by
+`visit_key` like every other node's) and `as_data()` returns
+`self.source.text`. Nothing re-derives a key's `Source` after construction.
+
 Detection happens at incorporation, before the mapping is materialized in
 either data or source mode — §10.3 requires this explicitly, because `Source`
 compares and hashes by text and two colliding keys would collapse silently in
@@ -209,7 +246,13 @@ and walks up normally.
 | `-` with no child | `""` | — |
 
 `ContainerNode.as_data` / `as_source` return `''` / an empty `Source` instead of
-`None` when childless. **Invariant**: no `loads`/`load` result contains `None`
+`None` when childless. The empty `Source` is **zero-width at the container's
+own `source.end`** — `Source(filename=self.source.filename,
+start=self.source.end, end=self.source.end, text='')` — so `key:`'s absent
+value sits just past the colon, `-`'s just past the marker, and `-␠`'s just
+past the consumed space (red-team pass 13). `Root`'s own `Source` is already
+zero-width at `Pos(0, 1, 0)`, so the same rule yields the empty-document
+span below without a special case. **Invariant**: no `loads`/`load` result contains `None`
 at any depth (US4 scenario 5).
 
 ## Worked cases
@@ -224,6 +267,9 @@ Each row is an acceptance scenario. `→` is `loads`.
 | `key: a\nb` | `OutOfContextNodeError` | `b` at 0 is not `> anchor_level` 0 | US1.4 |
 | `key: a\n    b\n  c` | `OutOfContextNodeError` | `b` fixes baseline 4; `c` at 2 terminates, re-offers, finds nothing | US1.5 |
 | `hello\n  world\nagain` | `"hello\n  world\nagain"` | root scalar baseline 0 | US1.6 |
+| `  hello\nworld` | `"  hello\nworld"` | root-scalar head keeps its indentation past baseline 0 (`head` term above) | §5.3 |
+| `  hello` | `"  hello"` | same, one line | §5.3 |
+| `key: a\n  b` | `{"key": "a\nb"}` | an inline head is never prefixed, though its level (5) exceeds the baseline (2) | §5.3 |
 | `a:\n  b: 1\n  plain` | `OutOfContextNodeError` | plain text at a container's own level (M24) | US1.7 |
 | `-   name: Alice\n  role: admin` | `OutOfContextNodeError` | `name`'s column is 4 (M23) | US1.8 |
 | `key: value1\nkey: value2` | `DuplicateKeyError` | at incorporation | US1.9 |
@@ -275,6 +321,16 @@ incorporates the node into it.
   `hello` (root) → anchor -1, baseline 0; after a continuation the tip is still
   the first leaf, never the continuation child.
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
+- Root-scalar head indentation (pass 13): `"  hello"` → `"  hello"`,
+  `"  hello\nworld"` → `"  hello\nworld"`, and `"\ufeff  hello"` →
+  `"  hello"` whose `as_source().start` is index 1, column 1 (the first
+  preserved space, after the mark) with `str(as_source()) == as_data()`;
+  `"key: a\n  b"` → `{"key": "a\nb"}` (no inline-head prefix).
+- `KeyLeafNode.as_source()` is the `Source` `visit_key` stored: a second-line
+  key reports `line == 2`.
+- Absent-value spans: `loads`-equivalent `as_source()` of `"key:"` gives
+  `{"key": Source}` whose value is zero-width at index 4, column 4; of
+  `"-"` a zero-width `Source` at index 1.
 - A dedented key equal to a key in a deeper mapping on the walk-up path
   (`p:\n  a: 1\na: 2`) is **not** a duplicate. This pins the level-gate
   ordering in `Mapping.can_add_node`.

@@ -157,7 +157,10 @@ the way up.
 | quoted inline | owning node's level | n/a | never accepts |
 
 **Indentation preservation**: an accepted continuation at level `L` contributes
-`' ' * (L - baseline) + text` to the joined value. This is the change behind
+`' ' * (L - baseline) + text` to the joined value. The head line gets the same
+prefix, `' ' * (level - baseline)`, unless it is inline — non-zero only for a
+root scalar, so `  hello\nworld` is `"  hello\nworld"` (§5.3; Contract 03
+§ Root-scalar head indentation). This is the change behind
 US1 scenario 3 (`key:` / `  first` / `    indented` / `  back` →
 `"first\n  indented\nback"`) and audit gap #4.
 
@@ -189,7 +192,7 @@ not have. An intermediary therefore copies the triggering node's `Source`.
 | Method | Leaves are | Absent value yields |
 | --- | --- | --- |
 | `as_data()` | `str` | `""` (**changed** — was `None`; FR-005) |
-| `as_source()` | `Source` | `Source` over the empty span |
+| `as_source()` | `Source` | zero-width `Source` at the container's own `source.end` (Contract 03 § Absent values) |
 
 **Invariant (FR-005, SC measured by US4 scenario 5)**: no result of `loads` or
 `load` contains `None` at any depth.
@@ -215,8 +218,9 @@ not have. An intermediary therefore copies the triggering node's `Source`.
 `return self + other.text` in `__add__` is deleted (`todo.txt` B3, FR-017).
 
 **Continuation spans**: when a `TextLeafNode` absorbs a continuation line, the
-resulting `Source.start` stays at the value's first character and `end` moves to
-the last accepted character; `text` equals what `as_data()` returns for the same
+resulting `Source.start` stays at the value's first character (for a root scalar
+whose first line is indented, the first preserved indent space — Contract 03)
+and `end` moves to the last accepted character; `text` equals what `as_data()` returns for the same
 node (including preserved indentation), so `str(source) == node.as_data()` holds.
 
 ---
