@@ -1018,6 +1018,20 @@ column 2).
   `Source` has four required fields. The test obligation now builds it with
   keywords.
 
+### Pass 15 (2026-09-23, outer iteration 9): second-order check of pass 14
+
+No Critical or High finding. The key probe is never a `structure` probe, so
+it cannot meet rule D's `RecursionError` catch or the `\u003a` fallback. The
+U+FEFF prefix is decided on the rendered output, so a root scalar such as
+`'\ufeff- x'` is probed and reloaded as the same line text, and
+`'\ufeffk: v'` stays unrepresentable under §11.2.4(a). `error_message` has a
+filename in scope at every raise site: `preprocess`'s argument, `doc.filename`
+in the visitor and the tree, and `load`'s early resolution.
+
+- **`utf-8-sig` defeats the U+FEFF prefix (Low).** A file written by `dump`
+  and reopened with `encoding='utf-8-sig'` loses one mark to the codec and
+  the other to §9.0. Contract 07 now tells the `dump` docstring to say so.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

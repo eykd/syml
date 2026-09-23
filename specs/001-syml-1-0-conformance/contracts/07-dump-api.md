@@ -208,6 +208,13 @@ because `dumps` makes the same choice again. This is an output-format
 choice, not a spec edit. Raising `UnrepresentableValueError` instead is
 plan.md open item 5.
 
+The prefix survives `dump` then `load` through a binary handle or a plain
+UTF-8 text handle, because both hand `preprocess` both marks. A caller who
+reopens the file with `encoding='utf-8-sig'` has the codec strip the first
+mark and §9.0 strip the second, so the value's own mark is lost. That is the
+caller's codec choice, noted in the `dump` docstring, not a rule `dumps` can
+enforce (red-team pass 15).
+
 | Value | Emitted |
 | --- | --- |
 | `'\ufeffx'` (root scalar) | `'\ufeff\ufeffx\n'` |
