@@ -96,7 +96,7 @@ v1.0.0, ratified 2026-09-13._
 | Principle | Pre-Phase 0 | Post-Phase 1 | Notes |
 | --- | --- | --- | --- |
 | I. Test-Driven Development | PASS | PASS | Every contract ends in a "Test obligations" block; `sp:05-tasks` turns them into a beads Test List. RED commits via `.venv/bin/python -m tools.commit_red`. |
-| II. Type Safety | PASS | PASS | New public types (`Document`, `PositionMap`, `SymlData`, six exception classes) are fully annotated; `load`'s `IO[str] \| IO[bytes]` is checked without a cast (Contract 06). |
+| II. Type Safety | PASS | PASS | New public types (`Document`, `PositionMap`, `SymlData`, `SymlInput`, six exception classes) are fully annotated; `load`'s `IO[str] \| IO[bytes]` is checked without a cast (Contract 06), and so is `dumps` over a `dict[str, str]`, which needs the separate `SymlInput` parameter alias because `list`/`dict` are invariant (Contract 07, red-team pass 20). |
 | III. Coverage and Lint Gates | PASS | PASS | FR-012 **removes** exemptions rather than adding them. Post-feature, the only permitted pragmas in `src/` are `if TYPE_CHECKING:` blocks. |
 | IV. Spec vs Implementation Discipline | PASS | PASS | See below. |
 | V. Simplicity / YAGNI | PASS | PASS | See below. |
@@ -170,6 +170,16 @@ caller-visible on the guarded surface):
   `parsimonious.exceptions.IncompleteParseError` will stop seeing it.
 - Absent values return `""` rather than `None` (FR-005) — the single largest
   behavioural break, and the one the library exists to make.
+- `loads`/`load`'s static return type narrows from `list[Any] | dict[str,
+  Any] | str` to `SymlData` (red-team pass 20). A typed caller's
+  `r['k']['j']`, which checked against 0.6.2's `Any`, is a mypy error until
+  each level is narrowed. Rejected alternative: keep the `Any`-bearing
+  return, which cannot state FR-005's no-`None` invariant to a type checker
+  and would make `dumps(loads(x))`'s round trip the only typed evidence of
+  the data's shape.
+- `ParseError`'s constructor requires `(message, position, line_text)`;
+  `ParseError('msg')` is now a `TypeError`. `Source` no longer equals a
+  non-`str` operand (`Source('1') == 1`; Contract 08, pass 20).
 
 All three, plus the behaviour list above, appear in the FR-015 migration notes.
 
@@ -250,9 +260,9 @@ right is imported under `if TYPE_CHECKING:`.
 
 | Module | Defines (new or changed) |
 | --- | --- |
-| `basetypes.py` | `Pos`, `Source` (+ `from_node`), `StrPath`, `Line`, `pos_at` |
+| `basetypes.py` | `Pos`, `Source` (+ `from_node`), `StrPath`, `Line`, `pos_at`, `SymlData`, `SymlInput` (re-exported by `__init__`) |
 | `exceptions.py` | the seven classes, `error_message` |
-| `preprocess.py` | `PositionMap`, `Document`, `preprocess`, `split_lines_lf`, `is_blank`, `original_line` |
+| `preprocess.py` | `PositionMap`, `Document`, `preprocess`, `split_lines_lf`, `is_blank`, `original_line`, `encoding_error` |
 | `quoting.py` | `decode_single_quoted`, `decode_double_quoted`, `diagnose_malformed`, `QuotedStringDefect` |
 | `nodes.py` | the node classes; `fail_to_incorporate_node` |
 | `parsers.py` | `GRAMMAR` (the transcribed §4.1 `Grammar`), `SymlParser`, `parse`, `find_first`, `raise_trailing_content` |
@@ -1284,6 +1294,71 @@ touched.
   0x80-0x9F as C1 controls, so `line_text` can differ from the handle's own
   reading (`€` becomes U+0080). Positions are exact, because every byte is
   one code point in both codecs. Contracts 05 and 06 now say so.
+
+### Pass 20 (2026-09-23, outer iteration 13): typing, `Source`, and the output codec
+
+Checked Contracts 03, 06, 07, 08, and 09 against what mypy, `io`, and the
+existing `Source` code actually do. R-09 sanity: `k: "a" x` still strands at
+7 of 8, and `- k: 'a'\tx` at 8 of 10. R-02 sanity: `a\r\r\nb\r` has three
+breaks before and after normalization, and a trailing bare `\r` has one.
+
+- **`dumps(data: SymlData)` rejects typed callers (High, Type Safety).**
+  `list` and `dict` are invariant, so under mypy strict `dumps(cfg)` with
+  `cfg: dict[str, str]` is an `arg-type` error, and so are `list[str]` and
+  `dict[str, list[str]]` (verified). Only a literal or a value already typed
+  `SymlData` passes. **Mitigation (Contract 07)**: the parameter is a
+  separate alias, `SymlInput = str | list[Any] | dict[str, Any]`, which
+  accepts all three and still rejects `dict[int, str]` and a tuple
+  (verified). `SymlData` stays the return type. Both aliases move to
+  `basetypes.py`: Contract 06 defined `SymlData` in `__init__.py`, which
+  `serializer.py` precedes in pass 17's import order.
+- **`loads`'s return type is a typing break (Medium, Congruence).** Under
+  0.6.2's `dict[str, Any]` a typed caller's `r['k']['j']` checked; under
+  `SymlData` it is a mypy error (verified). Added to the Principle VI list
+  above, to Contract 06's change table, and to migration note 14.
+- **`TextLeafNode.as_source()` had no mechanism (High, Congruence).**
+  Contract 08 stated the outcome (`text == as_data()`, preserved indentation
+  included), but the only composition on `Source`'s surface was `__add__`,
+  which today's `as_source` uses and which joins with a bare `\n`. Kept as
+  is, US1.3's shape gives `"first\nindented\nback"` against `as_data()`'s
+  `"first\n  indented\nback"`. **Mitigation (Contract 03)**: `as_source`
+  is written out beside `as_data`: the widened head's `start`, the last
+  accepted line's `end`, and `text=self.as_data()`. No parse path calls
+  `__add__`.
+- **`Source.__eq__` equalled non-strings (Medium).** `str(self) ==
+  str(other)` made `Source('1') == 1` and `Source('None') == None` true with
+  unequal hashes (verified), which breaks Python's eq/hash rule and is
+  broader than §10.3's "exactly as their text". **Mitigation (Contract
+  08)**: `str` and `Source` operands only, else `NotImplemented`. R-07's
+  interchangeability is unchanged. The same probe showed that `==` never
+  checks a position, which is why the existing tests' position assertions
+  are vacuous and `Source + 'x'`'s off-by-one `end.index` (and `Source + ''`'s
+  `IndexError`) went unnoticed. Contract 08 now requires field-by-field
+  position assertions and corrects the `str` branch.
+- **§11.1's strict UTF-8 holds on the bytes path only (Medium).** Contract
+  06's cp1252 row used `Á`, whose second byte `0x81` is undefined in cp1252.
+  For `é` both bytes are defined, and a cp1252 text handle returns
+  `{'key': 'Ã©'}` with no error (verified). `load` never sees the bytes, so
+  this is documented, not prevented: Contract 06 scopes the guarantee and
+  pins the row, and migration note 11 no longer says "from a text handle
+  too".
+- **`dump` writes through the handle's codec (Medium).** §13.3 makes SYML
+  documents UTF-8, but a cp1252 handle writes `é` as `\xe9`, which
+  `load(open(p, 'rb'))` rejects. `surrogateescape` writes a lone surrogate as
+  a raw byte, and a `utf-8-sig` writer adds a third U+FEFF that a binary
+  `load` keeps (all verified). Contract 07 now says so in `dump`'s docstring
+  and a codec table, and the US7.9 round trip names `encoding='utf-8'`. The
+  single-write rule survives the codec path, because `TextIOWrapper.write`
+  left the buffer at `b''` on `UnicodeEncodeError` (verified). Raising on a
+  non-UTF-8 `file_obj.encoding` was considered and not adopted (Contract 07
+  gives the reasons).
+- **Two Low congruence fixes.** R-04's derivation had no named home and two
+  call sites in `load`: it is now `encoding_error(err, filename)` in
+  `preprocess.py` (Contract 05). Migration note 9 now says `ParseError`'s
+  constructor needs three arguments and `.message` carries the filename, and
+  note 11 says `filename` defaults from `file_obj.name`. Contract 09's
+  glossary row for `OutOfContextNodeError` says what replaces the stale
+  sentence.
 
 ### Open items for the principal (not applied)
 

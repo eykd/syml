@@ -77,6 +77,19 @@ class TextLeafNode(SymlNode):
             [head + self.source.text]
             + [' ' * (c.level - self.baseline) + c.source.text for c in self.children]
         )
+
+    def as_source(self) -> Source:                         # red-team pass 20
+        # Built directly, never with Source.__add__, which joins with a bare
+        # '\n' and so drops both the head prefix and every continuation's
+        # preserved indentation (Contract 08).
+        n = 0 if self.inline else self.level - self.baseline
+        start = self.source.start
+        return Source(
+            filename=self.source.filename,
+            start=Pos(start.index - n, start.line, start.column - n),   # widened head
+            end=(self.children[-1] if self.children else self).source.end,
+            text=self.as_data(),
+        )
 ```
 
 **Root-scalar head indentation (§5.3, red-team pass 13).** §5.3 says a root
@@ -87,14 +100,25 @@ whitespace, exactly like any later line": `  hello\nworld` is
 head leaf's stored `Source` starts at its `text` token (column 2), so
 rendering only the continuation children with a prefix — as earlier passes
 wrote — silently drops those two spaces. The `head` term above closes that.
-`as_source()` mirrors it: the head's `Source` is widened left by the same `n =
-self.level - self.baseline` columns, to `Pos(start.index - n, start.line,
-start.column - n)` with the `n` spaces prepended to `text`. That arithmetic is
+`as_source()` (given above, red-team pass 20) mirrors it: the head's `Source`
+is widened left by the same `n = self.level - self.baseline` columns, to
+`Pos(start.index - n, start.line, start.column - n)`, and its `text` is
+`as_data()`, which already carries the `n` spaces. That arithmetic is
 exact in original coordinates because the widened span is the line's own
 indent run — U+0020 only (a tab there is `TabIndentationError`), after any BOM
 on line 1, before any collapsed break — which `PositionMap` maps one-for-one.
 `dumps` never needs this path: a root scalar with leading whitespace is
 unrepresentable (§11.2.4, Contract 07), which is intentional.
+
+**Why `as_source` is written out (red-team pass 20).** Today's `as_source`
+folds continuations in with `source += child.as_source()`, and
+`Source.__add__` joins with a bare `\n`. Kept as is, US1.3's
+`key:\n  first\n    indented\n  back` gives an `as_source()` text of
+`"first\nindented\nback"` against an `as_data()` of
+`"first\n  indented\nback"`, which breaks Contract 08's invariant
+`str(node.as_source()) == node.as_data()`. Taking `text` from `as_data()`
+makes the invariant true by construction. `end` is the last accepted line's
+own `end`, and `start` is the widened head.
 
 `Root` never receives an inline leaf: inline leaves are attached inside
 `visit_key_value` / `visit_list_item`, before the line's top node reaches the
@@ -358,6 +382,10 @@ incorporates the node into it.
   `"key: a\n  b"` → `{"key": "a\nb"}` (no inline-head prefix).
 - `KeyLeafNode.as_source()` is the `Source` `visit_key` stored: a second-line
   key reports `line == 2`.
+- `TextLeafNode.as_source()` (pass 20): for `key:\n  first\n    indented\n  back`,
+  `str(as_source()) == as_data() == "first\n  indented\nback"`, `start` is
+  at `first`'s `f`, and `end` is just past `back`'s `k`, asserted field by
+  field (Contract 08: `==` never checks a position).
 - Absent-value spans: `loads`-equivalent `as_source()` of `"key:"` gives
   `{"key": Source}` whose value is zero-width at index 4, column 4; of
   `"-"` a zero-width `Source` at index 1.

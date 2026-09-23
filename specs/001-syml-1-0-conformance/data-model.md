@@ -216,15 +216,21 @@ not have. An intermediary therefore copies the triggering node's `Source`.
 | `start`, `end` | `Pos` | original-text coordinates, built by `Source.from_node(pnode, line, position_map, filename)` as `to_original(pos_at(line, offset))` — `pnode` offsets are line-local under per-line lexing (Contract 08) |
 | `text` | `str` | the decoded value — quoted values carry the **decoded** text, not the raw source slice; their `start`/`end` span the raw token from the opening quote to just past the closing quote, exclusive (Contract 08) |
 
-**Equality/hash**: by `text` only, unchanged (R-07, §10.3). The
-`# pragma: no cover` on `__hash__` is removed and it is tested. The dead
-`return self + other.text` in `__add__` is deleted (`todo.txt` B3, FR-017).
+**Equality/hash**: by `text` only (R-07, §10.3), against a `str` or another
+`Source`; any other operand is `NotImplemented`, so `Source('1') == 1` is
+`False` (red-team pass 20, Contract 08). Equality never compares positions,
+so tests assert `start`/`end` field by field. The `# pragma: no cover` on
+`__hash__` is removed and it is tested. The dead `return self + other.text`
+in `__add__` is deleted (`todo.txt` B3, FR-017), its `str` branch counts the
+joining `\n`, and no parse path calls `__add__`.
 
 **Continuation spans**: when a `TextLeafNode` absorbs a continuation line, the
 resulting `Source.start` stays at the value's first character (for a root scalar
 whose first line is indented, the first preserved indent space — Contract 03)
 and `end` moves to the last accepted character; `text` equals what `as_data()` returns for the same
 node (including preserved indentation), so `str(source) == node.as_data()` holds.
+`TextLeafNode.as_source()` builds that `Source` directly, taking `text` from
+`as_data()` (Contract 03, red-team pass 20).
 
 ---
 

@@ -48,12 +48,23 @@ user-visible change from 0.6.2 (US9.3, SC-006):
 7. Multiline values preserve indentation past the baseline; a below-baseline
    line terminates the value
 8. Parsimonious exceptions no longer escape; everything is a `ParseError`
-9. `ParseError` gains `.message` / `.position` / `.line_text`
-10. `Pos` coordinates now refer to the **original** text
-11. `load()` accepts binary streams; invalid UTF-8 → `EncodingError`, from a
-    text handle too (Contract 06). `Pos.index` from a default `open(p)` text
-    handle is an offset into newline-translated text; editor-grade positions
-    need `open(p, 'rb')` or `open(p, encoding='utf-8', newline='')`
+9. `ParseError` gains `.message` / `.position` / `.line_text`, and its
+   constructor now requires them: `ParseError('msg')` (valid in 0.6.2, where
+   it was a bare `ValueError`) is a `TypeError`. `.message` is prefixed with
+   the filename when there is one (Contract 05 `error_message`)
+10. `Pos` coordinates now refer to the **original** text. `Source` still
+    equals a `str` with the same text, but no longer equals a non-`str`
+    (`Source('1') == 1` was `True`; red-team pass 20, Contract 08)
+11. `load()` accepts binary streams and decodes them as strict UTF-8;
+    invalid UTF-8 → `EncodingError`. A text handle decodes with its own
+    codec before `load` sees the text: a failure there is also
+    `EncodingError`, but a handle in another encoding can decode UTF-8 bytes
+    to the wrong characters with no error (cp1252 reads `é` as `Ã©`;
+    Contract 06, pass 20), so strict UTF-8 needs `open(p, 'rb')` or
+    `encoding='utf-8'`. `filename` now defaults to a `str` or path-like
+    `file_obj.name`. `Pos.index` from a default `open(p)` text handle is an
+    offset into newline-translated text; editor-grade positions need
+    `open(p, 'rb')` or `open(p, encoding='utf-8', newline='')`
 12. New: `dumps`, `dump`, and `parse` promoted to a public export (§11.2)
 13. Known limitation: deep nesting raises the host `RecursionError` — past
     roughly 500 levels of **block** nesting (one level per line), but past
@@ -64,6 +75,16 @@ user-visible change from 0.6.2 (US9.3, SC-006):
     `dumps` serializes `'- - … x'` as a quoted value (Contract 07). Deeply
     nested *data* (roughly 1,000 levels of lists or mappings) may raise
     `RecursionError` from `dumps` as well — same deferral.
+14. Typing (red-team pass 20): `loads`/`load` return `SymlData`
+    (`str | list[SymlData] | dict[str, SymlData]`) instead of
+    `list[Any] | dict[str, Any] | str`, so a typed caller narrows each level
+    with `isinstance` before indexing (`r['k']['j']` no longer type-checks
+    on the `Any` below the top). `dumps`/`dump` take `SymlInput`
+    (`str | list[Any] | dict[str, Any]`), so a `dict[str, str]` passes
+    without a cast. Both aliases are exported
+15. `dump` writes through the handle's codec: open it with
+    `encoding='utf-8'` (§13.3). A locale-default handle can write non-UTF-8
+    bytes that `load(open(p, 'rb'))` then rejects (Contract 07)
 
 The traceability check is mechanical: every row of the audit's gap list (b)
 maps to a numbered entry here or is explicitly out of scope.
@@ -88,7 +109,7 @@ makes it a backlog under a misleading name.
 | `incorporate_node` | described as climbing "by indentation level"; §9.2 climbs by **acceptance**, and level is now the node's own column (R-11) |
 | `can_add_node` | described as "the per-node predicate a **container** implements"; `TextLeafNode` and `Mapping` now carry real logic (baseline, duplicate keys) |
 | `TextLeafNode` | described as "accepts further `TextLeafNode`s as children" with no conditions; it now carries `inline`, `quoted`, `anchor_level`, and `baseline` and declines more than it accepts |
-| `OutOfContextNodeError` | "listed in `unwrapped_exceptions` so Parsimonious does not wrap it" — with per-line lexing (R-09) and a full wrapping boundary, that sentence describes an implementation detail that changes |
+| `OutOfContextNodeError` | "listed in `unwrapped_exceptions` so Parsimonious does not wrap it" — the tuple now names the base, `(ParseError, RecursionError)`, and line-to-line incorporation raises it outside the visitor altogether (Contract 05), so the entry should say every `ParseError` passes the visitor unwrapped |
 
 Add: `PositionMap`, `EncodingError`, `dumps`/`dump`, `Document` (original vs
 normalized).
@@ -98,7 +119,7 @@ normalized).
 | Item | End state | Assertion |
 | --- | --- | --- |
 | `tests/test_nodes.py` | real tests; the untracked `.orig` folded in or deleted | US9.6 |
-| `basetypes.Source.__add__` | dead `return` removed | US9.6 |
+| `basetypes.Source.__add__` | dead `return` removed; `str` branch counts the joining `\n` and splits on `\n` only (Contract 08, pass 20) | US9.6 |
 | `import syml` | no warning (`python -W error -c "import syml"`) | US9.5, SC-007 |
 
 The `.orig` file is untracked **and** globally gitignored (`*.orig`). The task

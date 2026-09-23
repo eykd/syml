@@ -6,7 +6,9 @@
 ## Surface
 
 ```python
-# src/syml/__init__.py
+# src/syml/__init__.py  (SymlData and SymlInput are defined in basetypes.py
+# and re-exported here: serializer.py needs them and precedes __init__.py in
+# the import order, plan.md § Project Structure; red-team pass 20)
 
 SymlData = str | list["SymlData"] | dict[str, "SymlData"]
 
@@ -26,6 +28,7 @@ def parse(document: str, filename: StrPath | None = None) -> Root: ...
 | --- | --- | --- |
 | `load` parameter type | `TextIOBase` | `IO[str] \| IO[bytes]` (**breaking, widening**) |
 | return type | `list \| dict \| str` (with `None` leaves) | `SymlData` — never `None` at any depth |
+| static return type | `list[Any] \| dict[str, Any] \| str` | `SymlData`: a typed caller's `r['k']['j']` after `isinstance(r, dict)` checked under 0.6.2 (`Any` below the top) and is a mypy error under 1.0.0 until each level is narrowed (**breaking for typed callers**, pass 20; plan.md Principle VI) |
 | exceptions | Parsimonious may escape | only `ParseError` subclasses |
 
 `parse` is promoted from an internal in `syml.parsers` to a documented §11.2
@@ -62,12 +65,12 @@ def load(file_obj, filename=None):
     try:
         raw = file_obj.read()                   # a text handle decodes here
     except UnicodeDecodeError as err:
-        raise EncodingError(...) from err       # R-04 over (err.object, err.start, err.encoding)
+        raise encoding_error(err, filename) from err   # Contract 05: R-04 over (object, start, encoding)
     if isinstance(raw, bytes):
         try:
             text = raw.decode('utf-8')          # strict: no errors= substitution
         except UnicodeDecodeError as err:
-            raise EncodingError(...) from err   # R-04's position derivation
+            raise encoding_error(err, filename) from err
     else:
         text = raw
     return loads(text, filename=filename)
@@ -85,6 +88,17 @@ both satisfy the protocol without inheriting from `TextIOBase`.
 | `io.BytesIO(b'\xff\xfe')` | invalid | `EncodingError` |
 | `open(p, encoding='utf-8')` (text) | invalid UTF-8 | `EncodingError` — not the `UnicodeDecodeError` that `read()` raises |
 | `open(p, encoding='cp1252')` (text; also `open(p)` under a cp1252 locale) | UTF-8 `Á` (`C3 81`): `0x81` is undefined in cp1252 | `EncodingError` at the `0x81` — position derived with the handle's codec, so no second `UnicodeDecodeError` escapes (Contract 05, pass 18) |
+| `open(p, encoding='cp1252')` (same) | UTF-8 `é` (`C3 A9`): both bytes are defined in cp1252 | **no error**: `{'key': 'Ã©'}`. The handle decoded, not `load`, so §11.1's strict-UTF-8 duty is not discharged on this path (pass 20, below) |
+
+**§11.1's strict decoding is guaranteed on the bytes path only (red-team
+pass 20).** `load` can decode strictly only when `read()` hands it bytes. A
+text handle has already decoded with its own codec, and `load` sees only the
+`str`. The `Á` row above fails because `0x81` happens to be undefined in
+cp1252; the `é` row is the common case, and it loads as mojibake with no
+error. `load` cannot detect that, so it is documented rather than prevented:
+`load`'s docstring says that strict UTF-8 (§11.1, §13.3) needs a binary
+handle or `encoding='utf-8'`, the same advice the newline table below gives
+for positions, and Contract 09's migration note 11 says the same.
 
 **Invariant (FR-010, US5.6)**: when `load` decodes bytes itself, it never
 substitutes: no U+FFFD replacement character and no unpaired surrogate enters a
@@ -170,6 +184,10 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
   as the binary handle over the same file.
 - A cp1252 text handle over UTF-8 `key: Á` raises `EncodingError`, and no
   `UnicodeDecodeError` escapes `load` (Contract 05's derivation, pass 18).
+- A cp1252 text handle over UTF-8 `key: é` returns `{'key': 'Ã©'}` with no
+  error, while a binary handle over the same bytes returns `{'key': 'é'}`.
+  This pins the documented limit of the text path (pass 20), so a future
+  change to it is a visible diff.
 - The three-handle table above over a real CRLF file on disk, pinning that
   `as_data()` is equal across all three while `Pos.index` differs for the
   default text handle.

@@ -11,7 +11,7 @@
 ```python
 # src/syml/serializer.py, re-exported from syml/__init__.py
 
-def dumps(data: SymlData) -> str:
+def dumps(data: SymlInput) -> str:
     """Serialize to SYML text, so that loads(dumps(x)) == x.
 
     Raises UnrepresentableValueError for a SYML value with no encoding
@@ -27,16 +27,40 @@ def dumps(data: SymlData) -> str:
     begin with U+FEFF, one extra U+FEFF is prepended, because loads strips
     exactly one leading mark."""
 
-def dump(data: SymlData, file_obj: IO[str]) -> None:
+def dump(data: SymlInput, file_obj: IO[str]) -> None:
     """Serialize with dumps, then write the whole result in a single write()
-    call. If dumps raises, nothing is written. A lone surrogate in any string
-    is written literally (SYML has no escape for one); a UTF-8 stream then
-    raises its own UnicodeEncodeError, not a SYML error. A file reopened with
-    encoding='utf-8-sig' loses one leading U+FEFF to the codec and one to
-    §9.0, so a value's own leading U+FEFF does not survive that round trip."""
+    call. If dumps raises, nothing is written. SYML documents are UTF-8
+    (§13.3): open the handle with encoding='utf-8'. dump writes through the
+    handle's own codec and does not check it, so a locale-default handle
+    can write bytes that are not UTF-8. A lone surrogate in any string is
+    written literally (SYML has no escape for one); a strict UTF-8 stream
+    then raises its own UnicodeEncodeError, not a SYML error. A file
+    reopened with encoding='utf-8-sig' loses one leading U+FEFF to the
+    codec and one to §9.0, so a value's own leading U+FEFF does not survive
+    that round trip; writing with 'utf-8-sig' adds a mark instead."""
 ```
 
-The two docstrings above are the text the rest of this contract points at
+**The parameter type is `SymlInput`, not `SymlData` (red-team pass 20).**
+`SymlData = str | list[SymlData] | dict[str, SymlData]` is the right
+*return* type for `loads`, but `list` and `dict` are invariant, so as a
+*parameter* type it rejects every typed caller: under mypy strict,
+`dumps(cfg)` with `cfg: dict[str, str]` is an `arg-type` error, and so are
+`list[str]` and `dict[str, list[str]]` (verified). Only a literal or a value
+already typed `SymlData` would pass, which fails Principle II for the
+serializer's whole audience. The parameter is therefore
+
+```python
+SymlInput = str | list[Any] | dict[str, Any]     # basetypes.py, beside SymlData
+```
+
+which accepts those three (and `loads`'s own `SymlData`), and still rejects
+`dict[int, str]` and a tuple at the top level, matching the runtime type
+table below. Below the top level `Any` defers to the runtime check, which
+raises `TypeError` for anything that is not `str`, `list`, or `dict`. Both
+aliases live in `basetypes.py` (plan.md § Project Structure) because
+`serializer.py` precedes `__init__.py` in the import order.
+
+The two docstrings in § Surface are the text the rest of this contract points at
 ("documented in the `dumps` docstring"). The doubled backslash in `\\u003a`
 is deliberate: in a non-raw docstring a single one would be decoded to `:`. Each sentence is covered by a section
 below (red-team pass 16 wrote them out in full).
@@ -53,6 +77,37 @@ caller's business (`open(p, 'w')` has already truncated it).
 is deliberate: `load`'s widening answers an installed base of `open(p, 'rb')`
 callers; there is no equivalent argument in the write direction, and
 `TextIOWrapper` is one line away (R-06).
+
+### The output handle's codec (red-team pass 20)
+
+§13.3 says SYML documents MUST be valid UTF-8. `dump` produces a `str` and
+the **handle** encodes it, so which bytes reach the file is the handle's
+codec and error handler, not `dump`'s. Verified with `io.TextIOWrapper`
+over `io.BytesIO`:
+
+| Handle | Value | Bytes written | Then |
+| --- | --- | --- | --- |
+| `encoding='utf-8'` | `{'k': 'é'}` | `k: \xc3\xa9\n` | every `load` path round-trips |
+| `encoding='cp1252'` (also `open(p, 'w')` under a cp1252 locale, the Windows default before Python 3.15) | `{'k': 'é'}` | `k: \xe9\n` — not UTF-8 | `load(open(p, 'rb'))` raises `EncodingError`; only a cp1252 text handle reads it back |
+| `encoding='cp1252'` | `{'k': '☺'}` | nothing: `UnicodeEncodeError` from `write`, underlying buffer still `b''` | the single-write rule holds on the codec path too |
+| `encoding='utf-8', errors='surrogateescape'` | `{'k': 'a\udc80'}` | `k: a\x80\n` — not UTF-8 | `load(open(p, 'rb'))` raises `EncodingError` |
+| `encoding='utf-8-sig'` | `'\ufeffx'` | `\xef\xbb\xbf` three times, then `x\n` | a binary `load` returns `'\ufeff\ufeffx'`; only a `utf-8-sig` reader gets `'\ufeffx'` back |
+| default `newline=None` on Windows | any | `\n` written as `\r\n` | harmless: §9.0 normalizes it, and rule C escapes every `\r`/`\n` inside a value, so no literal break is ever translated |
+
+So `dump`'s docstring tells the caller to open the handle with
+`encoding='utf-8'`, and the round-trip obligation below uses exactly that.
+Every row above is a caller's codec choice, the same class as Contract 06's
+text-handle rows and pass 15's `utf-8-sig` note, and is documented rather
+than prevented.
+
+**Considered and not adopted: raising on a non-UTF-8 `file_obj.encoding`.**
+It would turn the cp1252 rows into a loud error before anything is written.
+It was not adopted because `encoding` is not part of `IO[str]` (a `StringIO`
+reports `None`, and a custom writer may have none or a free-form string), so
+the check would police only some handles, and it would reject a console
+`sys.stdout` even for ASCII output, whose bytes are UTF-8 under any
+ASCII-compatible codec. Adding it after 1.0 would narrow what `dump`
+accepts, so it is recorded here as a deliberate choice, not an oversight.
 
 ## Type contract
 
@@ -311,7 +366,9 @@ through the protective U+FEFF (pass 14). Keys `a\x01b`, `a\x7fb`,
 `a\x9fb`, `a\x1cb`, `a\xa0b`, and `a\u2028b` are in the **raising** set, not
 the corpus.
 
-`dump(x, fp)` then `load(fp)` equals `x` (US7.9).
+`dump(x, fp)` then `load(fp)` equals `x` (US7.9), for `fp` a `StringIO` or a
+handle opened with `encoding='utf-8'`, rewound between the two calls
+(§ The output handle's codec).
 
 **Idempotence**: `dumps(loads(dumps(x))) == dumps(x)`. This is why R-06 rejects
 blank lines between top-level keys.
@@ -344,6 +401,14 @@ blank lines between top-level keys.
 - `dumps('') == ''`.
 - `dump` over a `StringIO` with `{'a': '1', 'b': {}}` raises
   `UnrepresentableValueError` and leaves `getvalue() == ''`.
+- Typing (pass 20): mypy strict accepts `dumps(cfg)` for `cfg: dict[str,
+  str]`, `list[str]`, `dict[str, list[str]]`, and `loads(...)`'s own
+  `SymlData`, all without a cast, and rejects `dict[int, str]`. The test
+  module itself is in the mypy file set, so these are ordinary typed calls.
+- Codec (pass 20): `dump` of a non-ASCII value (`{'k': 'é'}`) to
+  `io.TextIOWrapper(buf, encoding='utf-8')`, then `load(io.BytesIO(buf.getvalue()))`,
+  round-trips. `dump({'k': '☺'}, TextIOWrapper(buf, encoding='cp1252'))`
+  raises `UnicodeEncodeError` and `buf.getvalue() == b''` after `flush()`.
 - `key_is_representable` against the six control/space keys above (all
   `False`), `''` (`False`), `'#k'` and `'//k'` (`False`), and `'k'`,
   `'emoji🎉key'`, `"'a"` (all `True`). No parsimonious exception leaves

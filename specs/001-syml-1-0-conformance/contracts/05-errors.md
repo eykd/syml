@@ -89,6 +89,20 @@ constructors, red-team pass 18).
 
 `UnicodeDecodeError.start` is a **byte** offset, not a code-point index.
 
+The steps below are one helper, called at both of `load`'s raise sites
+(Contract 06) so they cannot drift (red-team pass 20):
+
+```python
+def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> EncodingError:
+    """Steps 1-5 below, over (err.object, err.start, err.encoding), with the
+    message built by error_message('Invalid encoding', filename)."""
+```
+
+It lives in `preprocess.py`, because step 3 counts breaks with the same
+single-pass `\r\n|\r|\n` regex that normalization and `original_line` use;
+every name it needs (`Pos`, `EncodingError`, `error_message`) comes from a
+module earlier in the import order.
+
 1. `prefix = err.object[: err.start].decode(err.encoding, errors='replace')`
    — decoded with **the codec that failed**, not with a hard-coded `'utf-8'`
    (red-team pass 18). The derivation is over `(err.object, err.start,

@@ -23,9 +23,17 @@ class Source:
     end: Pos
     text: str
 
-    def __eq__(self, other: object) -> bool: ...   # by text
-    def __hash__(self) -> int: ...                 # by text
-    def __add__(self, other: Source | str) -> Source: ...
+    def __eq__(self, other: object) -> bool:       # by text; str and Source only
+        if isinstance(other, Source):
+            return self.text == other.text
+        if isinstance(other, str):
+            return self.text == other
+        return NotImplemented                       # pass 20: never str(other)
+
+    def __hash__(self) -> int:                     # by text
+        return hash(self.text)
+
+    def __add__(self, other: Source | str) -> Source: ...   # kept; no parse path uses it
 
     @classmethod
     def from_node(
@@ -53,7 +61,8 @@ with every leaf and every key a `Source` instead of a `str` (US8.1).
 | line counting | `str.splitlines()` | split on `\n` only (§13.3) |
 | coverage | `as_source()` blanket-exempted by `# pragma: nocover` | fully tested, exemptions removed (FR-012) |
 | `__hash__` | `# pragma: no cover` | tested |
-| `Source.__add__` | dead `return self + other.text` after a `return` | deleted (`todo.txt` B3, FR-017) |
+| `Source.__add__` | dead `return self + other.text` after a `return`; the `str` branch's `end.index` omits the joining `\n`, `Source + ''` raises `IndexError`, and line counting goes through `splitlines()` | dead `return` deleted (`todo.txt` B3, FR-017). The `str` branch counts the joining `\n` and splits on `\n` only (below). **No parse path calls `__add__`**: `TextLeafNode.as_source()` builds its `Source` directly (Contract 03) |
+| `Source.__eq__` | `str(self) == str(other)`: `Source('1') == 1` and `Source('None') == None` are `True`, with unequal hashes | `str` and `Source` only; anything else is `NotImplemented`, so `Source('1') == 1` is `False` (pass 20) |
 | `Source.from_node` | `(pnode, filename)`; positions via `Pos.from_str_index(pnode.full_text, …)` | `(pnode, line, position_map, filename)`; positions via `pos_at` + `to_original` |
 | `Pos.from_str_index` | line/column by `utils.split_lines` (`splitlines`); also used by `nodes.fail_to_incorporate_node` on `pnode.full_text` | kept (with `Source.from_text`, which the existing tests use) but counts `\n` only (§13.3); **never** used for parse positions — on a per-line `full_text` it would report line 1 for every node. `OutOfContextNodeError` / `DuplicateKeyError` take their `position` from the node's stored `Source.start` |
 
@@ -83,7 +92,7 @@ line count that was wrong before remapping.
 - lines 1-indexed, columns 0-indexed, character indices 0-indexed
 - columns counted in **code points**, not bytes (§13.3)
 
-## Equality and hashing (§10.3, R-07) — unchanged
+## Equality and hashing (§10.3, R-07) — text equality kept, non-`str` operands removed
 
 `Source` compares and hashes **by its text**, so it is interchangeable with a
 plain `str` as a dict key. §10.3 requires this, and then draws the consequence:
@@ -93,8 +102,43 @@ plain `str` as a dict key. §10.3 requires this, and then draws the consequence:
 > keys (§8.3) ... Duplicate-key detection MUST occur during tree incorporation.
 
 Contract 03 lands that detection (FR-007), which is what closes the collision
-hazard. No change to `__eq__`/`__hash__` is needed or wanted — weakening them
-would break the interchangeability §10.3 asks for.
+hazard. Text equality and text hashing stay exactly as they are — weakening
+them would break the interchangeability §10.3 asks for. Only the non-`str`
+operands below change.
+
+**`__eq__` compares with `str`s and `Source`s only (red-team pass 20).**
+Today's `__eq__` is `str(self) == str(other)`, which is broader than "exactly
+as their text": a `str` `'1'` does not equal the `int` `1`, but `Source('1')`
+did, and `Source('None') == None` was `True`. It also broke Python's rule
+that equal objects hash equal (`hash(Source('1')) != hash(1)`, so
+`Source('1') in {1}` was `False` while `Source('1') == 1` was `True`;
+verified). Returning `NotImplemented` for any other type keeps every
+`str`-interchangeability §10.3 and R-07 require, `{src: 1}['foo']` and
+`'foo' == src` included, and removes only the accidental cases. No D1-D17
+decision is touched. `dataclasses.replace(source, text=...)` (the quoted-value
+path below) builds a new frozen `Source` that compares and hashes by the new
+text, and `Source` survives `pickle` and `copy.deepcopy` (verified).
+
+**Consequence for tests: `==` never checks a position.** Because equality
+is by text alone, `as_source() == {Source(...): Source(...)}` and
+`new_source == Source(start=..., end=...)` pass whatever the positions are.
+Today's `tests/test_basetypes.py` and `tests/test_parsers.py` assert
+positions exactly that way, which is how the `__add__` index error above
+survived. Every position obligation in this contract compares `.start` and
+`.end` (or `(s.start, s.end, s.text)` tuples), never whole `Source`s.
+
+**`Source.__add__`'s `str` branch (pass 20).** Kept for API compatibility,
+so it is covered by direct tests, but its positions are synthetic: no parse
+path calls it, and the result is not a span of any document. The corrected
+arithmetic, for `self + other`:
+
+```python
+lines = other.split('\n')                        # LF only (§13.3), never splitlines
+end = Pos(index=self.end.index + 1 + len(other),  # +1: the joining '\n'
+          line=self.end.line + len(lines),
+          column=len(lines[-1]))
+text = f'{self.text}\n{other}'                    # '' is valid: one empty line
+```
 
 ## Quoted-value spans (red-team pass 5)
 
@@ -142,7 +186,8 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
   `tests/test_nodes.py.orig` (≈11 KB) exists, hidden by a global `*.orig`
   gitignore. The task **reads and folds it in**, or deletes it deliberately —
   it cannot be `git mv`'d into place, because git does not see it.
-- The dead `return self + other.text` in `Source.__add__` is deleted.
+- The dead `return self + other.text` in `Source.__add__` is deleted, and its
+  `str` branch's arithmetic is corrected (§ Equality and hashing, pass 20).
 
 ## Test obligations
 
@@ -154,6 +199,14 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
   text='foo')` (all four fields are required): `src == "foo"` and
   `{src: 1}["foo"] == 1`.
 - `Source.__hash__` exercised directly (no pragma).
+- `Source('1') == 1`, `Source('None') == None`, and `Source('a') == ['a']`
+  are all `False`; `Source('foo') == 'foo'`, `'foo' == Source('foo')`, and
+  `Source('foo') == Source('foo', other positions)` are `True` (pass 20).
+- `Source.__add__`: `src + 'x'` has `end.index == src.end.index + 2`;
+  `src + ''` returns a `Source` whose text ends in `\n`; both assert `.end`
+  field by field. `Source + Source` takes the right operand's `end`.
+- No position assertion anywhere compares whole `Source` objects with `==`
+  (see § Equality and hashing).
 - `rg 'pragma: no ?cover' src/syml/nodes.py` finds only `TYPE_CHECKING` blocks.
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
