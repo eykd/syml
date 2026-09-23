@@ -50,6 +50,7 @@ pre-processing and applies `to_original` to both `start` and `end`.
 | --- | --- | --- |
 | `"﻿key: value"` | `value` | index 6, line 1, column 6 — counting the mark (US8.2) |
 | `"a: b\r\nc: d"` | `d` | index 9 — counting the carriage return (US8.3) |
+| `"a: b\r\nc: d"` | `b` | start index 3, **end** index 4 (the `\r`, exclusive) — not 5 |
 | `"a: b c\nx: y"` | key `x` | **line 2** — U+2028 does not terminate a line (US8.4, gap #16) |
 
 The third row is why §13.3's `splitlines()` prohibition is a prerequisite rather
@@ -112,3 +113,11 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
 - `rg 'pragma: no ?cover' src/syml/nodes.py` finds only `TYPE_CHECKING` blocks.
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
+- The same property for spans: for every node of a single-line value,
+  `original[start.index:end.index] == source.text`, over a corpus that includes
+  CRLF, bare-CR, and BOM documents. This is the test that catches an exclusive
+  `end` mapped with `bisect_right` (Contract 01) — the start-only property above
+  cannot, because a token's `start` never lands on a collapsed break unless the
+  token is empty.
+- `end` is **exclusive** (it is `pnode.end` today and stays so); a row with a
+  CRLF-terminated value asserts `end.index` points at the `\r`.

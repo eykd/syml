@@ -137,3 +137,8 @@ incorporates the node into it.
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
 - Deep nesting at 400 levels parses; 500+ raises `RecursionError` — asserted as
   the **documented known limitation** (spec Edge Cases), not as a defect.
+- Inline nesting on one line: `'- ' * 50 + 'x'` parses (the lexing threshold
+  is 123 at the default limit with no test-harness frames on the stack); `'- ' * 200 + 'x'`
+  raises the host `RecursionError` (not `VisitationError`) at the default
+  recursion limit — the same known limitation, at a much lower depth, because
+  the recursion is in lexing (Contract 05).

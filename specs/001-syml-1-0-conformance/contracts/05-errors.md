@@ -94,8 +94,68 @@ closing quote also strands the line and gets the same classification. The
 boundary handler therefore classifies it as `MalformedQuotedStringError`;
 there is no residual "unknown parse failure" bucket.
 
-Every call into Parsimonious is wrapped. `ParseError` and its subclasses stay in
-`unwrapped_exceptions` so the tree builder's own raises pass through unwrapped.
+### Detecting the stranding and anchoring at the opening quote
+
+`IncompleteParseError.pos` is the **strand point** (the character after the
+closing quote and any ASCII spaces), not the opening quote this contract's
+anchor table requires — and nothing in the exception names the quote. So the
+entry point does **not** call `parse()` and catch `IncompleteParseError`. It
+calls `GRAMMAR['line'].match(line.text)`, which returns the prefix's parse tree
+without the full-consumption check (`parse` is `match` plus that check;
+verified 2026-09-23 that `IncompleteParseError.pos == match(...).end`):
+
+```python
+pnode = GRAMMAR['line'].match(line.text)
+if pnode.end < len(line.text):                       # stranded: §4.7 trailing content
+    quote = find_first(pnode, 'quoted_value')        # exactly one on this path
+    raise MalformedQuotedStringError(
+        message, doc.position_map.to_original(pos_at(quote.start + line.start)),
+        line_text, escape=None, code_point=None,
+    )
+node = visitor.visit(pnode, line)
+```
+
+- **Exactly one `quoted_value`** is in a stranded prefix: the grammar admits a
+  quoted value only in `key_value`'s first alternative and `value`'s second,
+  each followed only by `~" *"`, and inline nesting forms a single chain. The
+  lookup is therefore unconditional — no "not found" branch, no pragma.
+- **`match` cannot raise `parsimonious.exceptions.ParseError`** for a line:
+  `data = ~"[^\n]*"` matches the empty string, so some alternative always
+  matches. No `except` clause is written for it.
+- **Precedence**: the stranding check runs **before** the line is visited, so
+  a line that is both stranded and carries an out-of-range escape
+  (`k: "\ud800" x`) is classified as trailing content (`escape=None`,
+  `code_point=None`). Both anchor at the same opening quote; the rule just
+  pins which attributes the caller sees.
+- The R-09 fuzz corpus (red-team open item 1) becomes a regression test
+  asserting, for every stranded line, that the prefix contains exactly one
+  `quoted_value` and that `pnode.end` sits after its closing quote plus ASCII
+  spaces only.
+
+### Other Parsimonious exceptions
+
+`ParseError` and its subclasses stay in `unwrapped_exceptions` so the visitor's
+own raises (the quote-guard, decode errors) pass through unwrapped.
+Parsimonious wraps **every other** exception raised inside a `visit_*` method in
+`parsimonious.exceptions.VisitationError` — which would be a Parsimonious
+exception escaping `loads`. Two rules close that:
+
+1. `unwrapped_exceptions = (ParseError, RecursionError)`, so a recursion
+   overflow while visiting a deeply nested inline line surfaces as the host
+   `RecursionError` — the documented known limitation — not as
+   `VisitationError`.
+2. Tree incorporation (`incorporate_node`, Contract 03) runs in the per-line
+   loop, **outside** `NodeVisitor.visit`, so its raises are never wrapped.
+
+### `line_text`
+
+`line_text` is the **original** physical line containing `position`, without
+its terminator (`\r\n`, `\r`, or `\n`), and including a leading U+FEFF on
+line 1 when the document had one. Taking it from the original text (not the
+normalized line) is what makes `line_text[position.column]` the offending
+character on every line, including a BOM-bearing line 1, whose column is
+shifted by one (Contract 01). It is the empty string when `position` is past
+the last line.
 
 | Input | Today | Spec |
 | --- | --- | --- |
@@ -128,6 +188,16 @@ D7 stands: §8.1 and §8.2 both raise `OutOfContextNodeError`; there is no
 - For each class, one triggering input asserting `message`, `position`,
   `line_text`, and any extra attributes.
 - `DuplicateKeyError.first_position` points at the **first** occurrence (US5.4).
+- For every `ParseError` raised from a parsed line (all classes except
+  `EncodingError`), `e.line_text[e.position.column]` is the anchor character
+  named in the attribute table — asserted on LF, CRLF, and BOM-bearing inputs.
+- `MalformedQuotedStringError` for `key: "a" trailing`, `- k: 'it''s' x`, and
+  `k: "a"\tx` has `position.column` at the **opening** quote (5, 5, 3), not at
+  the strand point.
+- A single line of inline list markers deep enough to exhaust the recursion
+  limit (`'- ' * 200 + 'x'` at the default limit) raises the host
+  `RecursionError`, never `VisitationError` or any other
+  `parsimonious.exceptions` class.
 - `EncodingError` on a multi-byte prefix: `position.index` is a code-point
   index, not a byte offset. A fixture with a non-ASCII character before the bad
   byte is mandatory — this is the trap R-04 names.

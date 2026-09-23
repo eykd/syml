@@ -17,8 +17,15 @@ def decode_single_quoted(raw: str) -> str:
 def decode_double_quoted(raw: str) -> str:
     """Decode a "..." literal per the §4.7 escape table.
 
-    Raises MalformedQuotedStringError with .escape / .code_point populated.
+    Only ever receives text the grammar matched, so every escape is
+    syntactically valid; raises MalformedQuotedStringError (with .escape and
+    .code_point) only for a code point above U+10FFFF or a surrogate.
     """
+
+def diagnose_malformed(text: str) -> str | None:
+    """The .escape for a quote-guard fallthrough: the first invalid or
+    incomplete escape, or None if the value is merely unterminated.
+    .code_point is always None on this path. See below."""
 ```
 
 ## Where quoting is recognized (D2)
@@ -113,6 +120,44 @@ A negative lookahead in the grammar (`data = !~"['\"]" text`) was rejected: it
 makes the line fall through to a different alternative rather than raising,
 reintroducing exactly the silent fallthrough D2 removed.
 
+### What the quote-guard reports: diagnosing the fallthrough
+
+The grammar's `escape_seq` only admits the eight valid escapes, so a double-
+quoted value containing an **invalid or incomplete** escape (`k: "a\xb"`,
+`k: "a\u12"`) never matches `double_quoted` at all: `quoted_value` fails, the
+line falls through to `key_colon ws data`, and the value reaches the
+quote-guard, **not** `decode_double_quoted` (verified 2026-09-23 against the
+transcribed grammar). The guard is therefore the only place that can populate
+`.escape` for those rows, and "begins with a quote" alone cannot tell an
+invalid escape from an unterminated string.
+
+The guard diagnoses the text with a left-to-right scan from the opening quote
+(`quoting.diagnose_malformed(text) -> str | None`, a pure function beside
+the decoders):
+
+1. **Double-quoted**: on each `\`, check the following characters against the
+   §4.7 table. The **first** invalid or incomplete escape wins: `escape` is the
+   backslash plus the characters examined before the failure (`"\\x"` for
+   `\x`, `"\\u12"` for `\u12"`, `"\\"` for a backslash at end of line);
+   `code_point` is `None`. An unescaped `"` ends the scan.
+2. If the scan reaches end of line without a defect or a closing quote, the
+   value is **unterminated**: `escape=None`, `code_point=None`.
+3. **Single-quoted** values have no escapes; the only reachable diagnosis is
+   unterminated.
+
+A value that the scan finds well-formed **and** terminated is unreachable on
+this path — it would have matched `quoted_value` — so the scan must be written
+without that branch rather than with a pragma (constitution III). Out-of-range
+code points (`\U00110000`) and surrogates (`\ud800`) **do** match the grammar
+and are reported by `decode_double_quoted` as specified above; the two paths
+partition the malformed cases between them.
+
+Alternative considered and **not applied**: widen `escape_seq` to
+`'\\' ~"."` so every backslash sequence matches and the decoder validates
+all escapes in one place. It is simpler, but it changes §4.1's grammar as
+printed, which this feature transcribes. Recorded as an open item for the
+principal (plan.md § Edge Cases & Error Handling), not adopted.
+
 ## Completeness (§9.3, §4.1)
 
 A quoted inline value is **complete**: its `TextLeafNode` has `quoted=True` and
@@ -138,6 +183,10 @@ Contract 07 (§11.2.1 rules B, C, E, F, and the single-quote preference).
 ## Test obligations
 
 - Every table row above.
+- Guard-path diagnosis: `k: "a\xb"` → `escape="\\x"`; `k: "a\u12"` →
+  `escape="\\u12"`; `k: "abc\` → `escape="\\"`; `k: "a\xb` (invalid escape
+  **and** unterminated) → `escape="\\x"` (first defect wins); `k: "abc` and
+  `k: 'abc` → `escape=None`. Each at an inline `key:` position and after `- `.
 - Round-trip: `loads('k: ' + dumps_quoted(s))['k'] == s` over a corpus of
   strings containing quotes, backslashes, control characters, and astral-plane
   characters.

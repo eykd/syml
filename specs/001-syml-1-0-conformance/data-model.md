@@ -37,17 +37,19 @@ form; every position reported to a caller refers to the original.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `bom_offset` | `int` | 0 or 1 |
-| `crlf_indices` | `list[int]` | sorted normalized indices where a `\r\n` collapsed |
+| `crlf_indices` | `tuple[int, ...]` | sorted normalized indices where a `\r\n` collapsed (a tuple: `PositionMap` is frozen) |
 
 `to_original(p: Pos) -> Pos`:
 
-- `index` → `p.index + bom_offset + bisect_right(crlf_indices, p.index)`
+- `index` → `p.index + bom_offset + bisect_left(crlf_indices, p.index)`
 - `line` → unchanged
 - `column` → `p.column + bom_offset` when `p.line == 1`, else unchanged
 
 **Invariants**: `to_original` is monotonically non-decreasing in `index`;
-`bisect_right` is used (not `bisect_left`) so a position *at* a collapsed break
-maps to the `\n` rather than the `\r`.
+`bisect_left` is used (not `bisect_right`) so a position *at* a collapsed break —
+an exclusive `end` at a CRLF line end, or an empty token at end of line — maps
+to the `\r`, keeping `index` consistent with `line`/`column` and making
+`original[start.index:end.index]` exactly the token's original text (Contract 01).
 
 ---
 

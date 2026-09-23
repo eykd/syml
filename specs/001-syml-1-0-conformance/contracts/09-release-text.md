@@ -51,7 +51,11 @@ user-visible change from 0.6.2 (US9.3, SC-006):
 10. `Pos` coordinates now refer to the **original** text
 11. `load()` accepts binary streams; invalid UTF-8 → `EncodingError`
 12. New: `dumps`, `dump`
-13. Known limitation: nesting past ~500 levels raises `RecursionError`
+13. Known limitation: deep nesting raises the host `RecursionError` — past
+    roughly 500 levels of **block** nesting (one level per line), but past
+    only roughly 120 levels of **inline** nesting on a single line
+    (`- - - … x`, a ~250-byte input) at CPython's default recursion limit,
+    because lexing that one line recurses in Parsimonious. State both figures.
 
 The traceability check is mechanical: every row of the audit's gap list (b)
 maps to a numbered entry here or is explicitly out of scope.

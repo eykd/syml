@@ -90,9 +90,16 @@ it falls through to `data`.
 ```python
 doc = preprocess(text, filename)            # Contract 01
 for line in split_lines_lf(doc.normalized): # §9.1 step 2
-    pnode = GRAMMAR['line'].parse(line.text)  # §9.1 step 3
+    pnode = GRAMMAR['line'].match(line.text)  # §9.1 step 3 — match, not parse
+    if pnode.end < len(line.text):            # stranded: §4.7 trailing content
+        raise_trailing_content(pnode, line)   # Contract 05 — anchors at the opening quote
     node  = visitor.visit(pnode, line)
+    tip   = incorporate(tip, node)            # Contract 03 — outside NodeVisitor.visit
 ```
+
+`match` rather than `parse`: `parse` is `match` plus a full-consumption check
+whose `IncompleteParseError` carries only the strand point, while the error
+must anchor at the opening quote. Contract 05 gives the detail.
 
 This makes §5.1 rule 6 ("each line is lexed independently of its position in the
 document") structural rather than incidental, and it gives the third-party
@@ -101,6 +108,26 @@ exception boundary a single, well-typed meaning — see Contract 05.
 Line-local offsets are lifted to document offsets with `line.start`, so
 `pnode.start + line.start` is the normalized index, which Contract 01's
 `PositionMap` then maps to the original.
+
+### `data` is an alias, and does not appear in the parse tree
+
+`data = text` is a bare rule reference, and Parsimonious resolves it to the
+**same expression object** as `text` (verified 2026-09-23:
+`GRAMMAR['data'] is GRAMMAR['text']`, and a parse of `k: v` yields a node named
+`text`, never `data`). Consequences for the visitor:
+
+- `visit_data` never dispatches. Anything specified as happening "on a `data`
+  match" is implemented on the node named `text`.
+- `comment = ("#" / "//") text?` shares the same expression, so a `visit_text`
+  hook also fires for comment bodies. It must not carry the quote-guard.
+- The quote-guard (Contract 04) therefore lives in `visit_key_value` and
+  `visit_list_item`, which know which alternative matched and can inspect their
+  own `text` child — **not** in a `visit_data`/`visit_text` method. Root-scalar
+  and continuation lines reach `text` through `line`, never through those two
+  visitors, which is what keeps them exempt (D2).
+
+Do not "fix" this by renaming grammar rules: the grammar is a transcription of
+§4.1 and stays one.
 
 ## Level computation (R-11, §9's "Level" definition)
 
@@ -145,4 +172,7 @@ line's indent. That is audit gap #14 / M23 exactly:
 - Every row of both tables above.
 - `python -W error -c "import syml"` exits 0 (FR-017, audit gap #20).
 - A grammar-load smoke test asserting `Grammar(...)` compiles without warnings.
+- A test that `- "a` and `k: "a` raise `MalformedQuotedStringError` while
+  `# "a` (comment) and `"a` (root scalar) do not — proving the quote-guard is
+  not hung on the shared `text` expression.
 - US3's nine acceptance scenarios.

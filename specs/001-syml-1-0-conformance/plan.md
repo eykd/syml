@@ -56,7 +56,9 @@ roughly neutral. Not measured as an acceptance criterion — no FR or SC mention
 throughput.
 **Constraints**: §13.4's implementation limits (max depth 500, max line 1 MiB,
 max document 10 MiB) and `DocumentLimitError` are **deferred past 1.0** by
-decision. Nesting past ~500 levels raises the host `RecursionError` and is
+decision. Nesting past ~500 levels of block nesting — or only ~120 levels of
+inline `- - - …` nesting on one line, which recurses during lexing — raises the
+host `RecursionError` and is
 documented as a known limitation, not a defect.
 **Scale/Scope**: ~530 lines of `src/`, of which every module is touched; one new
 module each for pre-processing, quoting, and serialization; 20 FRs; 9 user
@@ -258,7 +260,8 @@ and its companion audit,
 - **Clean break from 0.6.2, documented** — no bridge release, no compatibility
   flags; a bridge is code written only to be deleted at 1.0.
 - **Defer all §13.4 limits** — shipping speed over resource hardening for now;
-  the `RecursionError` at ~500 levels is documented as a known limitation.
+  the `RecursionError` (~500 block levels, ~120 inline levels on one line) is
+  documented as a known limitation.
 - **Spec is open during implementation** — the implementer may edit spec text
   when implementation exposes a defect, edits landing in the same commit as the
   behaviour. This is why FR-019 amends constitution principle IV.
@@ -280,7 +283,7 @@ raised in its Assumptions. Full reasoning and rejected alternatives in
 | Question | Resolution |
 | --- | --- |
 | D15's `White_Space` vs Python `\s` vs §4.1's key class — which rejects `key\x1cname: v`, and how? | **R-01**: they differ by exactly U+001C–U+001F, which `\x00-\x1f` already excludes, so the outcome is scalar fallthrough either way. The grammar enumerates D15's set explicitly (also killing the two import `SyntaxWarning`s); §4.5 gains one clarifying sentence. |
-| Mechanism for mapping normalized positions back to the original | **R-02**: an offset table (`PositionMap`: BOM offset + sorted CRLF indices, `bisect_right`). `line` never needs remapping; `column` only on line 1. A CR-tolerant grammar is rejected — §4.1 explicitly assumes §9.0 has run. |
+| Mechanism for mapping normalized positions back to the original | **R-02**: an offset table (`PositionMap`: BOM offset + sorted CRLF indices, `bisect_left` — corrected from `bisect_right` by red team, see § Edge Cases & Error Handling). `line` never needs remapping; `column` only on line 1. A CR-tolerant grammar is rejected — §4.1 explicitly assumes §9.0 has run. |
 | Exact shape of `.position`, and which errors carry `line_text` | **R-03**: `.position` is always a `Pos`, `.line_text` always a `str`, both on **every** subclass, both non-optional. §11.3 states this unconditionally. Per-class anchors tabulated. |
 | Fixture strategy for trailing-whitespace examples | **R-05**: every SYML fixture, acceptance and unit, is a single-line escaped string; a significant trailing space is `\x20`. Never a `"""` literal. Excluding the hook is rejected — editors strip the same whitespace (§7.5's own note). |
 | Is `dumps`'s nested formatting spec-fixed or an implementation choice? | **R-06**: §11.2.1 A–G fix quoting and the one-space-after-`-`; indent width (2), blank lines (none), and trailing newline (one) are documented implementation choices, not asserted as conformance. Non-string leaves raise `TypeError`, not `UnrepresentableValueError`. |
@@ -398,6 +401,90 @@ someone edits the spec, which FR-019's amendment makes likely. It asserts a
 minimum block count (53) so a regex-drift bug fails loudly rather than passing
 vacuously. It lives under `tests/` (inside the mypy file set, outside the
 coverage gate), not `tools/` and not `src/`.
+
+## Edge Cases & Error Handling
+
+_Added by `/sp:04-red-team`, pass 1 (2026-09-23). Each item below was verified
+against the transcribed §4.1 grammar under the pinned Parsimonious, not argued
+from reading. None changes a D1–D17 decision._
+
+### Position mapping at collapsed CRLF breaks (Contract 01, 08; data-model §1a)
+
+- **`to_original` uses `bisect_left`, not `bisect_right`.** The only
+  normalized positions that land *on* a collapsed-break index are the exclusive
+  `end` of every token that ends a CRLF-terminated line, and empty tokens at
+  end of line (`k:␠`). Both mean "end of this line's content", which is the
+  `\r` in the original. `bisect_right` mapped them to the `\n`: for value `b`
+  in `"a: b\r\nc: d"`, `original[start.index:end.index]` was `"b\r"` and the
+  `end` `Pos` had an `index` disagreeing with its own `column`. That is every
+  value on every CRLF line. A brute-force consistency check (97,855 positions)
+  found `bisect_right` wrong at 18,654 — exactly the `crlf_indices` positions —
+  and `bisect_left` right everywhere.
+- This **reverses the deepen-plan conclusion** recorded in research.md's open
+  item 2: its round-trip checked each index against the plan's own convention,
+  so it could not see that the convention was inverted. The `line` claim
+  (never remapped) and the `\r\r\n` / trailing-bare-`\r` cases do hold.
+- Test obligation added: a span property,
+  `original[start.index:end.index] == source.text`, over CRLF/CR/BOM corpora,
+  and a reference check over **every** normalized index including the
+  collapsed-break ones.
+
+### Anchoring trailing-content errors at the opening quote (Contract 02, 05)
+
+- `IncompleteParseError.pos` is the strand point; the error must anchor at the
+  opening quote. The entry point therefore calls `GRAMMAR['line'].match()` and
+  treats `pnode.end < len(line.text)` as the §4.7 trailing-content case. The
+  prefix tree always holds exactly one `quoted_value`; its `.start` is the
+  anchor. No `IncompleteParseError` is caught, and no unreachable "unknown
+  parse failure" branch exists.
+- Precedence is pinned: stranding is detected before visiting, so
+  `k: "\ud800" x` reports trailing content (`escape=None`), not the surrogate.
+
+### Diagnosing the quote-guard fallthrough (Contract 04)
+
+- An invalid or incomplete escape (`\x`, `\u12`) makes `double_quoted` fail
+  to match, so the value falls through to `data` and reaches the quote-guard,
+  never `decode_double_quoted`. As first contracted, nothing could populate
+  `.escape="\\x"` for Contract 04's own table row.
+- `quoting.diagnose_malformed(text) -> str | None` scans left to right; the
+  first invalid/incomplete escape wins, otherwise the value is unterminated.
+  Surrogates and code points above U+10FFFF still match the grammar and are
+  reported by the decoder, so the two paths partition the malformed cases.
+
+### `data` is not a node (Contract 02)
+
+- `data = text` is an alias: Parsimonious resolves both names to one expression
+  named `text`, so `visit_data` never fires and comment bodies share the same
+  expression. The quote-guard lives in `visit_key_value` / `visit_list_item`.
+
+### Exceptions escaping through the visitor (Contract 05)
+
+- Parsimonious wraps any non-`unwrapped_exceptions` error raised in a
+  `visit_*` method as `VisitationError`, a Parsimonious class (FR-009).
+  `unwrapped_exceptions = (ParseError, RecursionError)`, and tree incorporation
+  runs outside `NodeVisitor.visit`.
+- **Inline nesting hits `RecursionError` far earlier than block nesting**: a
+  single line `'- ' * 123 + 'x'` (~250 bytes) exhausts CPython's default limit
+  inside Parsimonious's lexing. The §13.4 deferral stands (brainstorm Key
+  Decisions — an intentional exclusion, not reopened); only the documented
+  figure changes: Contract 09's known-limitation note states both depths.
+
+### `line_text` (Contract 05)
+
+- `line_text` is the **original** physical line without its terminator,
+  keeping a leading BOM on line 1, so `line_text[position.column]` is the
+  anchor character on LF, CRLF, and BOM documents alike. Taking the normalized
+  line would be off by one on a BOM-bearing line 1.
+
+### Open items for the principal (not applied)
+
+1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
+   in one place and `diagnose_malformed` disappears. Simpler, but it departs
+   from §4.1's grammar as printed; recorded, not adopted.
+2. **spec.md's Edge Cases bullet** says documents nested "past roughly 500
+   levels" raise `RecursionError`. True for block nesting; inline nesting on
+   one line fails at ~120. The red team did not edit spec.md; the release text
+   (Contract 09) carries both figures.
 
 ## Complexity Tracking
 

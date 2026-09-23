@@ -115,7 +115,7 @@ line 2) is caused by it, and no amount of position remapping fixes it.
 
 ```python
 to_original(Pos(index=i, line=l, column=c)) -> Pos(
-    index  = i + bom_offset + bisect_right(crlf_indices, i),
+    index  = i + bom_offset + bisect_left(crlf_indices, i),
     line   = l,
     column = c + bom_offset if l == 1 else c,
 )
@@ -125,13 +125,28 @@ to_original(Pos(index=i, line=l, column=c)) -> Pos(
 | --- | --- | --- |
 | `"﻿key: value"`, value `value` | `(5, 1, 5)` | `(6, 1, 6)` |
 | `"a: b\r\nc: d"`, key `c` | `(5, 2, 0)` | `(6, 2, 0)` |
+| `"a: b\r\nc: d"`, value `b`'s exclusive **end** | `(4, 1, 4)` | `(4, 1, 4)` — the `\r`, so `original[3:4] == "b"` |
+| `"k:␠\r\nx: y"`, the empty value of `k:␠` (start = end) | `(3, 1, 3)` | `(3, 1, 3)` — the `\r` |
 
 **Invariants**
 
 - `to_original` is monotonically non-decreasing in `index`.
 - `line` is never remapped: §9.0 substitutes one break for one break.
-- `bisect_right` (not `bisect_left`): a position at a collapsed break maps to
-  the `\n`, not the `\r`.
+- `bisect_left` (not `bisect_right`): a position **at** a collapsed break maps
+  to the `\r`, the first character of the original break. The only positions
+  that ever land on a collapsed-break index are the exclusive `end` of a token
+  that ends a CRLF-terminated line, and the `start`/`end` of an empty token at
+  end of line (`key:`, `-`). Both mean "the end of this line's content", which
+  in the original text is the `\r`. `bisect_right` would put them on the `\n`,
+  giving a `Pos` whose `index` disagrees with its own `line`/`column` and making
+  `original[start.index:end.index]` include the `\r` — i.e. **every** value on
+  a CRLF line would report an `end` one past its last character.
+  (Red team 2026-09-23: brute-forced 97,855 positions over random BOM/CR/CRLF
+  documents; `bisect_left` is consistent at all of them, `bisect_right` is
+  inconsistent at 18,654 — exactly the positions in `crlf_indices`.)
+- **Consistency**: for every normalized position, the mapped `index` is the
+  original offset of the mapped `(line, column)`, counting `\r\n`, bare `\r`,
+  and `\n` each as one break and a leading BOM as a column-0 character.
 
 ## Errors raised
 

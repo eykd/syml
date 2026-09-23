@@ -107,8 +107,11 @@ into `Source.from_node` as a `PositionMap`. Specifically:
   normalized index)`. A bare `\r` → `\n` is a one-for-one substitution and
   contributes nothing; only `\r\n` → `\n` loses a character.
 - Implementation: `PositionMap` holds `bom_offset: int` (0 or 1) and a sorted
-  `list[int]` of the normalized indices at which a CRLF was collapsed. `to_original`
-  uses `bisect_right` — O(log n) per lookup, O(n) to build, no per-character table.
+  `tuple[int, ...]` of the normalized indices at which a CRLF was collapsed.
+  `to_original` uses `bisect_left` — O(log n) per lookup, O(n) to build, no
+  per-character table. (Originally written as `bisect_right`; corrected by the
+  red team on 2026-09-23 — see open item 2 below. A position *at* a collapsed
+  break is always an end-of-line-content position and must map to the `\r`.)
 
 **Rationale**: §4.1 opens by stating the grammar "assumes §9.0's pre-processing
 has already been applied to the input; no rule below needs to handle a bare `\r`
@@ -444,6 +447,13 @@ Consequences:
   index without re-deriving it.
 - Every call into Parsimonious is wrapped; `ParseError` and its subclasses stay
   in `unwrapped_exceptions` so the tree builder's own raises pass through.
+- **Refined by `/sp:04-red-team`, 2026-09-23**: the entry point calls
+  `GRAMMAR['line'].match()` and compares `pnode.end` with the line length
+  instead of catching `IncompleteParseError`, because that exception's `.pos`
+  is the strand point and `MalformedQuotedStringError` must anchor at the
+  opening quote; the prefix tree holds exactly one `quoted_value`, whose
+  `.start` is the anchor. `RecursionError` joins `unwrapped_exceptions` so a
+  deep inline line cannot leak `VisitationError`. Contract 05 carries both.
 
 **Alternatives considered**:
 
@@ -468,6 +478,14 @@ rule. §4.1 says so itself: "normative, not expressible in PEG alone". After
 or `"` raises `MalformedQuotedStringError`. The check is line-local and consults
 nothing outside the current line, so the grammar stays context-free at the
 lexing level (constitution principle V).
+
+**Refined by `/sp:04-red-team`, 2026-09-23**: two facts the original decision
+missed. (1) `data = text` is an alias; Parsimonious names the node `text`, and
+comments share it, so the check lives in `visit_key_value`/`visit_list_item`,
+not a `visit_data` hook (Contract 02). (2) An invalid or incomplete escape makes
+`double_quoted` fail to match, so such values reach the guard, not the decoder;
+the guard runs `quoting.diagnose_malformed` to populate `.escape`, first defect
+wins (Contract 04).
 
 **Alternatives considered**: a negative lookahead in the grammar
 (`data = !~"['\"]" text` at the inline positions). Rejected: it makes the line
@@ -558,3 +576,18 @@ None blocking. Two worth an adversarial look:
    `"a\r\r\nb"`, `"x\r\n\ry"`, `"\r\r\r\n"`, and `"end\r\n"` — all matched.
    No artifact change needed; Contract 01 already carries the worked
    examples and the pitfall warning.
+
+   **Reopened and corrected by `/sp:04-red-team`, 2026-09-23**: the `line`
+   claim holds, but the `index` formula was wrong. The round-trip above
+   checked that each normalized index maps to the original index the plan's
+   own `bisect_right` convention predicts, so it could not detect that the
+   convention itself is inverted. A consistency check — does the mapped
+   `index` sit at the mapped `(line, column)` in the original text? — over
+   97,855 positions found `bisect_right` wrong at 18,654, every one of them an
+   index in `crlf_indices`, and `bisect_left` right at all of them. Those
+   indices are reached by the exclusive `end` of every value on a
+   CRLF-terminated line and by empty tokens at end of line; with
+   `bisect_right`, `original[start:end]` for value `b` in `"a: b\r\nc: d"` is
+   `"b\r"`. Contract 01, data-model §1a, and Contract 08 now specify
+   `bisect_left` and carry the exclusive-end fixtures and a span-slicing
+   property test.
