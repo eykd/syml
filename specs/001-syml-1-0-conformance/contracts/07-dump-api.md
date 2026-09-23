@@ -68,10 +68,12 @@ position is not affected. The rule:
    `GRAMMAR['line'].match('- ' + rendered)`.
 2. If the result is anything other than a `list_item` whose value is one
    `quoted_value` spanning to end of line, emit the **double-quoted** form
-   instead, with every `:` written as `:` (and control characters escaped
-   as rule C already requires). With no literal `:`, `key_colon` cannot match,
-   and a line starting `- "` cannot lex as `list_item` or a comment, so the
-   value is a `quoted_value` by construction.
+   instead, with every `:` written as the four-hex-digit unicode escape
+   `\u003a` (`escape_seq`'s `\uXXXX` alternative, Contract 02) rather than a
+   literal `:` (and control characters escaped as rule C already requires).
+   With no literal `:`, `key_colon` cannot match, and a line starting `- "`
+   cannot lex as `list_item` or a comment, so the value is a `quoted_value`
+   by construction.
 
 This is conformant as written: §11.2.1's single-quote rule is a preference and
 its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the
@@ -80,7 +82,7 @@ its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the
 
 | Value at a list-item position | Emitted |
 | --- | --- |
-| `a: b` | `- "a: b"` |
+| `a: b` | `- "a\u003a b"` (single- and plain double-quoted forms both re-lex as a mapping, per steps 1–2 above) |
 | `k:` | `- 'k:'` (rule D quotes it; the single-quoted form re-lexes as a quoted value) |
 | `a:b` | `- a:b` (no rule requires quoting) |
 | `a: b` as a mapping value | `k: 'a: b'` (unaffected) |
@@ -172,7 +174,8 @@ blank lines between top-level keys.
   property pass while list items corrupt.
 - A re-lex check: for every corpus string rendered at a list-item position,
   `GRAMMAR['line'].match('- ' + rendered)` is a `list_item` whose value is one
-  `quoted_value` spanning to end of line, or an unquoted `data` equal to the
+  `quoted_value` spanning to end of line, or an unquoted node named `text`
+  (Contract 02's `data`/`text` alias — never a node named `data`) equal to the
   string.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
 - Idempotence over the corpus.
