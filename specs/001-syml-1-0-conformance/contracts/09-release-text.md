@@ -56,8 +56,10 @@ user-visible change from 0.6.2 (US9.3, SC-006):
     only roughly 120 levels of **inline** nesting on a single line
     (`- - - … x`, a ~250-byte input) at CPython's default recursion limit,
     because lexing that one line recurses in Parsimonious. State both figures.
-    The limitation is `loads`-only: `dumps` serializes such strings as quoted
-    values and never raises `RecursionError` (Contract 07).
+    A deeply inline-nested *string* is not affected in the dump direction:
+    `dumps` serializes `'- - … x'` as a quoted value (Contract 07). Deeply
+    nested *data* (roughly 1,000 levels of lists or mappings) may raise
+    `RecursionError` from `dumps` as well — same deferral.
 
 The traceability check is mechanical: every row of the audit's gap list (b)
 maps to a numbered entry here or is explicitly out of scope.

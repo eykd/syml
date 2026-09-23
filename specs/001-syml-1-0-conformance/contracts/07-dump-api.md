@@ -123,8 +123,13 @@ quote-led line fails `structure` at its first character. So:
   that deep, so this is exact, not a guess.
 - At a list-item position the value is then quoted; the quoted re-lex is
   shallow. At the root it is `UnrepresentableValueError` (condition a).
-- `dumps` never lets `RecursionError` escape. The known limitation in
-  Contract 09 is `loads`-only.
+- The **probe** never lets `RecursionError` escape. This does not extend to
+  `dumps`'s own traversal of deeply nested *data* (a naive recursive walk
+  fails near 1,000 levels of nested lists): that is the same deferred §13.4
+  depth limit as `loads`, and Contract 09 states it for both directions. A
+  probe that hits the limit only because the data is already deep
+  over-quotes a harmless list item, which is safe — quoting never breaks the
+  round-trip — and never reaches the root position, which is not nested.
 
 ## Unrepresentable values
 

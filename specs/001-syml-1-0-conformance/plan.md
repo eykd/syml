@@ -470,9 +470,10 @@ from reading. None changes a D1–D17 decision._
   inside Parsimonious's lexing. The §13.4 deferral stands (brainstorm Key
   Decisions — an intentional exclusion, not reopened); only the documented
   figure changes: Contract 09's known-limitation note states both depths.
-- **The limitation is `loads`-only.** `dumps` lexes candidate strings for rule D
-  and §11.2.4(a) and must not inherit it: a `RecursionError` from that probe
-  means "matches `structure`" (pass 4 below, Contract 07).
+- **Strings do not inherit the limitation in the dump direction.** `dumps`
+  lexes candidate strings for rule D and §11.2.4(a); a `RecursionError` from
+  that probe means "matches `structure`" (pass 4 below, Contract 07). Deeply
+  nested *data* is still subject to the deferred depth limit in `dumps`.
 
 ### `line_text` (Contract 05)
 
@@ -573,8 +574,12 @@ findings below are where the written contract departs from it.
   `- ` and is a list item by construction. At a list-item position that
   means "quote it" (the quoted re-lex is shallow; a mapping value is exempt
   from rule D and is never probed); at the root it means
-  `UnrepresentableValueError`. `dumps` never lets `RecursionError` escape. The
-  known limitation in Contract 09 is `loads`-only.
+  `UnrepresentableValueError`. The probe never lets `RecursionError` escape;
+  `dumps`'s own walk over deeply nested *data* (~1,000 levels) is the deferred
+  §13.4 limit in the dump direction, stated as such in Contract 09 (second
+  pass of this iteration). A probe that trips only because the stack is
+  already deep over-quotes a list item — safe, since quoting never breaks the
+  round-trip.
 - **Rule D's probe must accept a stranded prefix (Medium).** `k: "a" x` fails
   `GRAMMAR['structure'].parse` (`IncompleteParseError`) but `match` returns the
   prefix `k: "a" `. An implementation that asks "does the whole string parse as
