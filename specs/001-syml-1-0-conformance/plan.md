@@ -492,6 +492,55 @@ from reading. None changes a D1–D17 decision._
   BOM-plus-line-1 column rule stay consistent (covered by the 97,855-position
   brute force, which includes both).
 
+### Pass 3 (2026-09-23, outer iteration 2): quoted list items that lex as mappings
+
+- **`key`'s class admits `'` and `"`, and `value` tries `structure` before
+  `quoted_value`.** So a *well-formed* quoted list item whose content begins
+  with key characters followed by `: ` re-lexes as a mapping: `- 'a: b'` is
+  `[{"'a": "b'"}]` and `- "a: b"` is `[{'"a': 'b"'}]`, both with no error.
+  Verified against the transcribed grammar. The mapping side is clean —
+  `k: 'a: b'` is `{"k": "a: b"}`, because `key_value`'s first alternative tries
+  `quoted_value` before anything else — so §11.2.1 rule D's mapping exemption
+  holds and only list items are affected.
+- **Consequence for `dumps` (High).** Rule D forces quoting of the list-item
+  string `a: b`, and the single-quote preference renders it `- 'a: b'`, which
+  `loads` reads back as a mapping. `loads(dumps(["a: b"])) == [{"'a": "b'"}]`:
+  silent corruption, and Contract 07's own corpus (`key: v`-shaped strings)
+  would fail SC-003's property at implementation time. Brute force over every
+  string up to length 6 on `ab:' "-#/\x`: 112,230 single-quoted and 65,453
+  double-quoted list-item renderings re-lex as something other than one
+  `quoted_value`. **Mitigation (Contract 07)**: at a list-item inline position,
+  when the chosen quoted rendering re-lexes as anything but
+  `list_item > quoted_value` spanning the line, `dumps` emits the
+  double-quoted form with every `:` written `:`. With no literal `:`,
+  `key_colon` cannot match and the line can only lex as a quoted value
+  (0 failures in the same brute force). §11.2.1's single-quote rule is a
+  preference, not a MUST, and its `loads(dumps(x)) == x` requirement is a MUST,
+  so this is conformant and needs no spec edit.
+- **Consequence for the quote-guard (second-order to pass 1's relocation).**
+  An *unterminated* quote in the same shape — `- 'a: b` or `- "a: b` — is also
+  intercepted by `structure` and becomes `[{"'a": "b"}]` with no error. Pass 1
+  put the guard in `visit_key_value` / `visit_list_item`, which is correct, but
+  the grammar routes these lines around it: the list item's value is a
+  `key_value` whose `data` is `b`, not a quote-led `data`. The guard cannot see
+  them from any visitor. Pinned as tests of the grammar as printed
+  (Contracts 02, 04); the fix is a grammar edit, so it is open item 4 below.
+- **Iteration 1's mitigations re-probed and held**: the "exactly one
+  `quoted_value` in a stranded prefix" claim on `- k: "a" x`, `- - "a" x`,
+  `"a": "b" x` (where the quote-led key `"a"` is a `key`, not a
+  `quoted_value`), `k: "a"　`, and `k: "a"\x0c`; `bisect_left` on the
+  `\r\r\n` and trailing-bare-`\r` boundaries; and `RecursionError` in
+  `unwrapped_exceptions` (Parsimonious's `visit` catches `Exception`, of which
+  `RecursionError` is a subclass, so the tuple entry is required, not
+  redundant).
+- **`load(open(p))` positions are in newline-translated text (Contract 06).**
+  A text handle opened with the default `newline=None` has already turned
+  `\r\n` and `\r` into `\n` before `load` sees it, so `Pos.index` on a CRLF
+  file is not the on-disk offset FR-013 promises — `line` and `column` still
+  agree. `load` cannot undo the translation. Documented in `load`'s docstring
+  and the migration notes: for editor-grade positions pass a binary handle or
+  `open(p, newline='')`. Pinned as a test.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
@@ -506,6 +555,18 @@ from reading. None changes a D1–D17 decision._
    silent scalar. Extending the guard is a normative §4.1 edit bearing on D2's
    intent, so it is left for the principal; the plan implements and tests the
    grammar as printed.
+4. **Should a quote-led list item ever lex as a mapping?** Under §4.1 as
+   printed, `- 'a: b'` is `[{"'a": "b'"}]` and `- 'a: b` is `[{"'a": "b"}]`
+   with no error (pass 3 above). `dumps` works around it (Contract 07); a
+   hand-author does not get the same protection. Two grammar edits were run
+   against the transcribed grammar, neither applied:
+   (i) reorder to `value = (quoted_value ~" *") / structure / data` — fixes the
+   terminated case, but `- 'a: b` (unterminated) still lexes as a mapping;
+   (ii) add `'` and `"` to `key`'s excluded class — fixes both (the
+   unterminated case reaches the quote-guard), but also turns root-level
+   `"a: b` and `'k': v` from mappings into scalars and changes which rule
+   classifies `"a": "b" x`. Either is a normative §4.1 edit bearing on D2 and
+   §11.2.3, so it is left for the principal.
 
 ## Complexity Tracking
 

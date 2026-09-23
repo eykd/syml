@@ -87,6 +87,23 @@ and `errors='ignore'` are all forbidden — §11.1 names them.
 `filename` defaults to `file_obj.name` when present (§11.1); a `BytesIO` has no
 `.name`, so `None` is the fallback.
 
+### Positions from text handles are in newline-translated text
+
+`open(p)` defaults to `newline=None`, so the handle has already turned `\r\n`
+and `\r` into `\n` before `load` reads it. `load` sees no `\r`, and the
+`Pos.index` values it reports on a CRLF file are offsets into the translated
+text, not the file on disk that FR-013 targets. `line` and `column` still
+agree with the file, because the translation is one break for one break.
+`load` cannot recover the original, so this is documented rather than fixed:
+`load`'s docstring and the FR-015 migration notes say that editor-grade
+`Pos.index` values need a binary handle or `open(p, newline='')`.
+
+| Handle over `b"a: b\r\nc: d"` | `Pos.index` of key `c` |
+| --- | --- |
+| `open(p, 'rb')` | 6 (on-disk offset) |
+| `open(p, newline='')` | 6 |
+| `open(p)` | 5 (translated text), `line` 2, `column` 0 |
+
 ### Why widen `load` rather than add `loadb`
 
 Recorded in plan.md's Constitution Check under principle VI. In short: §11.1
@@ -107,4 +124,7 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
 - `load` with `StringIO`, `BytesIO`, a real text handle, and a real binary
   handle over the same content, asserting equal results.
 - `filename` propagation into `Source.filename` and into `ParseError.message`.
+- The three-handle table above over a real CRLF file on disk, pinning that
+  `as_data()` is equal across all three while `Pos.index` differs for the
+  default text handle.
 - mypy strict accepts `load(open(p))` and `load(open(p, 'rb'))` without a cast.

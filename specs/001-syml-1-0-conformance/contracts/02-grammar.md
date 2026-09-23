@@ -166,6 +166,11 @@ line's indent. That is audit gap #14 / M23 exactly:
 | `invalid key: value` | `data` | key pattern rejects the space |
 | `a\x01b: v` | `data` | control character excluded from keys |
 | `"        "` (spaces only) | blank | discarded in pre-processing; never affects indentation |
+| `k: 'a: b'` | `key_value` (quoted) | `{"k": "a: b"}` — `quoted_value` is tried first |
+| `- 'a: b'` | `list_item` > `key_value` | `[{"'a": "b'"}]` — **§4.1 as printed**: `key` admits `'`, and `value` tries `structure` first (plan.md open item 4) |
+| `- "a: b"` | `list_item` > `key_value` | `[{'"a': 'b"'}]` — same |
+| `- 'a: b` (unterminated) | `list_item` > `key_value` | `[{"'a": "b"}]` — no error; the quote-guard never sees a quote-led `data` |
+| `"a: b` (root) | `key_value` | `{'"a': "b"}` — same key class |
 
 ## Test obligations
 

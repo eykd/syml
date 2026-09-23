@@ -56,6 +56,35 @@ string with `\n` escaped (US7.2).
 control characters, prefer `'...'` over `"..."`, to keep output literal per
 §1.1 (US7.3).
 
+**The one exception — quoted list items that would lex as mappings.** Under
+§4.1 as printed, a list item's inline `value` tries `structure` before
+`quoted_value`, and `key` admits `'` and `"`. So the rule-D-quoted rendering of
+`a: b` at a list-item position, `- 'a: b'`, reads back as `[{"'a": "b'"}]`, and
+`- "a: b"` fails the same way (plan.md § Edge Cases, pass 3). The mapping-value
+position is not affected. The rule:
+
+1. At a **list-item** inline position, after choosing the rendering by rules
+   A–F and the single-quote preference, re-lex the emitted line with
+   `GRAMMAR['line'].match('- ' + rendered)`.
+2. If the result is anything other than a `list_item` whose value is one
+   `quoted_value` spanning to end of line, emit the **double-quoted** form
+   instead, with every `:` written as `:` (and control characters escaped
+   as rule C already requires). With no literal `:`, `key_colon` cannot match,
+   and a line starting `- "` cannot lex as `list_item` or a comment, so the
+   value is a `quoted_value` by construction.
+
+This is conformant as written: §11.2.1's single-quote rule is a preference and
+its `loads(dumps(x)) == x` requirement is a MUST. It is documented in the
+`dumps` docstring. Idempotence holds, because `loads` returns the plain `:` and
+`dumps` makes the same choice again.
+
+| Value at a list-item position | Emitted |
+| --- | --- |
+| `a: b` | `- "a: b"` |
+| `k:` | `- 'k:'` (rule D quotes it; the single-quoted form re-lexes as a quoted value) |
+| `a:b` | `- a:b` (no rule requires quoting) |
+| `a: b` as a mapping value | `k: 'a: b'` (unaffected) |
+
 ## Format choices (R-06) — implementation, not spec
 
 Documented in the `dumps` docstring and the README's serializer section, and
@@ -137,7 +166,14 @@ blank lines between top-level keys.
 
 - Every quoting-table rule, with a positive and a negative case.
 - Every §11.2.2/.3/.4 condition raising.
-- The round-trip property over the corpus above.
+- The round-trip property over the corpus above, with every `key: v`-shaped
+  string placed **both** as a mapping value and as a list item (`["a: b"]`,
+  `["': x"]`, `["k: 'v'"]`). Placing them only as mapping values would let the
+  property pass while list items corrupt.
+- A re-lex check: for every corpus string rendered at a list-item position,
+  `GRAMMAR['line'].match('- ' + rendered)` is a `list_item` whose value is one
+  `quoted_value` spanning to end of line, or an unquoted `data` equal to the
+  string.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
 - Idempotence over the corpus.
 - Format choices asserted against a golden fixture, labelled in the test name as

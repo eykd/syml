@@ -42,6 +42,20 @@ ordinary text (§4.7, §7.6).
 | `key: He said\n  'yes'` | `{"key": "He said\n'yes'"}` | continuation line — US6.10 |
 | `key: 'a'` | `{"key": "a"}` | inline |
 | `- 'a'` | `["a"]` | inline |
+| `- 'a: b'` | `[{"'a": "b'"}]` | **not** a quoted value: `value` tries `structure` first and `key` admits `'` (§4.1 as printed) |
+| `- 'a: b` | `[{"'a": "b"}]` — no error | the same interception; the list item's `data` is `b`, so the quote-guard has nothing to fire on |
+
+**Quote-led list items that look like `key: …` (§4.1 as printed; flagged, not
+changed).** A list item's inline `value` tries `structure` before
+`quoted_value`, and `key`'s class does not exclude `'` or `"`. Any list item
+whose text after `- ` is key characters, `:`, then a space or end of line is
+therefore a mapping, terminated quotes and all. The quote-guard in
+`visit_list_item` / `visit_key_value` cannot reach these lines from any
+visitor, because the quote is inside a `key`, not at the start of a `data`.
+The mapping-value position is unaffected (`k: 'a: b'` is a quoted value).
+`dumps` avoids emitting such lines (Contract 07); whether the grammar should
+change is plan.md open item 4. The rows above are pinned as tests so a later
+spec change is a visible diff.
 
 ## Single-quoted (`'...'`)
 
