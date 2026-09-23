@@ -15,7 +15,12 @@ def dumps(data: SymlData) -> str:
     """Serialize to SYML text. Raises UnrepresentableValueError, TypeError."""
 
 def dump(data: SymlData, file_obj: IO[str]) -> None:
-    """Serialize to SYML and write it to a text stream."""
+    """Serialize to SYML and write it to a text stream. A lone surrogate in
+    any string is written literally (SYML has no escape for one); a UTF-8
+    stream then raises its own UnicodeEncodeError, not a SYML error. A file
+    reopened with encoding='utf-8-sig' loses one leading U+FEFF to the
+    codec and one to §9.0, so a value's own leading U+FEFF does not survive
+    that round trip."""
 ```
 
 `dump` takes a **text** stream only. The asymmetry with `load` (which takes both)
