@@ -951,6 +951,73 @@ normalization.
   consumed space). `Root`'s existing `Pos(0, 1, 0)` span is the same rule.
   Both are test obligations.
 
+### Pass 14 (2026-09-23, outer iteration 9): a reference prototype, end to end
+
+Built a throwaway prototype of Contracts 01-04 and 07 exactly as written
+(grammar transcribed, per-line loop, acceptance table, `add_node`
+assignments, D6 skip, quote-guard, stranding check, `to_original`,
+`original_line`) and ran it three ways. R-09 re-checked by construction (the
+only partial `line` match is a closed `quoted_value` plus ` *`); `\r\r\n`
+and a trailing bare `\r` still count identically before and after
+normalization (`\ufeffa: 1\r\r\n  b: 2` reports `b` at index 10, line 3,
+column 2).
+
+- **Every specification example agrees.** R-08's extraction rule (a
+  ` ```syml ` block followed by `**Output:**`) finds exactly 53 blocks; the
+  prototype's result equals the stated output for all 53, including every
+  `ERROR:` class. §3.1's block is not among them: its marker is
+  `**Output (as JSON-like structure):**`, so the 53-block floor excludes it.
+  The prototype matches that output too.
+- **Every `ParseError` anchor holds on BOM + CRLF documents.**
+  `TabIndentationError`, `OutOfContextNodeError`, `DuplicateKeyError`, and
+  `MalformedQuotedStringError` (guard, trailing content, surrogate) were each
+  raised on line 1 of a BOM document and on a later CRLF line. In every case
+  `line_text[position.column]` and `original[position.index]` are the anchor
+  character. `EncodingError` on `b'\xef\xbb\xbfa: \xc3\xa9\r\nc: \xff'`
+  derives index 10 (from byte offset 13), line 2, column 3, with `line_text`
+  `'c: '`.
+- **Keys holding a control character corrupt the round-trip (High).**
+  Contract 07 transcribed §11.2.3's list (whitespace, `:`, empty, leading
+  `#`/`//`). But `key`'s class also excludes C0 and C1 controls (§4.5), so
+  `dumps({'a\x01b': 'v'})` emits `a\x01b: v`, which `loads` reads back as the
+  root scalar `'a\x01b: v'`. Same for `\x7f` and `\x9f`, and for `\x1c` under
+  a Python-`\s` reading of "whitespace". This is silent corruption of a MUST.
+  **Mitigation (Contract 07)**: a key is representable iff
+  `GRAMMAR['key']` matches the whole key and the key begins with neither `#`
+  nor `//`. The grammar is then the one definition, so the list cannot drift
+  from §4.5. §11.2.3's own closing clause ("rather than emit a key that would
+  not read back correctly") already requires this; Contract 09 adds one
+  clarifying sentence to §11.2.3, as R-01 did for §4.5.
+- **A document whose first character is U+FEFF loses it (High).** §9.0 step
+  1 strips one leading BOM, so `dumps('\ufeffx')` and `dumps({'\ufeffk':
+  'v'})` read back as `'x'` and `{'k': 'v'}`. No §11.2.3/.4 condition
+  covers them, and neither the root scalar nor the key is anything else
+  unrepresentable. Only the document's first character is exposed: a root
+  list starts with `-`, and any later key sits after a line break.
+  **Mitigation (Contract 07)**: when the rendered document's first
+  character is U+FEFF, `dumps` prepends one U+FEFF. §9.0 strips exactly that
+  one (Contract 01's `"﻿﻿key: v"` row), so the value's own mark survives.
+  This needs no spec edit: the output format is an implementation choice,
+  and the round-trip MUST is met. Raising `UnrepresentableValueError` was
+  considered and not applied. It would be a new unrepresentable condition in
+  §11.2.3/.4, which is normative, for values the specification currently
+  requires `dumps` to serialize. That is open item 5 below.
+- **`ParseError.message` and the filename disagreed (Medium, Congruence).**
+  data-model §1 says `filename` is "carried into every … `ParseError`
+  message", and Contract 06's test obligations assert it. But every raise
+  site in Contracts 03 and 05 passes a fixed string, and `load` resolved the
+  filename only after `read()`, so `EncodingError` could never carry it.
+  `ParseError` has no `filename` attribute, and `Pos` has none either, so the
+  message is the only place a caller of `load` can learn it. **Mitigation**:
+  Contract 05 defines `error_message(description, filename)`, and every
+  raise site uses it. Contract 06's `load` now resolves `filename` before
+  `read()`.
+- **Two Low fixes.** Contract 01's tab-scan table was split by a paragraph,
+  so its last three rows rendered as prose. The paragraph now follows the
+  table. Contract 08's `Source("foo")` cannot be constructed, because
+  `Source` has four required fields. The test obligation now builds it with
+  keywords.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
@@ -977,6 +1044,13 @@ normalization.
    `"a: b` and `'k': v` from mappings into scalars and changes which rule
    classifies `"a": "b" x`. Either is a normative §4.1 edit bearing on D2 and
    §11.2.3, so it is left for the principal.
+5. **Should a leading U+FEFF make a value unrepresentable instead?** Pass 14
+   has `dumps` prepend a protective U+FEFF when the document would otherwise
+   begin with one. Its output then starts with two marks, which no human
+   would write. The alternative is to raise `UnrepresentableValueError` for a
+   root scalar, or a first root-mapping key, that begins with U+FEFF. That
+   adds a normative condition to §11.2.3/§11.2.4, so it is left for the
+   principal.
 
 ## Complexity Tracking
 

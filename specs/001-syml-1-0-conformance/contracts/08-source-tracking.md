@@ -144,7 +144,9 @@ qualify; a reachable-but-untested `as_source` does not (US8.5, SC-004).
 - `as_source()` over every shape: root scalar (indented head included), list,
   mapping, nested, multiline continuation, quoted value, key, and an absent
   value (`key:`, `-`: zero-width at the container's `source.end`).
-- `Source("foo") == "foo"` and `{Source("foo"): 1}["foo"] == 1`.
+- With `src = Source(filename=None, start=Pos(0, 1, 0), end=Pos(3, 1, 3),
+  text='foo')` (all four fields are required): `src == "foo"` and
+  `{src: 1}["foo"] == 1`.
 - `Source.__hash__` exercised directly (no pragma).
 - `rg 'pragma: no ?cover' src/syml/nodes.py` finds only `TYPE_CHECKING` blocks.
 - A property test: for a generated document, every reported `Pos.index` slices

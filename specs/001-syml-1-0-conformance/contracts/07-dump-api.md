@@ -76,7 +76,11 @@ position is not affected. The rule:
    Escaping is **one pass per character** — `\` → `\\`, `"` → `\"`, `:` →
    `\u003a`, controls → their escapes. Substituting `:` first and escaping `\`
    afterwards turns the inserted escape into `\\u003a`, which loads as literal
-   text.
+   text. Nothing else is escaped. In particular a lone surrogate (a `str` can
+   hold one, and `loads` passes one through from a bare line) stays literal,
+   because a `\uD800`-style escape is a decode error (D3). `dump` to a UTF-8
+   stream then raises the stream's own `UnicodeEncodeError`. That is the
+   codec's behaviour, noted in the `dump` docstring, not a SYML rule.
    With no literal `:`, `key_colon` cannot match, and a value starting `"`
    cannot lex as a nested `list_item` or a comment, so the list item's value is
    a `quoted_value` by construction.
@@ -151,6 +155,28 @@ empty string, or begins with `#` or `//` (US7.7). There is no quoted-key syntax
 in v1.1 and a leading `#`/`//` is always a comment regardless of what follows
 (§4.5).
 
+**The test is the grammar, not the list (red-team pass 14).** §11.2.3's list
+omits the C0/C1 controls that `key`'s class also excludes (§4.5). Read
+literally, it lets `dumps({'a\x01b': 'v'})` emit `a\x01b: v`, which `loads`
+reads back as the root scalar `'a\x01b: v'`. So the check is one probe:
+
+```python
+def key_is_representable(k: str) -> bool:
+    try:
+        m = GRAMMAR['key'].match(k)        # prefix match, like rule D's probe
+    except parsimonious.exceptions.ParseError:
+        return False                       # nothing matched: '' or a leading excluded char
+    return m.end == len(k) and not k.startswith(('#', '//'))
+```
+
+The empty key fails the match, since `key` is `+`. Whitespace, `:`, C0, C1,
+U+00A0, U+2028, and the rest of D15's set all stop the match short. The
+enumeration therefore cannot drift from §4.5, and U+001C–U+001F are decided
+the same way under either reading of "whitespace" (R-01). The parsimonious
+`ParseError` from a zero-length match is caught **inside** this function.
+`dumps` has no visitor, so nothing wraps it, but it must not escape `dumps`
+(FR-009's spirit, and it is not `UnrepresentableValueError`).
+
 ### §11.2.4 — root scalars (D17)
 
 `UnrepresentableValueError` for a root scalar that (US7.8):
@@ -164,6 +190,30 @@ in v1.1 and a leading `#`/`//` is always a comment regardless of what follows
 | e | is exactly `''` or `""` |
 
 The empty string **is** representable — as the empty document (§7.4).
+
+### A leading U+FEFF (red-team pass 14)
+
+§9.0 step 1 strips one U+FEFF at index 0, so a document whose **first
+character** is U+FEFF loses it on reload: `dumps('\ufeffx')` and
+`dumps({'\ufeffk': 'v'})` would read back as `'x'` and `{'k': 'v'}`. No
+§11.2.3/.4 condition covers either value. U+FEFF is not in D15's
+`White_Space` set, is not a control character, and is admitted by `key`'s
+class. Only the first character of the output is exposed. A root list starts
+with `-`, and every later key follows a line break.
+
+**Rule**: after rendering, if the output's first character is U+FEFF,
+`dumps` prepends one U+FEFF. §9.0 strips exactly that one (Contract 01's
+`"﻿﻿key: v"` row), so the value's own mark survives, and idempotence holds
+because `dumps` makes the same choice again. This is an output-format
+choice, not a spec edit. Raising `UnrepresentableValueError` instead is
+plan.md open item 5.
+
+| Value | Emitted |
+| --- | --- |
+| `'\ufeffx'` (root scalar) | `'\ufeff\ufeffx\n'` |
+| `{'\ufeffk': 'v'}` | `'\ufeff\ufeffk: v\n'` |
+| `{'a': 'x', '\ufeffk': 'v'}` | `'a: x\n\ufeffk: v\n'` (not first; no prefix) |
+| `{'k': '\ufeffv'}` | `'k: \ufeffv\n'` (not first; no prefix) |
 
 D17 stands: no root-scalar quoting, no new grammar rule for the root position.
 Such values are carried as a mapping or list value instead, where quoting is
@@ -189,7 +239,11 @@ with colons at a list-item position (`a\: b`, the literal text `\u003a`,
 `'- ' * 200 + 'x'` as a list item, a mapping value, and a root scalar (the
 last raises `UnrepresentableValueError`, never `RecursionError`); astral-plane
 and combining characters; nested mappings and lists to depth 4; a list of
-mappings (rule G); insertion-ordered mappings with non-sorted keys (US7.5).
+mappings (rule G); insertion-ordered mappings with non-sorted keys (US7.5);
+a root scalar `'\ufeffx'` and a first key `'\ufeffk'`, each round-tripping
+through the protective U+FEFF (pass 14). Keys `a\x01b`, `a\x7fb`,
+`a\x9fb`, `a\x1cb`, `a\xa0b`, and `a\u2028b` are in the **raising** set, not
+the corpus.
 
 `dump(x, fp)` then `load(fp)` equals `x` (US7.9).
 
@@ -214,6 +268,12 @@ blank lines between top-level keys.
 - `dumps(['- ' * 200 + 'x'])` round-trips and `dumps('- ' * 200 + 'x')` raises
   `UnrepresentableValueError`; neither raises `RecursionError`.
 - `dumps(5)` → `TypeError`, not `UnrepresentableValueError`.
+- `key_is_representable` against the six control/space keys above (all
+  `False`), `''` (`False`), `'#k'` and `'//k'` (`False`), and `'k'`,
+  `'emoji🎉key'`, `"'a"` (all `True`). No parsimonious exception leaves
+  `dumps` for any key.
+- Leading U+FEFF: the four rows of § A leading U+FEFF, each asserted on
+  `dumps` output **and** through `loads(dumps(x)) == x`.
 - Idempotence over the corpus.
 - Format choices asserted against a golden fixture, labelled in the test name as
   an implementation choice, not conformance.

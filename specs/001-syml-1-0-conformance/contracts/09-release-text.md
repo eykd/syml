@@ -26,6 +26,7 @@ Each lands in the same commit as the behaviour it describes.
 | §11.3 | mark `DocumentLimitError` **post-1.0** | spec Edge Cases |
 | §13.4 | mark the limits **post-1.0**; record the `RecursionError` as a known limitation | spec Edge Cases |
 | §4.5 | one clarifying sentence: the C0 exclusion decides U+001C–U+001F, so the `White_Space` and `\x00-\x1f` clauses overlap there | R-01 |
+| §11.2.3 | one clarifying sentence: a key is unrepresentable whenever `key`'s class (§4.5) does not match all of it, which adds C0/C1 controls to the listed whitespace, `:`, and empty-key cases | FR-011, red-team pass 14 |
 | §14, §15, header | relabel to 1.0 | FR-014 |
 
 Anything beyond this list is a red-team / implementation discovery and must be

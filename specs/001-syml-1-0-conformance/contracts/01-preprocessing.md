@@ -110,6 +110,9 @@ U+0009, in any mixture, from the start of the line.
 | `"  \t  \nkey: v"` | no error — line 1 is blank (US2 scenario 6); `loads` → `{"key": "v"}` |
 | `"\t"` | no error — blank; `loads` → `""` |
 | `"key: a\n  \t\n  b"` | no error; `loads` → `{"key": "a\nb"}` — a tab-bearing blank line inside a value is discarded (D12), not appended as `"\t"` |
+| `"key:\tv"` | no error — the tab is not in *leading* whitespace (D5) |
+| `"key: \tv"` | no error — same (D5) |
+| `"\ufeff\tkey: v"` | `TabIndentationError` at `Pos(1, 1, 1)` — original coordinates |
 
 The three `loads` results are asserted through `loads`, not only through
 `preprocess`: under `indent = ~" *"` the line `"  \t  "` lexes as `indent`
@@ -117,9 +120,6 @@ The three `loads` results are asserted through `loads`, not only through
 level 2. If the loop does not drop it, `"  \t  \nkey: v"` makes it the root
 scalar and then raises `OutOfContextNodeError` on `key: v` — while a unit test
 of `preprocess` alone still passes.
-| `"key:\tv"` | no error — the tab is not in *leading* whitespace (D5) |
-| `"key: \tv"` | no error — same (D5) |
-| `"\ufeff\tkey: v"` | `TabIndentationError` at `Pos(1, 1, 1)` — original coordinates |
 
 The scan applies uniformly to every physical line. There is no special case for
 "the tab is really the first character of the continuation's content" (§9.0).

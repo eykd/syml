@@ -125,7 +125,8 @@ def fail_to_incorporate_node(self, node: SymlNode, doc: Document) -> NoReturn:
     own Source.start (already original coordinates; no re-derivation)."""
     position = node.source.start
     raise OutOfContextNodeError(
-        'Failed to incorporate a node', position, original_line(doc, position.line),
+        error_message('Failed to incorporate a node', doc.filename),   # Contract 05
+        position, original_line(doc, position.line),
     )
 ```
 
@@ -200,7 +201,8 @@ def can_add_node(self, node: SymlNode, doc: Document) -> bool:
         if child.key.as_data() == node.key.as_data():         # code-point compare
             position = node.source.start
             raise DuplicateKeyError(
-                'Duplicate key', position, original_line(doc, position.line),
+                error_message('Duplicate key', doc.filename),       # Contract 05
+                position, original_line(doc, position.line),
                 key=node.key.as_data(), first_position=child.source.start,
             )
     return True

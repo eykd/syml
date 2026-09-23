@@ -52,6 +52,21 @@ edited to say so (spec Edge Cases). A caller must not expect an eighth class.
 the last line. Both are present on every subclass. Positions are **original-text**
 coordinates (FR-013, Contract 01's `PositionMap`).
 
+**`message` carries the filename (red-team pass 14).** `ParseError` has no
+`filename` attribute and neither has `Pos`, so the message is the only place a
+caller learns which file failed (data-model §1). Every raise site builds its
+message with one helper:
+
+```python
+def error_message(description: str, filename: StrPath | None) -> str:
+    """`description` alone when filename is None, else f'{filename}: {description}'."""
+```
+
+`description` is the fixed text each raise site names below
+(`'Failed to incorporate a node'`, `'Duplicate key'`, and so on). The parsed-line
+sites pass `doc.filename`, `preprocess` passes its own `filename` argument, and
+`load` passes the filename it resolved before calling `read()` (Contract 06).
+
 `super().__init__(message, position, line_text)` preserves the existing `.args`
 tuple, so current `except ParseError as e: e.args[1]` code keeps working while
 gaining the named attributes §11.3 requires.
@@ -131,7 +146,8 @@ def raise_trailing_content(pnode: Node, line: Line, doc: Document) -> NoReturn:
     quote = find_first(pnode, 'quoted_value')         # exactly one on this path
     position = doc.position_map.to_original(pos_at(line, quote.start))  # Contract 01
     raise MalformedQuotedStringError(
-        'Unexpected content after quoted value', position, original_line(doc, position.line),
+        error_message('Unexpected content after quoted value', doc.filename),
+        position, original_line(doc, position.line),
         escape=None, code_point=None,
     )
 

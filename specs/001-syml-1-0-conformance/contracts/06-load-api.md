@@ -56,6 +56,9 @@ documents beyond the documented nesting limitation (SC-005, spec Edge Cases).
 
 ```python
 def load(file_obj, filename=None):
+    if filename is None:                        # resolved FIRST, so EncodingError
+        name = getattr(file_obj, 'name', None)  # can carry it (Contract 05 error_message)
+        filename = name if isinstance(name, (str, os.PathLike)) else None
     try:
         raw = file_obj.read()                   # a text handle decodes here
     except UnicodeDecodeError as err:
@@ -67,9 +70,6 @@ def load(file_obj, filename=None):
             raise EncodingError(...) from err   # R-04's position derivation
     else:
         text = raw
-    if filename is None:
-        name = getattr(file_obj, 'name', None)
-        filename = name if isinstance(name, (str, os.PathLike)) else None
     return loads(text, filename=filename)
 ```
 
@@ -150,7 +150,9 @@ Returns the `Root` node. Callers use `.as_data()` (equivalent to `loads`) or
   fixture.
 - `load` with `StringIO`, `BytesIO`, a real text handle, and a real binary
   handle over the same content, asserting equal results.
-- `filename` propagation into `Source.filename` and into `ParseError.message`.
+- `filename` propagation into `Source.filename` and into `ParseError.message`
+  (Contract 05's `error_message`), including `EncodingError` from a named
+  binary handle; with no filename the message is the bare description.
 - A handle whose `.name` is an `int` (`tempfile.TemporaryFile`) yields
   `Source.filename is None`.
 - A UTF-8 text handle over invalid bytes raises `EncodingError` (not
