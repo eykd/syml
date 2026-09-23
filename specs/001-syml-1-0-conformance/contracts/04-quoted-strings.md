@@ -230,9 +230,10 @@ Contract 07 (§11.2.1 rules B, C, E, F, and the single-quote preference).
   `escape="\\u12"`; `k: "abc\` → `escape="\\"`; `k: "a\xb` (invalid escape
   **and** unterminated) → `escape="\\x"` (first defect wins); `k: "abc` and
   `k: 'abc` → `escape=None`. Each at an inline `key:` position and after `- `.
-- Round-trip: `loads('k: ' + dumps_quoted(s))['k'] == s` over a corpus of
-  strings containing quotes, backslashes, control characters, and astral-plane
-  characters.
+- Round-trip: `loads(dumps({'k': s}))['k'] == s` over a corpus of strings
+  containing quotes, backslashes, control characters, and astral-plane
+  characters — `dumps`/`loads` are the only exported surface (Contract 07);
+  there is no standalone single-value quoting helper.
 - Bare-line non-decoding: for each malformed inline case, the same text at a
   root-scalar / block / continuation position parses to literal text.
 - US6's ten acceptance scenarios.

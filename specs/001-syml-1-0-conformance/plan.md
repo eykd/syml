@@ -644,6 +644,45 @@ boundaries were not reopened by anything below.
   B/M records plan.md already cites; the first commit does not make
   `CLAUDE.md` claim conformance ahead of FR-016.
 
+### Pass 6 (2026-09-23, outer iteration 5): congruence sweep
+
+No Critical or High finding; a red-team congruence check across plan.md,
+data-model.md, and contracts 04/05/06/08/09, per the orchestrator's targets.
+R-09's stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r` boundaries
+were re-checked and not reopened.
+
+- **Quoted-value span wording disagreed (Low).** data-model §4 said the span
+  ran "from opening to closing quote", readable as `end` landing *on* the
+  closing quote; Contract 08 already said "just past the closing quote
+  (exclusive)". data-model §4 now matches Contract 08 word for word.
+- **Contract 08's span property called an undefined `decode()` (Low).**
+  Contract 04 exports `decode_single_quoted`/`decode_double_quoted`, no
+  generic `decode`. Contract 08's test obligation now dispatches on the
+  slice's leading quote character to the two named decoders; Contract 04's
+  docstrings now say each takes the full grammar match, quotes included, so
+  the slice Contract 08 decodes is exactly what the decoders expect.
+- **Contract 05's `EncodingError` derivation used a bare `raw` (Low).**
+  Contract 06 cites the derivation as being over `(err.object, err.start)`;
+  Contract 05 now uses `err.object` by name and states the derivation holds
+  regardless of whether the bytes came from a binary handle or a text
+  handle's internal `read()`.
+- **`@feature-exit`'s runtime semantics were unstated (Medium).** Contract 09
+  named the tag and the pyproject registration but not what `just acceptance`
+  does with it. Verified against the pinned pytest-bdd 8.1.0 (scratch
+  collection): a Gherkin `@tag` becomes a pytest marker under the **literal**
+  string, hyphen included (`feature-exit`, not `feature_exit`); both
+  scenarios run normally, with no deselection, on every invocation up to and
+  including the commit that removes them (FR-018); that removal is the only
+  mechanism keeping release CI green. Noted as distinct from the project's
+  own `acceptance` marker (applied by hand as a module-level `pytestmark`,
+  per the acceptance-tests skill), which cannot target 2 of 9 scenarios in
+  one `.feature` file.
+- **Contract 04's round-trip test obligation called an undefined
+  `dumps_quoted` helper (Low), same defect class as the `decode()` gap
+  above.** Contract 07 exports only `dumps`/`dump`, no single-value quoting
+  helper. Rewritten as `loads(dumps({'k': s}))['k'] == s`, using the actual
+  public surface.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
