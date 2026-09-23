@@ -224,6 +224,11 @@ so tests assert `start`/`end` field by field. The `# pragma: no cover` on
 in `__add__` is deleted (`todo.txt` B3, FR-017), its `str` branch counts the
 joining `\n`, and no parse path calls `__add__`.
 
+**`from_str_index`/`from_text` line counting**: `Pos.from_str_index` and
+`Source.from_text` — kept for tests, never used for parse positions — count
+only `\n` as a line break, so U+2028 and U+0085 no longer start a line
+(red-team pass 23, Contract 08).
+
 **Continuation spans**: when a `TextLeafNode` absorbs a continuation line, the
 resulting `Source.start` stays at the value's first character (for a root scalar
 whose first line is indented, the first preserved indent space — Contract 03)

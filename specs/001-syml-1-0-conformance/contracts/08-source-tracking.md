@@ -182,6 +182,11 @@ a reachable-but-untested `as_source` does not qualify (US8.5, SC-004), and
 the base-class stubs no input reaches are deleted or covered by direct
 tests (Contract 03 § Coverage without pragmas, pass 23).
 
+`basetypes.py`'s `Source.from_text`'s `if substring is None: # pragma: no
+cover` also goes (pass 23): a direct call with no `substring` (the default)
+covers the branch, so no fill-in is needed to reach it — only a caller that
+always passes `substring` left it unreached.
+
 ## Hygiene (FR-017)
 
 - `tests/test_nodes.py` is tracked and **0 bytes**. An untracked
@@ -213,6 +218,7 @@ tests (Contract 03 § Coverage without pragmas, pass 23).
 - `rg 'pragma: no ?(cover|branch)' src/` finds only `TYPE_CHECKING` blocks
   (pass 23 widened this from `nodes.py` alone; Contract 03 § Coverage
   without pragmas lists what replaces each of today's pragmas).
+- `Source.from_text(text)` called with no `substring` (no pragma).
 - A property test: for a generated document, every reported `Pos.index` slices
   the **original** text at the value's first character.
 - The same property for spans: for every node of a single-line value,

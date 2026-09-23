@@ -1478,6 +1478,37 @@ result at run time. That matches pass 12's rating of the same defect class
   test obligations (50/200 inline, 400/500 block) and Contract 09's note 13
   hold.
 
+### Pass 24 (2026-09-23, outer iteration 15): a data-model and coverage gap left by pass 23
+
+Re-verified both named targets fresh rather than by citation. R-09: rebuilt
+Contract 02's exact grammar in parsimonious and ran `GRAMMAR['line']` — `k: "a"
+x` strands at index 7 of 8 and `- k: 'a'\tx` at 8 of 10, matching the claimed
+anchors and confirming `parse()` raises `IncompleteParseError` at the same
+point `match()` stops (no other partial-match cause found). R-02: `a\r\r\nb\r`
+still splits into 3 breaks under the single-pass `\r\n|\r|\n` regex, both
+before and after normalization. Checked pass 23's migration-note and
+pass-log claims for follow-through, and read every older pass-log entry for
+stale forms (`root = tip`, two-argument `from_node`, tuple-form `isinstance`)
+— none found; the historical entries correctly describe what was true when
+each was written, and the current-state contracts already reflect pass 23's
+fixes.
+
+- **`Pos.from_str_index`/`Source.from_text`'s `\n`-only counting was a
+  Principle VI item with no data-model line (Medium, Congruence).** Pass 23
+  added this as the third Source/Pos change (Contract 08's change table, plan
+  migration note 10), but data-model.md §4 — which pass 23 did not touch —
+  only mirrored the other two (`from_node`'s four-argument form, `__add__`'s
+  `\n`). **Mitigation**: one sentence added to data-model.md §4.
+- **`Source.from_text`'s `substring is None` pragma was named in the pass 23
+  log but never landed in Contract 08 (Low, Congruence).** The log entry says
+  "`Source.from_text`'s `substring is None` pragma goes too," but Contract
+  08's Coverage section only discusses `nodes.py`'s `as_source` pragma, and
+  the Hygiene/Test-obligations sections say nothing about `basetypes.py`.
+  Verified against today's `src/syml/basetypes.py:71` that the pragma exists
+  as described. **Mitigation**: Contract 08 now states the removal
+  explicitly (§ Coverage) and adds a test obligation (a `from_text` call with
+  no `substring`).
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
