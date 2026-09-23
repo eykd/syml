@@ -113,8 +113,11 @@ lexing level (constitution V).
 
 **Trailing content** (`key: "a" trailing`) is the PEG stranding case instead:
 `key_value`'s first alternative matches `key: "a"` and then `~" *"` cannot reach
-end-of-line, so the whole `line` sequence fails. Contract 05 / R-09 classify a
-per-line `IncompleteParseError` as this error.
+end-of-line, so `GRAMMAR['line'].match(line.text)` returns a prefix shorter
+than `line.text` (`pnode.end < len(line.text)`) rather than raising. Contract 05
+/ R-09's entry point detects that gap directly — it never calls `parse()` and
+never catches `IncompleteParseError` — and anchors `MalformedQuotedStringError`
+at the stranded prefix's one `quoted_value`.
 
 A negative lookahead in the grammar (`data = !~"['\"]" text`) was rejected: it
 makes the line fall through to a different alternative rather than raising,

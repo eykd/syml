@@ -105,14 +105,17 @@ without the full-consumption check (`parse` is `match` plus that check;
 verified 2026-09-23 that `IncompleteParseError.pos == match(...).end`):
 
 ```python
-pnode = GRAMMAR['line'].match(line.text)
-if pnode.end < len(line.text):                       # stranded: §4.7 trailing content
-    quote = find_first(pnode, 'quoted_value')        # exactly one on this path
+def raise_trailing_content(pnode: Node, line: Line) -> None:
+    """The helper Contract 02's entry point calls when `pnode.end < len(line.text)`."""
+    quote = find_first(pnode, 'quoted_value')         # exactly one on this path
     raise MalformedQuotedStringError(
         message, doc.position_map.to_original(pos_at(quote.start + line.start)),
         line_text, escape=None, code_point=None,
     )
-node = visitor.visit(pnode, line)
+
+pnode = GRAMMAR['line'].match(line.text)
+if pnode.end < len(line.text):                       # stranded: §4.7 trailing content
+    raise_trailing_content(pnode, line)
 ```
 
 - **Exactly one `quoted_value`** is in a stranded prefix: the grammar admits a
