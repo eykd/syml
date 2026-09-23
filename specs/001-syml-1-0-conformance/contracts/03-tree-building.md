@@ -258,10 +258,11 @@ incorporates the node into it.
   `Mapping(pnode=node.pnode, source=node.source, level=node.level)` (and the
   same for `List`). No `line` is needed.
 - `pnode` becomes `PNode | None`, and it is `None` only on `Root`.
-  `Root(pnode=None, source=Source(filename=doc.filename, start=Pos(0, 1, 0),
-  end=Pos(0, 1, 0), text=''))` is the "`Source` over the empty span" that
-  data-model §3.5 promises for an empty or comment-only document. Contract
-  02's loop constructs it.
+  `Root(pnode=None, level=0, source=Source(filename=doc.filename,
+  start=Pos(0, 1, 0), end=Pos(0, 1, 0), text=''))` is the "`Source` over the
+  empty span" that data-model §3.5 promises for an empty or comment-only
+  document; `level=0` is required per Contract 02's "Who sets `level`" table
+  (`Root | the per-line loop | 0`). Contract 02's loop constructs it.
 
 ## Test obligations
 

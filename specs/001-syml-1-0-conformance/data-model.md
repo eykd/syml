@@ -85,7 +85,7 @@ the tab scan. A line of only spaces and a tab is blank and raises nothing
 ```
 SymlNode
 ├── ContainerNode        # holds at most one value; "closed" once it does
-│   ├── Root             # level 0, anchor_level -1
+│   ├── Root             # level 0
 │   ├── KeyValue         # + key: KeyLeafNode
 │   └── ListItem
 ├── ParentNode           # holds many same-level children

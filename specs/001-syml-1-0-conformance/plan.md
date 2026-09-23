@@ -879,6 +879,33 @@ claim and the `\r\r\n` / trailing-bare-`\r` boundaries still hold
   (Low).** `key_value` contains `key_colon`, and `section` only matches a
   valueless line. Reworded.
 
+### Pass 12 (2026-09-23, outer iteration 8): `Root`'s own required field
+
+Swept Contracts 01-09 and data-model as one program per the orchestrator's
+targets. R-09's stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r`
+boundaries were re-verified once more (`k: "a" x` strands right after the
+quote and its trailing space; `a\r\r\nb\r` counts three breaks both before
+and after normalization) and still hold.
+
+- **`Root(...)` was constructed with no `level` (Medium).** Pass 11 made
+  `level: int` a required constructor argument with no default, and Contract
+  02's "Who sets `level`" table already said `Root | the per-line loop | 0`.
+  But both pseudocode construction sites — Contract 02's entry-point loop and
+  Contract 03 § Automatic container creation — wrote
+  `Root(pnode=None, source=Source(...))`, omitting `level` entirely. As
+  written, that call cannot type-check against pass 11's own rule.
+  **Mitigation**: both sites now read `Root(pnode=None, level=0,
+  source=Source(...))`, matching the table.
+- **data-model §3's tree diagram mislabelled `Root` (Low).** The comment
+  `Root # level 0, anchor_level -1` implied `Root` carries an `anchor_level`
+  field; that field belongs to `TextLeafNode` only (§3.1), and the `-1`
+  value it names is the *root-scalar's* `anchor_level` (§3.3's table), not
+  `Root`'s. Trimmed to `Root # level 0`.
+- Re-verified: `TextLeafNode`'s inline-vs-fixed acceptance operators
+  (`level > anchor_level` before fixing, `level >= baseline` once fixed) and
+  the D13 isinstance-only acceptance are stated identically in Contract 03's
+  "TextLeafNode continuation" table and data-model §3.3; no drift found there.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape

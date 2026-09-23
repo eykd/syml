@@ -90,7 +90,7 @@ it falls through to `data`.
 ```python
 doc = preprocess(text, filename)            # Contract 01
 visitor = SymlParser(doc)                   # holds position_map, original, filename
-root = tip = Root(pnode=None, source=Source(  # Contract 03: no document-level pnode
+root = tip = Root(pnode=None, level=0, source=Source(  # Contract 03: no document-level pnode
     filename=doc.filename, start=Pos(0, 1, 0), end=Pos(0, 1, 0), text=''))
 for line in split_lines_lf(doc.normalized): # §9.1 step 2
     if is_blank(line.text):                 # D14: discarded before any other check
