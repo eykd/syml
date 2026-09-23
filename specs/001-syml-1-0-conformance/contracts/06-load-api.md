@@ -31,6 +31,13 @@ def parse(document: str, filename: StrPath | None = None) -> Root: ...
 | static return type | `list[Any] \| dict[str, Any] \| str` | `SymlData`: a typed caller's `r['k']['j']` after `isinstance(r, dict)` checked under 0.6.2 (`Any` below the top) and is a mypy error under 1.0.0 until each level is narrowed (**breaking for typed callers**, pass 20; plan.md Principle VI) |
 | exceptions | Parsimonious may escape | only `ParseError` subclasses |
 
+**`__init__.py` declares `__all__`** naming `loads`, `load`, `parse`, `dumps`,
+`dump`, `SymlData`, `SymlInput`, and the seven exception classes (red-team
+pass 21). pyproject sets mypy's `no_implicit_reexport = true`, and mypy covers
+`tests/`, so without `__all__` (or `import X as X`) every
+`from syml import DuplicateKeyError` in a test is a mypy error even though it
+imports at run time.
+
 `parse` is promoted from an internal in `syml.parsers` to a documented §11.2
 export; it is the entry point for source tracking (Contract 08).
 

@@ -1360,6 +1360,23 @@ breaks before and after normalization, and a trailing bare `\r` has one.
   glossary row for `OutOfContextNodeError` says what replaces the stale
   sentence.
 
+### Pass 21 (2026-09-23, outer iteration 13): second-order check of pass 20
+
+No Critical or High finding. Every reference to the dump parameter now says
+`SymlInput`, and `SymlData` remains only as a return type. The four
+`__add__` statements (Contract 08's surface and change row, Contract 09's
+FR-017 row, data-model §4) agree, and Contract 03's `as_source` is the only
+composition path. `as_source` handles an inline head whose `baseline` is
+still `None` (it never subtracts it), a quoted leaf (no children, decoded
+`text`), and a root scalar's indented head. `NotImplemented` from a
+`bool`-annotated `__eq__` is accepted by mypy.
+
+- **Exports need `__all__` (Low).** pyproject sets `no_implicit_reexport =
+  true` and mypy covers `tests/`, so re-exporting `SymlData`, `SymlInput`,
+  and the seven exception classes from `__init__.py` by plain import would
+  make every `from syml import …` in the tests a mypy error. Contract 06 now
+  requires `__all__`.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
