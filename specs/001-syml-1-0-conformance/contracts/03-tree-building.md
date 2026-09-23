@@ -12,9 +12,9 @@
 ```python
 class SymlNode:
     level: int | None          # the node's OWN column (R-11), not the line's indent
-    def can_add_node(self, node: SymlNode) -> bool: ...
+    def can_add_node(self, node: SymlNode, doc: Document) -> bool: ...
     def add_node(self, node: SymlNode) -> SymlNode: ...       # returns the TIP
-    def incorporate_node(self, node: SymlNode) -> SymlNode: ...
+    def incorporate_node(self, node: SymlNode, doc: Document) -> SymlNode: ...
     def get_tip(self) -> SymlNode: ...
 
 
@@ -27,6 +27,36 @@ class TextLeafNode(SymlNode):
 `incorporate_node` is §9.2 verbatim: accept → `add_child`; else walk to the
 parent; else `OutOfContextNodeError`. `add_child` returns the **tip** of the
 added subtree, which is the node the next line is tested against.
+
+**Signature change from today: `doc: Document` is now a required second
+argument.** Today's `fail_to_incorporate_node` builds its position and
+`line_text` from `pnode.full_text` alone (`Pos.from_str_index` +
+`utils.get_line`), which only works because `pnode.full_text` is the whole
+document under `document.parse(text)`. Per-line lexing (Contract 02) makes
+`pnode.full_text` a single **line**, so that derivation is gone. The
+replacement reads `position` off the node's own `Source` (already in original
+coordinates — Contract 08) and calls Contract 05's `original_line(doc,
+position.line)` for `line_text`, so `doc` must be in scope wherever a
+`ParseError` can be raised:
+
+```python
+def fail_to_incorporate_node(self, node: SymlNode, doc: Document) -> NoReturn:
+    """Contract 05's OutOfContextNodeError, anchored at the offending node's
+    own Source.start (already original coordinates; no re-derivation)."""
+    position = node.source.start
+    raise OutOfContextNodeError(
+        'Failed to incorporate a node', position, original_line(doc, position.line),
+    )
+```
+
+Every recursive `incorporate_node` call (walking to the parent, or into an
+auto-created `Mapping`/`List` intermediary) forwards the same `doc` unchanged;
+it is never re-derived or defaulted. `can_add_node` gains the same second
+argument for the one caller that needs it (`Mapping`'s duplicate-key check,
+below); every other override ignores it. Contract 02's per-line loop calls
+`tip = tip.incorporate_node(node, doc)` — the `doc` it already built from
+`preprocess(text, filename)` — replacing the earlier, undefined two-argument
+`incorporate(tip, node)`.
 
 An inline structural value (`- key: v`, `- - x`) goes through the **same**
 algorithm, not a direct attach (§9.2). That is already true today and must stay.
@@ -80,10 +110,31 @@ offered to `TextLeafNode.can_add_node`; `TextLeafNode` only ever accepts another
 `Mapping.can_add_node` compares the incoming key to its existing children's keys
 by **code point** (case-sensitive, no Unicode normalization). On a match it
 raises `DuplicateKeyError` **immediately** and does **not** fall through to
-§9.2's walk-up. Detection happens at incorporation, before the mapping is
-materialized in either data or source mode — §10.3 requires this explicitly,
-because `Source` compares and hashes by text and two colliding keys would
-collapse silently in a dict comprehension (see Contract 08, R-07).
+§9.2's walk-up:
+
+```python
+def can_add_node(self, node: SymlNode, doc: Document) -> bool:
+    if isinstance(node, KeyValue):
+        for child in self.children:
+            if child.key.as_data() == node.key.as_data():     # code-point compare
+                position = node.source.start
+                raise DuplicateKeyError(
+                    'Duplicate key', position, original_line(doc, position.line),
+                    key=node.key.as_data(), first_position=child.source.start,
+                )
+    return node.level == self.level and isinstance(node, KeyValue)
+```
+
+`KeyValue.key` is a `KeyLeafNode` (data-model.md §3), not a string; `.as_data()`
+is the existing `str` conversion `Mapping.as_data`/`as_source` already use
+(`c.key.as_data()` / `c.key.as_source()`), reused here so the comparison and
+the `DuplicateKeyError.key: str` attribute agree on the same text.
+
+Detection happens at incorporation, before the mapping is materialized in
+either data or source mode — §10.3 requires this explicitly, because `Source`
+compares and hashes by text and two colliding keys would collapse silently in
+a dict comprehension (see Contract 08, R-07). `doc` is the same `Document`
+`incorporate_node` was called with, passed through unchanged.
 
 A level mismatch (`node.level != mapping.level`) performs **no** duplicate check
 and walks up normally.
@@ -135,6 +186,9 @@ incorporates the node into it.
 - Every acceptance table row and every worked case above.
 - `set_level` no longer recurses into children for inline structures (R-11).
 - A `DuplicateKeyError` carries `key` and `first_position` (Contract 05).
+- `OutOfContextNodeError.line_text` and `DuplicateKeyError.line_text` are the
+  original line (BOM/CRLF-bearing inputs included), not the normalized one —
+  asserting the `doc`-threading above actually reaches both raise sites.
 - Deep nesting at 400 levels parses; 500+ raises `RecursionError` — asserted as
   the **documented known limitation** (spec Edge Cases), not as a defect.
 - Inline nesting on one line: `'- ' * 50 + 'x'` parses (the lexing threshold

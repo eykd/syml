@@ -108,12 +108,30 @@ without the full-consumption check (`parse` is `match` plus that check;
 verified 2026-09-23 that `IncompleteParseError.pos == match(...).end`):
 
 ```python
+def find_first(node: Node, expr_name: str) -> Node:
+    """Depth-first search of `node` and its descendants for the first one
+    whose `expr_name == expr_name` (parsimonious `Node` has no such method;
+    this contract defines it). `raise_trailing_content` calls it with
+    `'quoted_value'`, and exactly one such node exists on that path, so the
+    search always finds a match — there is no not-found case to handle."""
+
+
+def original_line(doc: Document, n: int) -> str:
+    """Line `n` (1-indexed, matching `Pos.line`) of `doc.original` — the
+    UNNORMALIZED text — split by the same single-pass `\r\n|\r|\n` regex
+    alternation Contract 01 uses for normalization (never `str.splitlines()`,
+    which also breaks on U+2028/U+0085 and is forbidden by name, §13.3), with
+    the terminator excluded. This is the `line_text` rule below (§
+    `line_text`), taken from the original text so a leading BOM on line 1 is
+    preserved. Empty string when `n` is past the last line."""
+
+
 def raise_trailing_content(pnode: Node, line: Line, doc: Document) -> NoReturn:
     """The helper Contract 02's entry point calls when `pnode.end < len(line.text)`."""
     quote = find_first(pnode, 'quoted_value')         # exactly one on this path
     position = doc.position_map.to_original(pos_at(line, quote.start))  # Contract 01
     raise MalformedQuotedStringError(
-        message, position, original_line(doc, position.line),
+        'Unexpected content after quoted value', position, original_line(doc, position.line),
         escape=None, code_point=None,
     )
 
@@ -124,9 +142,9 @@ if pnode.end < len(line.text):                       # stranded: §4.7 trailing 
 
 `pnode` offsets are **line-local** (per-line `match`), so `quote.start` goes
 through `pos_at(line, …)` — never `quote.start + line.start` alone, which is an
-index with no line or column. `original_line(doc, n)` is the `line_text` rule
-below: line `n` of `doc.original`, split on `\r\n` / `\r` / `\n`, terminator
-excluded. Every raise site uses the same two helpers.
+index with no line or column. `find_first` and `original_line` are defined
+above; neither is provided by parsimonious or Contract 01. Every raise site
+uses the same two helpers.
 
 ### Subclass constructors
 

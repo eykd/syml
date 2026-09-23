@@ -98,7 +98,7 @@ for line in split_lines_lf(doc.normalized): # §9.1 step 2
         raise_trailing_content(pnode, line, doc)  # Contract 05 — anchors at the opening quote
     visitor.line = line                       # NodeVisitor.visit takes ONE argument
     node  = visitor.visit(pnode)
-    tip   = incorporate(tip, node)            # Contract 03 — outside NodeVisitor.visit
+    tip   = tip.incorporate_node(node, doc)   # Contract 03 — outside NodeVisitor.visit
 ```
 
 **The blank-line skip is load-bearing, not an optimization.** A tab-bearing
@@ -115,6 +115,13 @@ is built once per document holding the `Document`, and the loop sets
 `visitor.line` before each `visit`. Every node's `Source` is built from that
 line (Contract 08's `Source.from_node(pnode, line, position_map, filename)`);
 nothing reads `pnode.full_text` for positions.
+
+**`SymlParser.__init__` signature change from today:** `SymlParser(filename:
+StrPath | None = None)` becomes `SymlParser(doc: Document)`. `filename` is
+still reachable as `doc.filename` (Contract 01); the constructor takes the
+whole `Document` because `Source.from_node` needs `position_map` too, and
+`visitor.line` is set per-iteration as a plain mutable attribute, not a
+constructor argument.
 
 `match` rather than `parse`: `parse` is `match` plus a full-consumption check
 whose `IncompleteParseError` carries only the strand point, while the error

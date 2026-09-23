@@ -731,6 +731,48 @@ per-line loop connects to the rest. Each was verified against Parsimonious.
   elements. data-model §5's stale `contracts/errors.md` link now points at
   `05-errors.md`.
 
+### Pass 8 (2026-09-23, outer iteration 6): the rest of the per-line plumbing sweep
+
+Pass 7 fixed the load-bearing helpers but left two classes of the same defect
+uncaught. The R-09 stranded-prefix claim and the `\r\r\n` / trailing-bare-`\r`
+boundaries were re-checked once more and still hold; nothing below touches
+them.
+
+- **`original_line` and `find_first` were called, never defined (High).**
+  Contract 05's `raise_trailing_content` called both; neither had a `def`
+  anywhere, and `find_first` is not a parsimonious `Node` method (verified:
+  `Node`'s public surface is `children, end, expr, expr_name, full_text,
+  prettily, start, text`). **Mitigation**: both defined in Contract 05,
+  immediately above `raise_trailing_content`, with `original_line`'s
+  docstring pinned to the same single-pass `\r\n|\r|\n` regex split Contract
+  01 uses for normalization — never `str.splitlines()` (§13.3).
+- **`incorporate_node`'s failure path had no way to build `line_text` (High).**
+  Contract 02's loop called a module-level `incorporate(tip, node)` that
+  Contract 03 never defined; Contract 03 defined a same-named *method*,
+  `SymlNode.incorporate_node(self, node)`, with no `doc` parameter. Today's
+  `fail_to_incorporate_node` builds its position from `pnode.full_text` via
+  `Pos.from_str_index`, which is exactly the "line 1 for every node" defect
+  pass 7 fixed on the visitor side (Contract 08) — untouched here, because
+  `fail_to_incorporate_node` doesn't go through the visitor at all. And
+  `Mapping.can_add_node`'s duplicate-key raise (§10.3) needs the same
+  `line_text` with no `doc` in scope either. **Mitigation**: `doc: Document`
+  added as a required second argument to `incorporate_node` and
+  `can_add_node`, threaded unchanged through every recursive call; position
+  comes from the node's own `Source.start` (already original coordinates,
+  Contract 08) and `line_text` from Contract 05's new `original_line(doc,
+  position.line)`. Contract 02's call site becomes
+  `tip.incorporate_node(node, doc)`. `KeyValue.key` is a `KeyLeafNode`, not a
+  string, so the duplicate-key comparison and the `DuplicateKeyError.key: str`
+  attribute both go through the existing `.as_data()` conversion
+  `Mapping.as_data`/`as_source` already use, rather than comparing nodes or
+  inventing a second string accessor.
+- **`SymlParser`'s constructor signature changed without a surface note
+  (Low).** Today's `SymlParser(filename: StrPath | None = None)` becomes
+  `SymlParser(doc: Document)` under per-line lexing (pass 7's `visitor.line`
+  mechanism needs `position_map` too), but no contract said so plainly.
+  **Mitigation**: one sentence in Contract 02 stating the before/after and
+  that `filename` is still reachable as `doc.filename`.
+
 ### Open items for the principal (not applied)
 
 1. **Widen `escape_seq` to `'\\' ~"."`** so the decoder validates every escape
