@@ -4,10 +4,9 @@ r"""Quoted-string decoding for SYML documents (§4.7, Contract 04, US6).
 signal. :func:`decode_double_quoted` decodes the §4.7 escape table (``\n``,
 ``\t``, ``\r``, ``\\``, ``\/``, ``\"``, ``\uXXXX``, ``\UXXXXXXXX``);
 every escape it receives is syntactically valid per the grammar.
-:func:`decode_single_quoted` strips the surrounding quotes only (D2); its
-``''`` -> one apostrophe and literal-backslash handling belong to a later
-US6 leaf. ``diagnose_malformed`` belongs to a later US6 leaf and is not
-stubbed here.
+:func:`decode_single_quoted` strips the surrounding quotes and decodes the
+``''`` -> one apostrophe escape (D2); backslashes stay literal.
+``diagnose_malformed`` belongs to a later US6 leaf and is not stubbed here.
 """
 
 from __future__ import annotations
@@ -37,6 +36,8 @@ _SIMPLE_ESCAPES = {
     'r': '\r',
 }
 
+_HEX_ESCAPE_WIDTHS = {'u': 4, 'U': 8}
+
 
 def decode_double_quoted(raw: str) -> str:
     """Decode a "..." literal per the §4.7 escape table (Contract 04)."""
@@ -55,13 +56,8 @@ def decode_double_quoted(raw: str) -> str:
             result.append(_SIMPLE_ESCAPES[escape_char])
             index += 2
             continue
-        if escape_char == 'u':
-            hex_digits = body[index + 2 : index + 6]
-            result.append(chr(int(hex_digits, 16)))
-            index += 6
-            continue
-        assert escape_char == 'U'  # noqa: S101 -- grammar guarantees only u/U reach here
-        hex_digits = body[index + 2 : index + 10]
+        width = _HEX_ESCAPE_WIDTHS[escape_char]
+        hex_digits = body[index + 2 : index + 2 + width]
         result.append(chr(int(hex_digits, 16)))
-        index += 10
+        index += 2 + width
     return ''.join(result)
