@@ -1,7 +1,10 @@
+import gc
 import importlib
 import re
 import textwrap
+import tracemalloc
 from typing import cast
+from unittest import mock
 
 import pytest
 
@@ -374,16 +377,47 @@ class TestLineStartOffsetsCaching:
     `Source.from_node` calls `Pos.from_str_index` twice per parsed node, all
     over the same `pnode.full_text` object. Before caching, each call rescanned
     the whole document, so an n-line document did O(n) rescans of O(n) text.
-    Asserts the underlying `_line_start_offsets` cache is only ever *missed*
-    a handful of times while parsing a document with thousands of nodes,
-    proving the per-node work is O(1) amortized rather than O(n).
+
+    The cache used to be a process-global `functools.lru_cache`, which pinned
+    up to 4 full parsed documents in memory for the life of the process (a
+    MAJOR untrusted-input memory-retention finding from the syml-x0m.6.1
+    remediation review). It is now scoped to a single `parsers.parse()` call
+    via `basetypes._line_offset_cache_scope`, so these guards assert both the
+    O(1)-amortized-per-node behavior *and* that nothing process-global remains.
     """
 
-    def test_it_should_amortize_line_offset_computation_across_thousands_of_nodes(self) -> None:
+    def test_it_should_compute_line_start_offsets_at_most_once_per_document_while_parsing_thousands_of_nodes(
+        self,
+    ) -> None:
         text = ''.join(f'- item{i}\n' for i in range(8000))
-        basetypes._line_start_offsets.cache_clear()  # noqa: SLF001
-        result = syml.loads(text)
+        real_compute = basetypes._compute_line_start_offsets  # noqa: SLF001
+        misses = 0
+
+        def counting_compute(candidate: str) -> tuple[tuple[int, ...], bool]:
+            nonlocal misses
+            misses += 1
+            return real_compute(candidate)
+
+        with mock.patch.object(basetypes, '_compute_line_start_offsets', counting_compute):
+            result = syml.loads(text)
         assert len(result) == 8000
-        info = basetypes._line_start_offsets.cache_info()  # noqa: SLF001
-        assert info.misses <= 2
-        assert info.hits >= 8000
+        assert misses <= 2
+
+    def test_it_should_not_expose_a_process_global_cache(self) -> None:
+        assert not hasattr(basetypes._line_start_offsets, 'cache_info')  # noqa: SLF001
+        assert not hasattr(basetypes._line_start_offsets, 'cache_clear')  # noqa: SLF001
+
+    def test_it_should_release_parsed_document_memory_once_the_caller_drops_its_references(self) -> None:
+        text = ''.join(f'- item{i:06d} padding-to-approximate-a-2mb-document\n' for i in range(100_000))
+        tracemalloc.start()
+        try:
+            gc.collect()
+            before, _peak = tracemalloc.get_traced_memory()
+            result = syml.loads(text)
+            assert len(result) == 100_000
+            del result, text
+            gc.collect()
+            after, _peak = tracemalloc.get_traced_memory()
+            assert after - before < 100_000
+        finally:
+            tracemalloc.stop()

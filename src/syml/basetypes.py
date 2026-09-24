@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: nocover
+    from collections.abc import Iterator
+
     from parsimonious.nodes import Node as PNode
 
     from syml.preprocess import PositionMap
@@ -23,19 +26,68 @@ StrPath = str | Path
 type SymlData = str | list[SymlData] | dict[str, SymlData]
 SymlInput = str | list[Any] | dict[str, Any]
 
+# Scoped, per-parse cache for `_line_start_offsets` (see below): `None` outside
+# a `_line_offset_cache_scope()` block, and a fresh `dict` for the duration of
+# one `parsers.parse()` call otherwise. Keyed by `id(text)` rather than `text`
+# itself so the cache never pins a document's text alive: the same `text`
+# object is held alive for the whole scope anyway (by the parse tree that owns
+# it), so `id()` cannot be recycled onto a different string within one scope.
+_line_offset_cache: ContextVar[dict[int, tuple[tuple[int, ...], bool]] | None] = ContextVar(
+    '_line_offset_cache', default=None
+)
 
-@lru_cache(maxsize=4)
+
+@contextmanager
+def _line_offset_cache_scope() -> Iterator[None]:
+    """Scope `_line_start_offsets`'s cache to one parse (sp:security-review, harden cycle 2, syml-x0m.6.2).
+
+    A process-global `lru_cache` keyed on document text pinned up to 4 full
+    documents (plus their line-offset tables) in memory for the life of the
+    process, well after every caller had dropped its own reference. Scoping
+    the cache to a single `parsers.parse()` call via a `ContextVar` keeps the
+    O(1)-amortized-per-node win (`Source.from_node` calls `Pos.from_str_index`
+    twice per parsed node over the same `pnode.full_text`) without retaining
+    anything once that call returns.
+    """
+    token = _line_offset_cache.set({})
+    try:
+        yield
+    finally:
+        _line_offset_cache.reset(token)
+
+
 def _line_start_offsets(text: str) -> tuple[tuple[int, ...], bool]:
     r"""Return per-line start offsets in `text`, plus whether the last line lacks a trailing ``\n``.
 
-    Cached (keyed on `text` itself, small `maxsize`) because `Pos.from_str_index`
-    is called twice per parsed node from `Source.from_node` over the same
-    `pnode.full_text` object: without caching, a document with O(n) nodes
-    recomputed this O(n) scan on every call, making parsing O(n^2) overall.
+    Cached for the duration of the enclosing `_line_offset_cache_scope()` (if
+    any), keyed on `id(text)`, because `Pos.from_str_index` is called twice
+    per parsed node from `Source.from_node` over the same `pnode.full_text`
+    object: without caching, a document with O(n) nodes recomputed this O(n)
+    scan on every call, making parsing O(n^2) overall. Outside a scope (e.g.
+    direct calls to `Pos.from_str_index` in tests or one-shot error paths),
+    every call recomputes -- there is nothing to cache into.
 
     Mirrors the line-splitting semantics `Pos.from_str_index` has always had:
     counts lines by ``\n`` only (SYML §13.3), and a trailing ``\n`` (or empty
     `text`) does not start a new, separately-addressable line.
+    """
+    cache = _line_offset_cache.get()
+    key = id(text)
+    if cache is not None and key in cache:
+        return cache[key]
+    result = _compute_line_start_offsets(text)
+    if cache is not None:
+        cache[key] = result
+    return result
+
+
+def _compute_line_start_offsets(text: str) -> tuple[tuple[int, ...], bool]:
+    r"""Do the actual O(n) scan `_line_start_offsets` caches the result of.
+
+    Split out so tests can spy on cache misses directly (a cache hit never
+    reaches this function), rather than on `_line_start_offsets` itself, which
+    is called on every `Pos.from_str_index` invocation regardless of whether
+    the underlying scan is skipped.
     """
     starts = [0, *(match.end() for match in re.finditer('\n', text))]
     if text == '' or text.endswith('\n'):

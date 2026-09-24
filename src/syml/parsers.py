@@ -11,7 +11,7 @@ from parsimonious.exceptions import IncompleteParseError
 from parsimonious.nodes import Node
 
 from . import nodes, quoting
-from .basetypes import Pos, get_line_text
+from .basetypes import Pos, _line_offset_cache_scope, get_line_text
 from .exceptions import MalformedQuotedStringError, ParseError, error_message
 from .preprocess import preprocess
 
@@ -294,8 +294,9 @@ def raise_trailing_content(filename: StrPath | None, text: str, pos: int) -> NoR
 
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
-    doc = preprocess(source_syml, filename)
-    try:
-        return SymlParser(filename=filename, position_map=doc.position_map).parse(doc.normalized)
-    except IncompleteParseError as exc:
-        raise_trailing_content(filename, doc.normalized, exc.pos)
+    with _line_offset_cache_scope():
+        doc = preprocess(source_syml, filename)
+        try:
+            return SymlParser(filename=filename, position_map=doc.position_map).parse(doc.normalized)
+        except IncompleteParseError as exc:
+            raise_trailing_content(filename, doc.normalized, exc.pos)
