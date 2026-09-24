@@ -2,6 +2,7 @@ import textwrap
 from io import StringIO
 
 import pytest
+from parsimonious import Grammar
 
 import syml
 from syml import exceptions, parsers
@@ -399,3 +400,31 @@ class TestSimpleParserFunction:
                 'FALSE',
             ],
         }
+
+
+class TestFindFirst:
+    """Contract 05 §The third-party boundary (FR-009, R-09): the `find_first` helper.
+
+    `raise_trailing_content` uses `find_first` to locate the `quoted_value`
+    node that anchors a stranded-content error at the opening quote, since
+    parsimonious's `Node` has no such lookup itself.
+    """
+
+    def test_find_first_returns_the_first_matching_node_in_depth_first_order(self) -> None:
+        """It must return the nested, document-first match — not the root, and not by luck."""
+        grammar = Grammar(
+            r"""
+            root         = wrapper other
+            wrapper      = quoted_value / other_char
+            other_char   = ~"Z"
+            quoted_value = ~"Q\d"
+            other        = quoted_value / other_char
+            """
+        )
+        tree = grammar['root'].parse('Q1Q2')
+        expected = tree.children[0].children[0]
+        assert expected.expr_name == 'quoted_value'
+
+        result = parsers.find_first(tree, 'quoted_value')
+
+        assert result is expected

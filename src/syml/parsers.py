@@ -152,6 +152,20 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return root
 
 
+def find_first(node: PNode, expr_name: str) -> PNode:
+    """Depth-first search of `node` and its descendants for the first with a matching `expr_name`.
+
+    Parsimonious's `Node` has no such method; Contract 05 §The third-party
+    boundary (FR-009, R-09) defines this helper so `raise_trailing_content`
+    can locate the `quoted_value` node that anchors a stranded-content error.
+
+    :param node: The root of the subtree to search.
+    :param expr_name: The `expr_name` to match.
+    :returns: The first matching node, in depth-first order.
+    """
+    raise NotImplementedError
+
+
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
     doc = preprocess(source_syml, filename)
