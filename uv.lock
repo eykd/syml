@@ -963,11 +963,10 @@ wheels = [
 
 [[package]]
 name = "syml"
-version = "0.6.2"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "parsimonious" },
-    { name = "regex" },
 ]
 
 [package.dev-dependencies]
@@ -990,10 +989,7 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "parsimonious", specifier = ">=0.10.0,<0.11" },
-    { name = "regex", specifier = ">=2024.11.6,<2025" },
-]
+requires-dist = [{ name = "parsimonious", specifier = ">=0.10.0,<0.11" }]
 
 [package.metadata.requires-dev]
 dev = [

@@ -1,6 +1,6 @@
 [project]
 name = "syml"
-version = "0.6.2"
+version = "1.0.0"
 description = "SYML (Simple YAML-like Markup Language) is a simple markup language with similar structure to YAML, but without all the gewgaws and folderol."
 authors = [{name = "David Eyk", email = "david@worldsenoughstudios.com"}]
 license = "MIT"
@@ -19,7 +19,6 @@ classifiers = [
 
 dependencies = [
     "parsimonious>=0.10.0,<0.11",
-    "regex>=2024.11.6,<2025",
 ]
 
 [project.urls]

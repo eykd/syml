@@ -1,7 +1,8 @@
-# SYML Specification v1.0 — Review Findings
+# SYML Specification — Review Findings (pre-1.0 draft, reviewed as v1.0)
 
 **Date:** 2026-09-13
-**Subject:** `SYML-SPECIFICATION.md` v1.0
+**Subject:** `SYML-SPECIFICATION.md` pre-release draft (labelled v1.0 when
+reviewed); the text released as 1.0 incorporates the findings below.
 **Method:** The §4.1 grammar was transcribed verbatim into Parsimonious, §9.2–9.4 were implemented literally as a tree builder, and every input/output example in the spec plus ~40 edge probes were run through (a) the spec grammar, (b) the literal §9 algorithm, and (c) the shipped `syml` 0.6.2 `loads`. Four review passes (grammar vs prose, algorithm vs rules, round-trip/API, safety) then worked from that table. Findings below cite the harness where a run exists; the rest are marked prose-only.
 
 Severity: **BLOCKER** = the spec contradicts itself, or an example cannot be produced by its own rules. **MAJOR** = behavior a conforming implementation must decide but the spec does not state, or a safety hole. **MINOR** = clarity or cosmetics.
