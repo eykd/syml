@@ -70,10 +70,7 @@ def dump(data: SymlInput, file_obj: IO[str]) -> None:
     codec and one to §9.0, so a value's own leading U+FEFF does not survive
     that round trip; writing with 'utf-8-sig' adds a mark instead.
     """
-    # Implemented and tested by the dedicated dump() single-write-semantics
-    # Red/Green pair (syml-x0m.5.8.20/.21); this Green task scopes only the
-    # dumps() type contract.
-    raise NotImplementedError  # pragma: nocover
+    file_obj.write(dumps(data))
 
 
 def key_is_representable(k: str) -> bool:
