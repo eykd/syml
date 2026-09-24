@@ -7,6 +7,7 @@ back to the caller's original text.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -36,13 +37,41 @@ class Document:
     filename: StrPath | None
 
 
+_LINE_ENDING = re.compile(r'\r\n|\r')
+
+
+def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
+    r"""Collapse CRLF and bare CR to LF in one left-to-right scan.
+
+    Returns the normalized text plus the normalized-text indices where a
+    `\r\n` pair collapsed into a single `\n` (needed by `PositionMap` to
+    translate positions back to the original document).
+    """
+    chunks: list[str] = []
+    crlf_indices: list[int] = []
+    pos = 0
+    out_pos = 0
+    for match in _LINE_ENDING.finditer(text):
+        start, end = match.span()
+        chunks.append(text[pos:start])
+        out_pos += start - pos
+        if match.group() == '\r\n':
+            crlf_indices.append(out_pos)
+        chunks.append('\n')
+        out_pos += 1
+        pos = end
+    chunks.append(text[pos:])
+    return ''.join(chunks), tuple(crlf_indices)
+
+
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
     """Apply §9.0 steps 1-3 to `text`. Raises `TabIndentationError`."""
     bom_offset = 1 if text.startswith('﻿') else 0
-    normalized = text[bom_offset:]
+    stripped = text[bom_offset:]
+    normalized, crlf_indices = _normalize_line_endings(stripped)
     return Document(
         original=text,
         normalized=normalized,
-        position_map=PositionMap(bom_offset=bom_offset, crlf_indices=()),
+        position_map=PositionMap(bom_offset=bom_offset, crlf_indices=crlf_indices),
         filename=filename,
     )
