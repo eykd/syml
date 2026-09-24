@@ -48,6 +48,19 @@ class TestSymlParser:
             Source.from_text(text, 'foo'),
         ]
 
+    def test_it_should_parse_a_bare_list_marker_taking_its_item_from_the_next_line(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        """A bare "-" with no trailing space still opens a list item (§4.1 guard atoms).
+
+        Per Contract 02's grammar delta, ``list_item = ("-" ws value) / ("-" &eol)``:
+        a hyphen followed immediately by end-of-line is a valid, valueless list
+        item whose value comes from the next (nested) line, not scalar text.
+        """
+        text = '-\n  block item'
+        result = parser.parse(text)
+        assert result.as_data() == ['block item']
+
     def test_it_should_parse_a_list_with_multiline_values(self, parser: parsers.SymlParser) -> None:
         text = textwrap.dedent(
             """
