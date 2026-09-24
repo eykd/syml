@@ -121,8 +121,20 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             return nodes
 
     def visit_text(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
-        """Return a text leaf node."""
-        return nodes.TextLeafNode(pnode=node, filename=self.filename)
+        """Return a text leaf node, in original-text coordinates when normalization ran (Contract 08).
+
+        `level` (fixed in `SymlNode.__post_init__`, before this replaces
+        `source`) must stay derived from the NORMALIZED column, so R-11
+        indentation logic keeps working on BOM/CRLF documents.
+        """
+        leaf = nodes.TextLeafNode(pnode=node, filename=self.filename)
+        if self.position_map is not None:
+            leaf.source = dataclasses.replace(
+                leaf.source,
+                start=self.position_map.to_original(leaf.source.start),
+                end=self.position_map.to_original(leaf.source.end),
+            )
+        return leaf
 
     def _malformed_quoted_string(
         self, pnode: Node, *, escape: str | None, code_point: int | None
@@ -165,8 +177,8 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return leaf
 
     def visit_key(self, node: Node, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
-        """Return a key leaf node."""
-        return nodes.KeyLeafNode(pnode=node, filename=self.filename)
+        """Return a key leaf node, threading `position_map` for original-text coordinates."""
+        return nodes.KeyLeafNode(pnode=node, filename=self.filename, position_map=self.position_map)
 
     def visit_comment(self, node: Node, children: SymlNodes) -> nodes.Comment:
         """Visit a comment node.

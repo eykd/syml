@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
+
+    from .preprocess import PositionMap
 
 from .basetypes import Pos, Source, StrPath
 from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
@@ -320,8 +323,15 @@ class TextLeafNode(SymlNode):
         return self
 
 
+@dataclass(kw_only=True)
 class KeyLeafNode(SymlNode):
     """A leaf node containing a key value."""
+
+    # `pnode.start` is document-absolute under the `lines = line*` grammar
+    # (not line-local), so `key` derives original-text coordinates the way
+    # `visit_quoted_value` does rather than through `Source.from_node`'s
+    # `line`/`position_map` branch (Contract 08, FR-013, R-02, US8).
+    position_map: PositionMap | None = field(default=None, repr=False)
 
     def can_add_node(self, node: SymlNode) -> bool:  # noqa: ARG002  # pragma: nocover
         """Check if this node can add a child. It can't."""
@@ -329,8 +339,15 @@ class KeyLeafNode(SymlNode):
 
     @property
     def key(self) -> Source:
-        """Return a Source object representing the key."""
-        return Source.from_node(self.pnode, filename=self.filename)
+        """Return a Source object representing the key, in original-text coordinates."""
+        source = Source.from_node(self.pnode, filename=self.filename)
+        if self.position_map is not None:
+            source = dataclasses.replace(
+                source,
+                start=self.position_map.to_original(source.start),
+                end=self.position_map.to_original(source.end),
+            )
+        return source
 
     def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""
