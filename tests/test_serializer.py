@@ -8,27 +8,11 @@ from serialization_corpus import CORPUS
 from syml import loads, serializer
 from syml.exceptions import UnrepresentableValueError
 
-_PENDING_CORPUS_ROUND_TRIP_IDS: frozenset[str] = frozenset()
-
 
 class TestDumpsLoadsRoundTripsOverCorpus:
     """The shared round-trip corpus (Contract 07, pass 25) round-trips through dumps/loads."""
 
-    @pytest.mark.parametrize(
-        'corpus_id',
-        [
-            pytest.param(
-                corpus_id,
-                marks=pytest.mark.xfail(
-                    strict=True,
-                    reason='pending syml-x0m.5.8.25 corpus chain - remove when this entry passes',
-                ),
-            )
-            if corpus_id in _PENDING_CORPUS_ROUND_TRIP_IDS
-            else corpus_id
-            for corpus_id in sorted(CORPUS)
-        ],
-    )
+    @pytest.mark.parametrize('corpus_id', sorted(CORPUS))
     def test_it_should_round_trip_every_corpus_entry_through_dumps_and_loads(self, corpus_id: str) -> None:
         value = CORPUS[corpus_id]
         assert loads(serializer.dumps(value)) == value
