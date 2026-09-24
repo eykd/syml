@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 
+import syml
 from syml import basetypes, parsers
 from syml.nodes import KeyValue
 
@@ -180,6 +181,69 @@ class TestPosFromStrIndex:
         index = text.index('x')
         assert basetypes.Pos.from_str_index(text, index) == basetypes.Pos(index, 2, 0)
 
+    def test_it_should_return_line_one_column_zero_for_empty_text(self) -> None:
+        assert basetypes.Pos.from_str_index('', 0) == basetypes.Pos(0, 1, 0)
+
+    def test_it_should_report_the_end_of_an_unterminated_final_line(self) -> None:
+        text = 'a\nb'
+        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 1)
+
+    def test_it_should_report_column_zero_past_a_trailing_newline(self) -> None:
+        text = 'a\nb\n'
+        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 0)
+
+
+def _reference_from_str_index(text: str, index: int) -> basetypes.Pos:
+    r"""Original O(n)-per-call `Pos.from_str_index` body, kept only as an equivalence oracle.
+
+    Pins the bisect-based rewrite in `basetypes.Pos.from_str_index` to the exact
+    behavior (including its bad-index and unterminated-line quirks) that shipped
+    before this module cached `_line_start_offsets` to fix the O(n^2) parse-time
+    regression.
+    """
+    parts = text.split('\n')
+    lines = [part + '\n' for part in parts[:-1]]
+    if parts[-1]:
+        lines.append(parts[-1])
+    curr_pos = 0
+    linenum = 0
+    last = len(lines) - 1
+    for linenum, line in enumerate(lines):
+        at_unterminated_end = linenum == last and not line.endswith('\n') and curr_pos + len(line) == index
+        if curr_pos + len(line) > index or at_unterminated_end:
+            return basetypes.Pos(index, linenum + 1, index - curr_pos)
+        curr_pos += len(line)
+    return basetypes.Pos(len(text), linenum + 1, 0)
+
+
+class TestPosFromStrIndexEquivalenceWithReferenceImplementation:
+    """Pins `Pos.from_str_index` to `_reference_from_str_index` across boundary cases.
+
+    Covers FR-013's positions contract: the cached bisect rewrite must be
+    byte-for-byte identical to the original linear-scan algorithm, including
+    empty text, a lone newline, a trailing newline, an unterminated final
+    line, mid-line indices, and out-of-range indices past `len(text)`.
+    """
+
+    @pytest.mark.parametrize(
+        'text',
+        [
+            '',
+            'a',
+            '\n',
+            'a\n',
+            'a\nb',
+            'a\nb\n',
+            'ab\n\ncd',
+            '\n\n\n',
+            'a: b\u2028c\nx: y',
+        ],
+    )
+    def test_it_should_match_the_reference_implementation_at_every_boundary_index(self, text: str) -> None:
+        candidate_indices = {0, len(text), len(text) + 5, max(len(text) // 2, 0)}
+        for index in candidate_indices:
+            assert basetypes.Pos.from_str_index(text, index) == _reference_from_str_index(text, index)
+
 
 class TestQuotedValueSpanReporting:
     """Contract 08 \u00a7Quoted-value spans.
@@ -302,3 +366,24 @@ class TestUtilsModuleDeleted:
     def test_it_should_raise_module_not_found_error(self) -> None:
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module('syml.utils')
+
+
+class TestLineStartOffsetsCaching:
+    """Regression guard for the O(n^2) parse-time bug fixed by caching `_line_start_offsets`.
+
+    `Source.from_node` calls `Pos.from_str_index` twice per parsed node, all
+    over the same `pnode.full_text` object. Before caching, each call rescanned
+    the whole document, so an n-line document did O(n) rescans of O(n) text.
+    Asserts the underlying `_line_start_offsets` cache is only ever *missed*
+    a handful of times while parsing a document with thousands of nodes,
+    proving the per-node work is O(1) amortized rather than O(n).
+    """
+
+    def test_it_should_amortize_line_offset_computation_across_thousands_of_nodes(self) -> None:
+        text = ''.join(f'- item{i}\n' for i in range(8000))
+        basetypes._line_start_offsets.cache_clear()  # noqa: SLF001
+        result = syml.loads(text)
+        assert len(result) == 8000
+        info = basetypes._line_start_offsets.cache_info()  # noqa: SLF001
+        assert info.misses <= 2
+        assert info.hits >= 8000

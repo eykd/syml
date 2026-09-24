@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +24,26 @@ type SymlData = str | list[SymlData] | dict[str, SymlData]
 SymlInput = str | list[Any] | dict[str, Any]
 
 
+@lru_cache(maxsize=4)
+def _line_start_offsets(text: str) -> tuple[tuple[int, ...], bool]:
+    r"""Return per-line start offsets in `text`, plus whether the last line lacks a trailing ``\n``.
+
+    Cached (keyed on `text` itself, small `maxsize`) because `Pos.from_str_index`
+    is called twice per parsed node from `Source.from_node` over the same
+    `pnode.full_text` object: without caching, a document with O(n) nodes
+    recomputed this O(n) scan on every call, making parsing O(n^2) overall.
+
+    Mirrors the line-splitting semantics `Pos.from_str_index` has always had:
+    counts lines by ``\n`` only (SYML §13.3), and a trailing ``\n`` (or empty
+    `text`) does not start a new, separately-addressable line.
+    """
+    starts = [0, *(match.end() for match in re.finditer('\n', text))]
+    if text == '' or text.endswith('\n'):
+        starts.pop()
+    ends_without_newline = bool(starts) and not text.endswith('\n')
+    return tuple(starts), ends_without_newline
+
+
 @dataclass(slots=True, frozen=True)
 class Pos:
     """A position within a source file"""
@@ -36,19 +58,21 @@ class Pos:
 
         Counts lines by splitting on ``\n`` only (SYML §13.3): other Unicode
         line-break characters (e.g. U+2028) do not terminate a line.
+
+        Resolves the line via a cached, O(log n) bisect over `text`'s line
+        start offsets (see `_line_start_offsets`) rather than rescanning
+        `text` on every call.
         """
-        parts = text.split('\n')
-        lines = [part + '\n' for part in parts[:-1]]
-        if parts[-1]:
-            lines.append(parts[-1])
-        curr_pos = 0
-        linenum = 0
-        last = len(lines) - 1
-        for linenum, line in enumerate(lines):
-            at_unterminated_end = linenum == last and not line.endswith('\n') and curr_pos + len(line) == index
-            if curr_pos + len(line) > index or at_unterminated_end:
-                return cls(index, linenum + 1, index - curr_pos)
-            curr_pos += len(line)
+        starts, ends_without_newline = _line_start_offsets(text)
+        if not starts:
+            return cls(len(text), 1, 0)
+        linenum = bisect_right(starts, index) - 1
+        line_start = starts[linenum]
+        is_last_line = linenum == len(starts) - 1
+        line_len = (starts[linenum + 1] - line_start) if not is_last_line else (len(text) - line_start)
+        at_unterminated_end = is_last_line and ends_without_newline and line_start + line_len == index
+        if line_start + line_len > index or at_unterminated_end:
+            return cls(index, linenum + 1, index - line_start)
         return cls(len(text), linenum + 1, 0)
 
 
