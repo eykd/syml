@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -52,23 +52,6 @@ class Pos:
         return cls(len(text), linenum + 1, 0)
 
 
-class Line(NamedTuple):
-    """A single line of normalized text, its starting index, and its 1-based line number."""
-
-    text: str
-    start: int
-    number: int
-
-
-def pos_at(line: Line, offset: int) -> Pos:
-    """Lift a line-local `offset` to a normalized `Pos` (Contract 01).
-
-    Callers pass the result through `PositionMap.to_original` before it
-    reaches a `Source` or `ParseError`.
-    """
-    return Pos(line.start + offset, line.number, offset)
-
-
 def map_pos(pos: Pos, position_map: PositionMap | None) -> Pos:
     """Translate `pos` through `position_map.to_original`, or return it unchanged when there is no map.
 
@@ -94,25 +77,15 @@ class Source:
     def from_node(
         cls,
         pnode: PNode,
-        line: Line | None = None,
-        position_map: PositionMap | None = None,
         filename: StrPath | None = None,
     ) -> Source:
-        """Build a Source from the given PNode, filename, and line value.
+        """Build a Source from the given PNode and filename.
 
-        When `line` and `position_map` are given (Contract 08), each endpoint
-        is built as `position_map.to_original(pos_at(line, offset))`, so the
-        resulting positions land in the caller's original-document
-        coordinates (BOM, CRLF, etc.) rather than the normalized text.
-        Otherwise, falls back to `Pos.from_str_index` over `pnode.full_text`.
+        Positions are computed via `Pos.from_str_index` over `pnode.full_text`
+        (normalized-text coordinates). Callers that need original-text
+        coordinates (Contract 08, FR-013, R-02) re-anchor the resulting
+        `Source` through `PositionMap.to_original_source` afterward.
         """
-        if line is not None and position_map is not None:
-            return cls(
-                filename=filename,
-                start=position_map.to_original(pos_at(line, pnode.start)),
-                end=position_map.to_original(pos_at(line, pnode.end)),
-                text=pnode.text,
-            )
         return cls(
             filename=filename,
             start=Pos.from_str_index(pnode.full_text, pnode.start),
