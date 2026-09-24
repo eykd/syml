@@ -16,8 +16,6 @@ from .preprocess import preprocess
 from .utils import get_line_text
 
 if TYPE_CHECKING:  # pragma: nocover
-    from parsimonious.nodes import Node as PNode
-
     from .basetypes import StrPath
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
     from .preprocess import PositionMap
@@ -94,11 +92,11 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return all non-null children."""
         return [c for c in children if c is not None]
 
-    def visit_blank(self, node: PNode, children: SymlNodes) -> None:  # noqa: ARG002
+    def visit_blank(self, node: Node, children: SymlNodes) -> None:  # noqa: ARG002
         """Visit a blank."""
         return
 
-    def visit_line(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
+    def visit_line(self, node: Node, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a line."""
         _indent, value, _eol = children
         if value is not None:
@@ -108,7 +106,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             return value
         return None
 
-    def generic_visit(self, node: PNode, children: OptionalSymlNodes) -> SymlNodes | SymlNode | None:  # type: ignore[override]  # noqa: ARG002
+    def generic_visit(self, node: Node, children: OptionalSymlNodes) -> SymlNodes | SymlNode | None:  # type: ignore[override]  # noqa: ARG002
         """Visit a generic node."""
         nodes = self.reduce_children(children)
         if not nodes:
@@ -118,11 +116,11 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         else:  # pragma: nocover  # noqa: RET505
             return nodes
 
-    def visit_text(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
+    def visit_text(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Return a text leaf node."""
         return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
-    def visit_single_quoted(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:
+    def visit_single_quoted(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:
         """Decode a single-quoted inline value (D2).
 
         Parsimonious collapses the `quoted_value = single_quoted` alias, so
@@ -133,7 +131,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return self.visit_quoted_value(node, children)
 
     def _malformed_quoted_string(
-        self, pnode: PNode, *, escape: str | None, code_point: int | None
+        self, pnode: Node, *, escape: str | None, code_point: int | None
     ) -> MalformedQuotedStringError:
         """Build a `MalformedQuotedStringError` anchored at `pnode`'s position.
 
@@ -150,7 +148,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             code_point=code_point,
         )
 
-    def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
+    def visit_quoted_value(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
 
         `decode_double_quoted` is position-free (Contract 04), so the
@@ -172,11 +170,11 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         leaf.source = dataclasses.replace(source, text=text)
         return leaf
 
-    def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
+    def visit_key(self, node: Node, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
         """Return a key leaf node."""
         return nodes.KeyLeafNode(pnode=node, filename=self.filename)
 
-    def visit_comment(self, node: PNode, children: SymlNodes) -> nodes.Comment:
+    def visit_comment(self, node: Node, children: SymlNodes) -> nodes.Comment:
         """Visit a comment node.
 
         The trailing `text?` is optional (FR-009): a comment-only line whose
@@ -189,13 +187,13 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         text_pnode = text.pnode if text is not None else Node(node.expr, node.full_text, node.end, node.end)
         return nodes.Comment(pnode=text_pnode, filename=self.filename)
 
-    def visit_indent(self, node: PNode, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
+    def visit_indent(self, node: Node, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
         """Visit an indentation token."""
         return nodes.IndentNode(
             pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')), filename=self.filename
         )
 
-    def visit_data_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
+    def visit_data_key_value(self, node: Node, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value whose data is unquoted text.
 
         The quote-guard rule (§4.1, R-10): `data` beginning with `'` or `"` means
@@ -212,18 +210,18 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             section.incorporate_node(value)
         return section
 
-    def visit_quoted_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
+    def visit_quoted_key_value(self, node: Node, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value at an inline quoted position (D2)."""
         section, _ws, value, _trailing = children
         section.incorporate_node(value)
         return section
 
-    def visit_section(self, node: PNode, children: SymlNodes) -> nodes.KeyValue:
+    def visit_section(self, node: Node, children: SymlNodes) -> nodes.KeyValue:
         """Visit a key/value section."""
         key, _ = children
         return nodes.KeyValue(pnode=node, key=key, filename=self.filename)  # type: ignore[arg-type]
 
-    def visit_value_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
+    def visit_value_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item carrying an inline value."""
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
@@ -232,11 +230,11 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             li.incorporate_node(value)
         return li
 
-    def visit_guard_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
+    def visit_guard_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
         """Visit a bare list item whose value comes from a nested block."""
         return nodes.ListItem(pnode=node, filename=self.filename)
 
-    def visit_lines(self, node: PNode, children: OptionalSymlNodes) -> nodes.Root:
+    def visit_lines(self, node: Node, children: OptionalSymlNodes) -> nodes.Root:
         """Visit the lines within a SYML document."""
         root = nodes.Root(pnode=node, filename=self.filename)
         current: SymlNode = root
@@ -249,7 +247,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         return root
 
 
-def find_first(node: PNode, expr_name: str) -> PNode:
+def find_first(node: Node, expr_name: str) -> Node:
     """Depth-first search of `node` and its descendants for the first with a matching `expr_name`.
 
     Parsimonious's `Node` has no such method; Contract 05 §The third-party
