@@ -71,6 +71,18 @@ def pos_at(line: Line, offset: int) -> Pos:
     return Pos(line.start + offset, line.number, offset)
 
 
+def map_pos(pos: Pos, position_map: PositionMap | None) -> Pos:
+    """Translate `pos` through `position_map.to_original`, or return it unchanged when there is no map.
+
+    The one `raw Pos -> conditionally re-anchored Pos` step shared by every
+    error-position construction site that has only a bare `Pos` (not a whole
+    `Source`) to re-anchor onto the caller's original text (Contract 08,
+    FR-013, R-02, US8). `Source`-shaped values go through
+    `PositionMap.to_original_source` instead.
+    """
+    return pos if position_map is None else position_map.to_original(pos)
+
+
 @dataclass(slots=True, repr=False, frozen=True)
 class Source:
     """A line within a source file"""

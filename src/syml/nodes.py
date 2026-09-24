@@ -10,7 +10,7 @@ if TYPE_CHECKING:  # pragma: nocover
 
     from .preprocess import PositionMap
 
-from .basetypes import Pos, Source, StrPath
+from .basetypes import Pos, Source, StrPath, map_pos
 from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
 from .utils import get_line_text
 
@@ -89,9 +89,7 @@ class SymlNode:
         caller's original text.
         """
         pnode = node.pnode
-        pos = Pos.from_str_index(pnode.full_text, pnode.start)
-        if self.position_map is not None:
-            pos = self.position_map.to_original(pos)
+        pos = map_pos(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
         line = get_line_text(pnode.full_text, pos.line)
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 
