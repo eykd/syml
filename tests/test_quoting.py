@@ -68,3 +68,12 @@ class TestDiagnoseMalformed:
         """No defect found before end of line means merely unterminated, for either quote style (US6.9)."""
         assert quoting.diagnose_malformed('"unterminated') is None
         assert quoting.diagnose_malformed("'a''") is None
+
+    def test_it_should_skip_valid_escapes_and_still_report_unterminated(self) -> None:
+        r"""A valid `\n` or complete `A` escape is skipped whole before hitting end of line."""
+        assert quoting.diagnose_malformed('"a\\n unterminated') is None
+        assert quoting.diagnose_malformed('"a\\u0041 unterminated') is None
+
+    def test_it_should_report_a_dangling_backslash_at_end_of_line(self) -> None:
+        r"""A trailing `\` with nothing after it is its own defect: `escape == '\\'`."""
+        assert quoting.diagnose_malformed('"abc\\') == '\\'

@@ -39,6 +39,10 @@ _SIMPLE_ESCAPES = {
 }
 
 _HEX_ESCAPE_WIDTHS = {'u': 4, 'U': 8}
+_HEX_DIGITS = frozenset('0123456789abcdefABCDEF')
+
+_MAX_CODE_POINT = 0x10FFFF
+_SURROGATE_RANGE = range(0xD800, 0xE000)
 
 
 def decode_double_quoted(raw: str) -> str:
@@ -60,7 +64,11 @@ def decode_double_quoted(raw: str) -> str:
             continue
         width = _HEX_ESCAPE_WIDTHS[escape_char]
         hex_digits = body[index + 2 : index + 2 + width]
-        result.append(chr(int(hex_digits, 16)))
+        code_point = int(hex_digits, 16)
+        if code_point > _MAX_CODE_POINT or code_point in _SURROGATE_RANGE:
+            escape = f'\\{escape_char}{hex_digits}'
+            raise QuotedStringDefect(escape, code_point)
+        result.append(chr(code_point))
         index += 2 + width
     return ''.join(result)
 
@@ -70,6 +78,34 @@ def diagnose_malformed(text: str) -> str | None:
 
     A left-to-right scan from the opening quote for the first invalid or
     incomplete escape. Returns that escape's text, or `None` if the value
-    is merely unterminated.
+    is merely unterminated. Single-quoted values have no escapes, so the
+    only reachable diagnosis for them is unterminated (`None`).
     """
-    raise NotImplementedError
+    if not text.startswith('"'):
+        return None
+    index = 1
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char != '\\':
+            index += 1
+            continue
+        if index + 1 >= length:
+            return '\\'
+        escape_char = text[index + 1]
+        if escape_char in _SIMPLE_ESCAPES:
+            index += 2
+            continue
+        if escape_char in _HEX_ESCAPE_WIDTHS:
+            width = _HEX_ESCAPE_WIDTHS[escape_char]
+            digits = ''
+            pos = index + 2
+            while len(digits) < width and pos < length and text[pos] in _HEX_DIGITS:
+                digits += text[pos]
+                pos += 1
+            if len(digits) == width:
+                index = pos
+                continue
+            return f'\\{escape_char}{digits}'
+        return f'\\{escape_char}'
+    return None
