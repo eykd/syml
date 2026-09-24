@@ -337,6 +337,19 @@ class TestSimpleParserFunction:
             'false',
         ]
 
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('key:\n  first\n   indented\n  back', {'key': 'first\n  indented\nback'}),
+            ('hello\n world\nagain', 'hello\n  world\nagain'),
+        ],
+    )
+    def test_it_should_preserve_indentation_deeper_than_the_continuation_baseline(
+        self, text: str, expected: object
+    ) -> None:
+        """A continuation line indented deeper than the value's baseline keeps its extra spaces (§5.3, D11, todo.txt A9)."""
+        assert syml.loads(text) == expected
+
     def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
         """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
 
