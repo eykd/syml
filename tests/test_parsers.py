@@ -141,6 +141,18 @@ class TestSymlParser:
         result = parser.parse(text)
         assert result.as_data() == {'key': {'nested': 'content'}}
 
+    def test_it_should_drop_a_zero_length_inline_value_after_a_list_item_dash(self) -> None:
+        """D6, §9.3: ``-␠`` lexes with an empty inline ``text`` child.
+
+        A zero-length *unquoted* inline value is normalized to "no inline
+        value at all", identical to ``-`` with nothing after it -- the list
+        item node stays open and accepts the following nested block instead
+        of treating the empty text as the value.
+        """
+        text = '- \n  x'
+        result = syml.loads(text)
+        assert result == ['x']
+
     def test_it_should_lex_ambiguous_colon_and_dash_forms_as_data_scalars(self, parser: parsers.SymlParser) -> None:
         """§7.6 lexing-outcomes table: colon/dash forms that fall through to ``data``.
 
