@@ -320,6 +320,18 @@ class TestSymlParser:
         with pytest.raises(exceptions.OutOfContextNodeError):
             parser.parse(text)
 
+    def test_it_should_decode_a_double_quoted_inline_key_value(self, parser: parsers.SymlParser) -> None:
+        """`key: "a"` is an inline position, so the double quotes decode too (US6, §4.7).
+
+        Mirrors `TestWhereQuotingIsRecognized.test_it_should_decode_a_single_quoted_inline_key_value`
+        in tests/test_quoting.py, but for double quotes. The grammar's `quoted_value` rule
+        currently only defines `single_quoted`, so this is expected to fail with
+        `MalformedQuotedStringError` from the `data_key_value` quote-guard (R-10) until
+        a `double_quoted` grammar production is added.
+        """
+        result = parser.parse('key: "a"')
+        assert result.as_data() == {'key': 'a'}
+
 
 class TestSimpleParserFunction:
     def test_it_should_parse_a_simple_list(self) -> None:
