@@ -164,6 +164,16 @@ class Root(ContainerNode):
         """Check if a child node may be added."""
         return not self.children and (node.level is None or (self.level is not None and node.level >= self.level))
 
+    def as_data(self) -> Any:  # noqa: ANN401
+        """Return the root as primitive data types.
+
+        A childless `Root` (empty or comment-only document) yields `''`
+        rather than `None` (Contract 03 §Absent values, FR-005).
+        """
+        if self.children:
+            return self.children[0].as_data()
+        return ''
+
 
 class List(ParentNode):
     """A list node"""
