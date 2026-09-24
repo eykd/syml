@@ -97,7 +97,7 @@ def split_lines_lf(text: str) -> list[str]:
     Unlike `str.splitlines()`, this does not treat U+2028, U+2029, U+0085,
     U+000B, U+000C, or U+001C-U+001E as line terminators.
     """
-    raise NotImplementedError
+    return text.split('\n')
 
 
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
