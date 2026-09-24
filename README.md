@@ -46,3 +46,34 @@ And the resulting data structure::
 
 All leaf values in SYML are just plain ol' strings. No ints, floats, bools, or
 nasty remote code execution bugs!
+
+
+Serializing
+===========
+
+`syml.dumps` and `syml.dump` serialize plain `str`/`list`/`dict` data back to
+SYML text, such that `loads(dumps(x)) == x`:
+
+``` python
+>>> import syml
+>>> syml.dumps({'foo': ['bar', 'baz']})
+"foo:\n  - bar\n  - baz\n"
+```
+
+``` python
+>>> with open('out.syml', 'w', encoding='utf-8') as f:
+...     syml.dump({'foo': ['bar', 'baz']}, f)
+```
+
+The output format is an implementation choice, not part of the SYML
+conformance requirements: two-space indentation, no blank lines, exactly one
+trailing newline, keys written in insertion order, and single quotes
+preferred whenever quoting is required. `dumps` raises `TypeError` for
+anything that isn't `str`, `list`, or `dict` (including a non-`str` mapping
+key), and `UnrepresentableValueError` for a value with no SYML encoding.
+
+`dump` writes through the file object's own codec and does not check it, so
+always open the handle with `encoding='utf-8'` — SYML documents are UTF-8.
+
+Upgrading from 0.6.2? See [CHANGELOG.md](CHANGELOG.md) for every user-visible
+change.
