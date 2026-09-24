@@ -45,8 +45,10 @@ class Pos:
             lines.append(parts[-1])
         curr_pos = 0
         linenum = 0
+        last = len(lines) - 1
         for linenum, line in enumerate(lines):
-            if curr_pos + len(line) > index:
+            at_unterminated_end = linenum == last and not line.endswith('\n') and curr_pos + len(line) == index
+            if curr_pos + len(line) > index or at_unterminated_end:
                 return cls(index, linenum + 1, index - curr_pos)
             curr_pos += len(line)
         return cls(len(text), linenum + 1, 0)

@@ -271,15 +271,30 @@ class TextLeafNode(SymlNode):
     baseline: int | None = field(default=0)
 
     def as_source(self) -> Source:
-        """Return this node as primitive data types with Source objects for strings."""
-        source = self.source
-        for child in self.children:
-            source += child.as_source()
-        return source
+        """Return this node's Source, spanning through the last continuation line (Contract 08).
+
+        `start` stays at this node's own first character; `end` moves to the
+        last accepted continuation's end; `text` mirrors `as_data()`,
+        including indentation preserved past the baseline (D11), so
+        `str(node.as_source()) == node.as_data()` holds.
+        """
+        tip = self.get_tip()
+        return Source(filename=self.source.filename, start=self.source.start, end=tip.source.end, text=self.as_data())
 
     def as_data(self) -> str:
-        """Return this node as primitive types."""
-        return '\n'.join([str(self.source)] + [c.as_data() for c in self.children])
+        """Return this node as primitive types, preserving indentation past the baseline (D11).
+
+        Every accepted child is a `TextLeafNode` with a level fixed by the
+        grammar and a baseline fixed by `add_node` on first acceptance
+        (never `None` once a child exists), so both are cast rather than
+        branched on.
+        """
+        parts = [str(self.source)]
+        for child in self.children:
+            indent = ' ' * max(0, cast(int, child.level) - cast(int, self.baseline))
+            first, sep, rest = child.as_data().partition('\n')
+            parts.append(f'{indent}{first}{sep}{rest}')
+        return '\n'.join(parts)
 
     def can_add_node(self, node: SymlNode) -> bool:
         """Check if a child node can be added (§5.3, D11, §9.3)."""
@@ -292,9 +307,16 @@ class TextLeafNode(SymlNode):
         return node.level >= self.baseline
 
     def add_node(self, node: SymlNode) -> SymlNode:
-        """Add a continuation child, fixing the baseline on first acceptance (D11)."""
+        """Add a continuation child, fixing and propagating the baseline (D11).
+
+        The baseline is fixed once, on the value's first accepted
+        continuation, and propagated unchanged down the rest of the chain so
+        every descendant measures its extra indentation against the same
+        original baseline rather than its own (uninitialized) default.
+        """
         if self.baseline is None:
             self.baseline = node.level
+        cast(TextLeafNode, node).baseline = self.baseline
         super().add_node(node)
         return self
 
