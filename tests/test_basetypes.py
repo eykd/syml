@@ -101,6 +101,18 @@ class TestSource:
         with pytest.raises(TypeError):
             source + 5  # type: ignore[operator]
 
+    def test_it_should_not_equal_non_str_operands_by_stringified_value(self) -> None:
+        """Contract 08 §Equality and hashing (§10.3, R-07).
+
+        `__eq__` must compare with `str`s and `Source`s only, returning
+        `NotImplemented` for any other type instead of falling back to
+        `str(self) == str(other)`. A `Source('1')` must not equal the `int`
+        `1`, even though `str(1) == '1'`.
+        """
+        source = basetypes.Source.from_text('1', '1')
+        assert source != 1
+        assert 1 != source  # noqa: SIM300
+
 
 class TestPosFromStrIndex:
     @pytest.fixture
