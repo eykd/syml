@@ -223,27 +223,41 @@ def _mapping_value_needs_quoting(value: str) -> bool:
         return True
     if value != value.strip(' \t'):
         return True
-    if '\n' in value or '\r' in value or _CONTROL_CHAR_PATTERN.search(value):
+    if _has_line_break_or_control(value):
         return True
     return value[0] in ("'", '"')
+
+
+def _has_line_break_or_control(value: str) -> bool:
+    """Return whether `value` has a newline, carriage return, or control character."""
+    return '\n' in value or '\r' in value or bool(_CONTROL_CHAR_PATTERN.search(value))
+
+
+def _single_quote(value: str) -> str:
+    """Wrap `value` in single quotes, doubling any embedded single quote."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _double_quote_escaped(value: str) -> str:
+    """Wrap `value` in double quotes, escaping via `_RELEX_ESCAPES`."""
+    escaped = ''.join(_RELEX_ESCAPES.get(char, char) for char in value)
+    return f'"{escaped}"'
 
 
 def _quote_mapping_value(value: str) -> str:
     """Apply §11.2.1 rules B/C/E/F to a mapping's inline value."""
     if not _mapping_value_needs_quoting(value):
         return value
-    if '\n' in value or '\r' in value or _CONTROL_CHAR_PATTERN.search(value):
-        escaped = ''.join(_RELEX_ESCAPES.get(char, char) for char in value)
-        return f'"{escaped}"'
-    return "'" + value.replace("'", "''") + "'"
+    if _has_line_break_or_control(value):
+        return _double_quote_escaped(value)
+    return _single_quote(value)
 
 
 def _quote_list_item_value(value: str) -> str:
     """Apply §11.2.1 rule D, and its list-item-mapping re-lex exception, to a list item's value."""
     if not _structure_matches(value):
         return value
-    single_quoted = "'" + value.replace("'", "''") + "'"
+    single_quoted = _single_quote(value)
     if _relexes_as_literal(single_quoted):
         return single_quoted
-    escaped = ''.join(_RELEX_ESCAPES.get(char, char) for char in value)
-    return f'"{escaped}"'
+    return _double_quote_escaped(value)
