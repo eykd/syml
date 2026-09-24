@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import importlib.metadata
 import subprocess  # noqa: S404
 import sys
 import warnings
@@ -18,11 +17,6 @@ pytestmark = pytest.mark.acceptance
 scenarios('US09-release-readiness.feature')
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
-
-@given('the repository at the end of this feature', target_fixture='repo_root')
-def given_repo(context: dict[str, Any]) -> Path:
-    return _REPO_ROOT
 
 
 @given('the repository', target_fixture='repo_root')
@@ -59,16 +53,6 @@ def given_plan() -> str:
 @given('the constitution', target_fixture='constitution_text')
 def given_constitution() -> str:
     return (_REPO_ROOT / '.specify' / 'memory' / 'constitution.md').read_text(encoding='utf-8')
-
-
-@when('the project version metadata is read', target_fixture='project_version')
-def when_project_version_read() -> str:
-    return importlib.metadata.version('syml')
-
-
-@then('it declares "1.0.0"')
-def then_version_is_1_0_0(project_version: str) -> None:
-    assert project_version == '1.0.0'
 
 
 @when('its header is read', target_fixture='spec_header')
@@ -219,23 +203,3 @@ def then_constitution_check_lists_breaks(constitution_check_section: str) -> Non
     assert 'binary streams' in constitution_check_section or 'IO[bytes]' in constitution_check_section
     assert '1.0.0' in constitution_check_section
     assert 'rejected' in constitution_check_section.lower()
-
-
-@when('it is inspected for release artifacts', target_fixture='release_artifacts')
-def when_inspected_for_release_artifacts(repo_root: Path) -> dict[str, Any]:
-    tags = subprocess.run(  # noqa: S603
-        ['git', 'tag', '--list'],  # noqa: S607
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
-    dist_dir = repo_root / 'dist'
-    dist_files = list(dist_dir.glob('*')) if dist_dir.exists() else []
-    return {'tags': tags, 'dist_files': dist_files}
-
-
-@then('no 1.0.0 tag exists and no distribution has been built or uploaded')
-def then_no_release_artifacts(release_artifacts: dict[str, Any]) -> None:
-    assert '1.0.0' not in release_artifacts['tags']
-    assert release_artifacts['dist_files'] == []

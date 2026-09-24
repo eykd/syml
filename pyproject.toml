@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -206,7 +206,6 @@ markers = [
     #         # ...
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "acceptance: pytest-bdd acceptance tests bound to specs/acceptance-specs/*.feature (run with `just acceptance`)",
-    "feature-exit: pytest-bdd acceptance scenarios true only until the 1.0.0 release tag is created (US9.1, US9.9); removed in the release commit before tagging",
 ]
 
 

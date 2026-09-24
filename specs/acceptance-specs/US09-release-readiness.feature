@@ -3,12 +3,6 @@ Feature: A release-ready main with migration notes and one conformance ledger
   and a contributor finds one statement of where the parser stands against
   the specification.
 
-  @feature-exit
-  Scenario: The project version metadata declares 1.0.0
-    Given the repository at the end of this feature
-    When the project version metadata is read
-    Then it declares "1.0.0"
-
   Scenario: The specification header is labelled version 1.0
     Given SYML-SPECIFICATION.md
     When its header is read
@@ -46,9 +40,3 @@ Feature: A release-ready main with migration notes and one conformance ledger
     Given the plan's Constitution Check section
     When it is read
     Then it lists Pos moving to original-text coordinates, load accepting binary streams, and the resulting 1.0.0 major version bump, each paired with the non-breaking alternative it rejected
-
-  @feature-exit
-  Scenario: No release artifacts exist yet
-    Given the repository at the end of this feature
-    When it is inspected for release artifacts
-    Then no 1.0.0 tag exists and no distribution has been built or uploaded

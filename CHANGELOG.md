@@ -1,7 +1,7 @@
 Changelog
 =========
 
-## 1.0.0
+## 1.0.0 (2026-09-24)
 
 Migration notes for a 0.6.2 user upgrading to 1.0.0. Every user-visible
 change from 0.6.2 is listed below, numbered to match Contract 09's audit
