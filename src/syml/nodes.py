@@ -129,6 +129,13 @@ class ContainerNode(SymlNode):
         """Check if this container can add a child node."""
         return not self.children and (node.level is None or (self.level is not None and node.level > self.level))
 
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a child node, fixing anchor_level/baseline on an attached leaf (contract 03)."""
+        if isinstance(node, TextLeafNode) and self.level is not None:
+            node.anchor_level = self.level
+            node.baseline = None if node.inline else node.level
+        return super().add_node(node)
+
 
 @dataclass(kw_only=True)
 class ParentNode(SymlNode):
