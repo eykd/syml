@@ -340,8 +340,8 @@ class TestSimpleParserFunction:
     @pytest.mark.parametrize(
         ('text', 'expected'),
         [
-            ('key:\n  first\n   indented\n  back', {'key': 'first\n  indented\nback'}),
-            ('hello\n world\nagain', 'hello\n  world\nagain'),
+            ('key:\n  first\n    indented\n  back', {'key': 'first\n  indented\nback'}),
+            ('hello\n  world\nagain', 'hello\n  world\nagain'),
         ],
     )
     def test_it_should_preserve_indentation_deeper_than_the_continuation_baseline(
