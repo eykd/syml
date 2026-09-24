@@ -171,3 +171,27 @@ class TestQuotedValueSpanReporting:
         assert source.start.index == 9
         assert source.end.index == 16
         assert original[source.start.index : source.end.index] == "'it''s'"
+
+
+class TestContinuationSpanReporting:
+    """Contract 08 §Continuation spans.
+
+    A multiline `TextLeafNode`'s `Source` keeps `start` at the value's first
+    character, moves `end` to the last accepted character, and reports `text`
+    as whatever `as_data()` returns for the same node — including the
+    indentation preserved past the baseline (Contract 03, D11) — so
+    `str(node.as_source()) == node.as_data()` holds.
+    """
+
+    def test_it_should_preserve_past_baseline_indentation_in_the_reported_span(self) -> None:
+        original = 'key:\n  first\n    indented\n  back'
+        tree = parsers.parse(original, filename='doc.syml')
+
+        data = tree.as_data()
+        source = tree.as_source()['key']
+
+        assert data == {'key': 'first\n  indented\nback'}
+        assert source.text == 'first\n  indented\nback'
+        assert str(source) == data['key']
+        assert source.start == basetypes.Pos(index=7, line=2, column=2)
+        assert source.end == basetypes.Pos(index=32, line=4, column=6)
