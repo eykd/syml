@@ -153,7 +153,6 @@ class Source:
                 end=other.end,
                 text=f'{self.text}\n{other}',
             )
-            return self + other.text
 
         raise TypeError('Tried to add invalid type to Source', type(other))
 
