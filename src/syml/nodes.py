@@ -25,6 +25,10 @@ class SymlNode:
     comments: list[Comment] = field(default_factory=list)
     children: list[SymlNode] = field(default_factory=list)
     filename: StrPath | None = field(default=None)
+    # Threaded from `SymlParser` so every node — leaf or container — can
+    # re-anchor its own `source`/error positions onto the caller's
+    # original-text coordinates (Contract 08, FR-013, R-02, US8).
+    position_map: PositionMap | None = field(default=None, repr=False)
 
     source: Source = field(init=False)
 
@@ -33,8 +37,11 @@ class SymlNode:
         if self.level is None:
             # R-11: a node's level is the 0-indexed column where its own
             # marker or content begins — its own `pnode.start`, not
-            # anything inherited from the line it's on.
+            # anything inherited from the line it's on. Derived from the
+            # NORMALIZED source, before any original-text re-anchoring below.
             self.level = self.source.start.column
+        if self.position_map is not None:
+            self.source = self.position_map.to_original_source(self.source)
 
     def as_data(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types."""
@@ -73,9 +80,18 @@ class SymlNode:
         return self.fail_to_incorporate_node(node)
 
     def fail_to_incorporate_node(self, node: SymlNode) -> NoReturn:
-        """Report a failure to incorporate a node."""
+        """Report a failure to incorporate a node, in original-text coordinates (Contract 05, 08).
+
+        `_delegate_incorporate_node` only reaches here once it has walked all
+        the way up to the root (the sole ancestor with no `parent`), so
+        `self.position_map` — threaded from the same `SymlParser` that built
+        `node` — is the right map to re-anchor this position onto the
+        caller's original text.
+        """
         pnode = node.pnode
         pos = Pos.from_str_index(pnode.full_text, pnode.start)
+        if self.position_map is not None:
+            pos = self.position_map.to_original(pos)
         line = get_line_text(pnode.full_text, pos.line)
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 
@@ -133,9 +149,9 @@ class ContainerNode(SymlNode):
     def _intermediary_for(node: SymlNode) -> ParentNode | None:
         """Return the auto-inserted Mapping/List container a bare node needs, if any (§9.4)."""
         if isinstance(node, KeyValue):
-            return Mapping(pnode=node.pnode, level=node.level, filename=node.filename)
+            return Mapping(pnode=node.pnode, level=node.level, filename=node.filename, position_map=node.position_map)
         if isinstance(node, ListItem):
-            return List(pnode=node.pnode, level=node.level, filename=node.filename)
+            return List(pnode=node.pnode, level=node.level, filename=node.filename, position_map=node.position_map)
         return None
 
     def can_add_node(self, node: SymlNode) -> bool:
@@ -319,23 +335,18 @@ class TextLeafNode(SymlNode):
         return self
 
 
-@dataclass(kw_only=True)
 class KeyLeafNode(SymlNode):
     """A leaf node containing a key value."""
 
-    # `pnode.start` is document-absolute under the `lines = line*` grammar
-    # (not line-local), so `key` derives original-text coordinates the way
-    # `visit_quoted_value` does rather than through `Source.from_node`'s
-    # `line`/`position_map` branch (Contract 08, FR-013, R-02, US8).
-    position_map: PositionMap | None = field(default=None, repr=False)
-
     @property
     def key(self) -> Source:
-        """Return a Source object representing the key, in original-text coordinates."""
-        source = Source.from_node(self.pnode, filename=self.filename)
-        if self.position_map is not None:
-            source = self.position_map.to_original_source(source)
-        return source
+        """Return a Source object representing the key, in original-text coordinates.
+
+        `self.source` is already re-anchored onto original-text coordinates
+        by the base class's `__post_init__` when `position_map` is set
+        (Contract 08, FR-013, R-02, US8).
+        """
+        return self.source
 
     def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""

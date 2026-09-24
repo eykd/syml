@@ -157,10 +157,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         `source`) must stay derived from the NORMALIZED column, so R-11
         indentation logic keeps working on BOM/CRLF documents.
         """
-        leaf = nodes.TextLeafNode(pnode=node, filename=self.filename)
-        if self.position_map is not None:
-            leaf.source = self.position_map.to_original_source(leaf.source)
-        return leaf
+        return nodes.TextLeafNode(pnode=node, filename=self.filename, position_map=self.position_map)
 
     def visit_quoted_value(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
@@ -175,11 +172,10 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             raise _malformed_quoted_string(
                 self.filename, node, escape=defect.escape, code_point=defect.code_point
             ) from defect
-        leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
-        source = leaf.source
-        if self.position_map is not None:
-            source = self.position_map.to_original_source(source)
-        leaf.source = dataclasses.replace(source, text=text)
+        leaf = nodes.TextLeafNode(
+            pnode=node, filename=self.filename, quoted=True, inline=True, position_map=self.position_map
+        )
+        leaf.source = dataclasses.replace(leaf.source, text=text)
         return leaf
 
     def visit_key(self, node: Node, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
@@ -197,7 +193,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """
         _, text = children
         text_pnode = text.pnode if text is not None else Node(node.expr, node.full_text, node.end, node.end)
-        return nodes.Comment(pnode=text_pnode, filename=self.filename)
+        return nodes.Comment(pnode=text_pnode, filename=self.filename, position_map=self.position_map)
 
     def visit_indent(self, node: Node, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
         """Visit an indentation token."""
@@ -231,22 +227,22 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     def visit_section(self, node: Node, children: SymlNodes) -> nodes.KeyValue:
         """Visit a key/value section."""
         key, _ = children
-        return nodes.KeyValue(pnode=node, key=key, filename=self.filename)  # type: ignore[arg-type]
+        return nodes.KeyValue(pnode=node, key=key, filename=self.filename, position_map=self.position_map)  # type: ignore[arg-type]
 
     def visit_value_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item carrying an inline value."""
         _, _, value = children
-        li = nodes.ListItem(pnode=node, filename=self.filename)
+        li = nodes.ListItem(pnode=node, filename=self.filename, position_map=self.position_map)
         _incorporate_inline_value(li, value)
         return li
 
     def visit_guard_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
         """Visit a bare list item whose value comes from a nested block."""
-        return nodes.ListItem(pnode=node, filename=self.filename)
+        return nodes.ListItem(pnode=node, filename=self.filename, position_map=self.position_map)
 
     def visit_lines(self, node: Node, children: OptionalSymlNodes) -> nodes.Root:
         """Visit the lines within a SYML document."""
-        root = nodes.Root(pnode=node, filename=self.filename)
+        root = nodes.Root(pnode=node, filename=self.filename, position_map=self.position_map)
         current: SymlNode = root
 
         for child in self.reduce_children(children):
