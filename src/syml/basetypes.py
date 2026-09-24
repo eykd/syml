@@ -25,7 +25,7 @@ type SymlData = str | list[SymlData] | dict[str, SymlData]
 SymlInput = str | list[Any] | dict[str, Any]
 
 # Scoped, per-parse cache for `_line_start_offsets` (see below): `None` outside
-# a `_line_offset_cache_scope()` block, and a fresh `dict` for the duration of
+# a `line_offset_cache_scope()` block, and a fresh `dict` for the duration of
 # one `parsers.parse()` call otherwise. Keyed by `id(text)` rather than `text`
 # itself so the cache never pins a document's text alive: the same `text`
 # object is held alive for the whole scope anyway (by the parse tree that owns
@@ -36,7 +36,7 @@ _line_offset_cache: ContextVar[dict[int, tuple[tuple[int, ...], bool]] | None] =
 
 
 @contextmanager
-def _line_offset_cache_scope() -> Iterator[None]:
+def line_offset_cache_scope() -> Iterator[None]:
     """Scope `_line_start_offsets`'s cache to one parse (sp:security-review, harden cycle 2, syml-x0m.6.2).
 
     A process-global `lru_cache` keyed on document text pinned up to 4 full
@@ -57,7 +57,7 @@ def _line_offset_cache_scope() -> Iterator[None]:
 def _line_start_offsets(text: str) -> tuple[tuple[int, ...], bool]:
     r"""Return per-line start offsets in `text`, plus whether the last line lacks a trailing ``\n``.
 
-    Cached for the duration of the enclosing `_line_offset_cache_scope()` (if
+    Cached for the duration of the enclosing `line_offset_cache_scope()` (if
     any), keyed on `id(text)`, because `Pos.from_str_index` is called twice
     per parsed node from `Source.from_node` over the same `pnode.full_text`
     object: without caching, a document with O(n) nodes recomputed this O(n)

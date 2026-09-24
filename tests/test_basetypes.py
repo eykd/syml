@@ -382,7 +382,7 @@ class TestLineStartOffsetsCaching:
     up to 4 full parsed documents in memory for the life of the process (a
     MAJOR untrusted-input memory-retention finding from the syml-x0m.6.1
     remediation review). It is now scoped to a single `parsers.parse()` call
-    via `basetypes._line_offset_cache_scope`, so these guards assert both the
+    via `basetypes.line_offset_cache_scope`, so these guards assert both the
     O(1)-amortized-per-node behavior *and* that nothing process-global remains.
     """
 
