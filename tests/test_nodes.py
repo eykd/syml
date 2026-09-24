@@ -131,3 +131,20 @@ class TestAutomaticContainerCreation:
         intermediary = root.children[0]
         assert isinstance(intermediary, nodes.Mapping)
         assert intermediary.source.filename == kv.source.filename
+
+
+class TestDirectTestsForPreviouslyPragmadBranches:
+    """Contract 03 §Coverage without pragmas (red-team pass 23).
+
+    `Comment.as_data`/`can_add_node` are pragma'd dead code: the per-line
+    visitor loop routes comments to `tip.comments` (Contract 02), so no
+    `loads` input ever calls them. The contract's disposition deletes both
+    overrides, leaving `Comment` inherit `TextLeafNode.as_data` (the joined
+    source text) instead of always returning `''`.
+    """
+
+    def test_comment_as_data_is_inherited_from_text_leaf_node(self) -> None:
+        """Comment.as_data is deleted (§Coverage without pragmas); it inherits TextLeafNode's."""
+        comment = nodes.Comment(pnode=_pnode('note'))
+
+        assert comment.as_data() == 'note'
