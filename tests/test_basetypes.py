@@ -1,11 +1,13 @@
 import re
 import textwrap
+from typing import cast
 
 import pytest
 from parsimonious.expressions import Literal
 from parsimonious.nodes import Node
 
 from syml import basetypes, parsers
+from syml.nodes import KeyValue
 from syml.preprocess import PositionMap
 
 
@@ -195,3 +197,31 @@ class TestContinuationSpanReporting:
         assert str(source) == data['key']
         assert source.start == basetypes.Pos(index=7, line=2, column=2)
         assert source.end == basetypes.Pos(index=32, line=4, column=6)
+
+
+class TestUnquotedSpanReporting:
+    """Contract 08 §Original-text coordinates (FR-013, R-02, US8).
+
+    Unquoted leaf values and keys must report `Source` positions in
+    *original*-text coordinates too, not only quoted values (§9.9.11-13).
+    A BOM plus a CRLF line exercises both the BOM offset and the CRLF
+    collapse that `PositionMap.to_original` must account for.
+    """
+
+    def test_it_should_report_the_original_text_span_of_a_key_and_unquoted_value_with_bom_and_crlf(self) -> None:
+        original = '﻿key: value\r\n'
+        tree = parsers.parse(original, filename='doc.syml')
+
+        key_value = cast(KeyValue, tree.children[0].children[0])
+        key_source = key_value.key.key
+        value_source = tree.as_source()['key']
+
+        assert key_source.text == 'key'
+        assert key_source.start.index == 1
+        assert key_source.end.index == 4
+        assert original[key_source.start.index : key_source.end.index] == 'key'
+
+        assert value_source.text == 'value'
+        assert value_source.start.index == 6
+        assert value_source.end.index == 11
+        assert original[value_source.start.index : value_source.end.index] == 'value'
