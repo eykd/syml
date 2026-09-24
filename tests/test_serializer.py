@@ -20,7 +20,6 @@ _PENDING_CORPUS_ROUND_TRIP_IDS = frozenset({
     'mixed_quote_backslash',
     'looks_like_key_value',
     'contains_newline',
-    'leading_trailing_tab',
     'literal_double_quotes',
     'contains_cr',
 })
