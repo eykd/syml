@@ -550,7 +550,7 @@ class TestFindFirst:
             root         = wrapper other
             wrapper      = quoted_value / other_char
             other_char   = ~"Z"
-            quoted_value = ~"Q\d"
+            quoted_value = ~"Q\\d"
             other        = quoted_value / other_char
             """
         )

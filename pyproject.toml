@@ -190,6 +190,7 @@ addopts = [
 ]
 pythonpath = [".", "tests"]
 testpaths = ["tests"]
+filterwarnings = ["error::SyntaxWarning"]
 # Gherkin feature files, resolved against the pytest rootdir.
 bdd_features_base_dir = "specs/acceptance-specs"
 
