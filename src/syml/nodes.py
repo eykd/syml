@@ -108,22 +108,25 @@ class ContainerNode(SymlNode):
     def incorporate_node(self, node: SymlNode) -> SymlNode:
         """Incorporate the given node into this branch."""
         if self.can_add_node(node):
-            intermediary: SymlNode | None = None
-            if isinstance(node, KeyValue):
-                intermediary = Mapping(pnode=node.pnode, level=self.level, filename=node.filename)
-            elif isinstance(node, ListItem):
-                intermediary = List(pnode=node.pnode, level=self.level, filename=node.filename)
-
+            intermediary = self._intermediary_for(node)
             if intermediary is not None:
-                intermediary.level = node.level
-                intermediary = self.incorporate_node(intermediary)
-                return intermediary.incorporate_node(node)
+                incorporated = self.incorporate_node(intermediary)
+                return incorporated.incorporate_node(node)
             return super().incorporate_node(node)
         if self.parent is not None:
             return self.parent.incorporate_node(node)
         else:  # pragma: nocover  # noqa: RET505
             self.fail_to_incorporate_node(node)
             return self
+
+    @staticmethod
+    def _intermediary_for(node: SymlNode) -> ParentNode | None:
+        """Return the auto-inserted Mapping/List container a bare node needs, if any (§9.4)."""
+        if isinstance(node, KeyValue):
+            return Mapping(pnode=node.pnode, level=node.level, filename=node.filename)
+        if isinstance(node, ListItem):
+            return List(pnode=node.pnode, level=node.level, filename=node.filename)
+        return None
 
     def can_add_node(self, node: SymlNode) -> bool:
         """Check if this container can add a child node."""
