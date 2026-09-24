@@ -216,6 +216,8 @@ class Mapping(ParentNode):
         if first is not None:
             raise DuplicateKeyError(
                 'Duplicate key',
+                node.source.start,
+                node.source.text,
                 key=node.key.as_data(),
                 first_position=first.source.start,
             )

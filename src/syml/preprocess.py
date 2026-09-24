@@ -61,15 +61,20 @@ def _scan_for_tab_indentation(normalized: str) -> None:
 
     See §9.0.3, D14.
     """
-    for line in normalized.split('\n'):
+    offset = 0
+    for line_number, line in enumerate(normalized.split('\n'), start=1):
         if is_blank(line):
+            offset += len(line) + 1
             continue
         run_text = line[: len(line) - len(line.lstrip(' \t'))]
         if '\t' in run_text:
+            column = run_text.index('\t')
             raise TabIndentationError(
                 "A tab character was found in a line's leading whitespace",
-                run_text.index('\t'),
+                Pos(index=offset + column, line=line_number, column=column),
+                line,
             )
+        offset += len(line) + 1
 
 
 def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
