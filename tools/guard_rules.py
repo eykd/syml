@@ -71,7 +71,7 @@ Only use these flags when explicitly requested by the user.""",
     GuardRule(
         name='force-push',
         category='destructive-git',
-        pattern=re.compile(r'git\s+push.*(--force([^-]|$)|-f(\s|$)|--force-with-lease)'),
+        pattern=re.compile(r'git\s+push[^;&|]*(--force([^-]|$)|-f(\s|$)|--force-with-lease|\s\+\S+)'),
         message="""BLOCKED: Force push detected.
 
 Force pushing rewrites remote history and can destroy teammates' work.
@@ -103,7 +103,7 @@ POST_STRIP_RULES: tuple[GuardRule, ...] = (
     GuardRule(
         name='reset-hard',
         category='destructive-git',
-        pattern=re.compile(r'git\s+reset\s+--hard'),
+        pattern=re.compile(r'git\s+reset\b.*--hard\b'),
         message="""BLOCKED: git reset --hard detected.
 
 This command discards all uncommitted changes with no recovery path.
@@ -289,12 +289,36 @@ Instead:
 )
 
 
+_GIT_GLOBAL_OPTION = (
+    r'(?:-C\s+\S+|-c\s+\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)'
+    r'|--namespace(?:=\S+|\s+\S+)|--no-pager\b|-P\b|--bare\b|--no-replace-objects\b)'
+)
+_GIT_GLOBAL_OPTIONS_RE = re.compile(r'\bgit\b(?:\s+' + _GIT_GLOBAL_OPTION + r')+')
+
+
+def strip_git_global_options(text: str) -> str:
+    r"""Strip git global options between ``git`` and its subcommand.
+
+    Global options such as ``-C <path>``, ``-c <k=v>``, ``--git-dir=<p>``,
+    ``--work-tree=<p>``, ``--namespace=<n>``, ``--no-pager``, ``-P``,
+    ``--bare``, and ``--no-replace-objects`` can appear before the subcommand
+    and would otherwise slip a rule pattern anchored on ``git\\s+<subcommand>``.
+
+    :param text: The command text to strip.
+    :returns: The text with any git global options collapsed away, leaving
+        ``git`` immediately followed by its subcommand.
+    """
+    return _GIT_GLOBAL_OPTIONS_RE.sub('git', text)
+
+
 def normalize_command(command: str) -> str:
     """Collapse line continuations and strip leading command wrappers.
 
     Wrappers (``sudo``, ``command``, ``nohup``, ``exec``, ``time``, ``nice``
     and ``env FOO=bar``) are stripped iteratively until the string stabilizes,
-    so chained or doubled wrappers cannot hide a destructive command.
+    so chained or doubled wrappers cannot hide a destructive command. Git
+    global options between ``git`` and its subcommand are then stripped so
+    they cannot hide a dangerous subcommand flag either.
 
     :param command: The raw command string.
     :returns: The normalized command.
@@ -306,7 +330,7 @@ def normalize_command(command: str) -> str:
         result = re.sub(r'^(sudo|command|nohup|exec|time|nice)\s+', '', result)
         result = re.sub(r'^env\s+(\w+=\S+\s+)*', '', result)
         if result == prev:
-            return result
+            return strip_git_global_options(result)
 
 
 def strip_quoted_content(command: str) -> str:
@@ -534,7 +558,7 @@ def _evaluate_inner(command: str, depth: int) -> Verdict | None:
         heredoc_stripped = _HEREDOC_RE.sub('', normalized)
         dequoted = split_commands(re.sub(r'["\']', '', heredoc_stripped))
     for sub in dequoted:
-        verdict = _first_block(PRE_STRIP_RULES + PLATFORM_RULES + POST_STRIP_RULES, sub)
+        verdict = _first_block(PRE_STRIP_RULES + PLATFORM_RULES + POST_STRIP_RULES, strip_git_global_options(sub))
         if verdict is not None:
             return verdict
     return None

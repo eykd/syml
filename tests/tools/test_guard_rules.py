@@ -109,6 +109,46 @@ class TestBlockedRules:
         assert evaluate_command('git stash clearfix') is None
 
 
+class TestGlobalOptionsAndInterleavedFlags:
+    """Regression coverage for syml-x0m.6.6.
+
+    Git global options and interleaved flags between the subcommand and its
+    dangerous flag must not bypass a rule.
+    """
+
+    @pytest.mark.parametrize(
+        ('command', 'rule_id'),
+        [
+            ('git -C . reset --hard', 'reset-hard'),
+            ('git -c x=y reset --hard', 'reset-hard'),
+            ('git reset -q --hard', 'reset-hard'),
+            ('git reset HEAD --hard', 'reset-hard'),
+            ('git -C . push --force', 'force-push'),
+            ('git push origin +main', 'force-push'),
+            ('git -C . clean -fd', 'clean-force'),
+            ('git -C . branch -D foo', 'branch-force-delete'),
+            ('git "-C" . reset --hard', 'reset-hard'),
+        ],
+    )
+    def test_it_should_block_global_options_and_interleaved_flags(self, command: str, rule_id: str) -> None:
+        assert block_id(command) == rule_id
+
+    @pytest.mark.parametrize(
+        'command',
+        [
+            'git -C . status',
+            'git -c user.name=x log',
+            'git reset --soft HEAD~1',
+            'git push',
+            'git checkout -- file.py',
+            'git push && date +%s',
+            'git push origin main && echo "+1"',
+        ],
+    )
+    def test_it_should_still_allow_safe_commands_with_global_options(self, command: str) -> None:
+        assert evaluate_command(command) is None
+
+
 class TestQuoteBypass:
     """Regression coverage for syml-x0m.6.3: quoting must not bypass a rule."""
 
@@ -142,7 +182,7 @@ class TestQuoteBypass:
         assert evaluate_command(command) is None
 
     def test_it_should_fail_closed_on_unbalanced_quotes(self) -> None:
-        assert block_id('git reset "--hard') == 'reset-hard'
+        assert block_id('git branch "-D') == 'branch-force-delete'
 
     def test_it_should_drop_a_message_flag_value_at_the_end_of_the_command(self) -> None:
         assert evaluate_command('git commit -m') is None
