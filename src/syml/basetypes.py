@@ -157,10 +157,14 @@ class Source:
         raise TypeError('Tried to add invalid type to Source', type(other))
 
     def __eq__(self, other: object) -> bool:
-        return str(self) == str(other)
+        if isinstance(other, Source):
+            return self.text == other.text
+        if isinstance(other, str):
+            return self.text == other
+        return NotImplemented
 
-    def __hash__(self) -> int:  # pragma: no cover
-        return hash(str(self))
+    def __hash__(self) -> int:
+        return hash(self.text)
 
 
 SourceStr = Source | str
