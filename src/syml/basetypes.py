@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from syml import utils
-
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
@@ -153,11 +151,15 @@ class Source:
 
     def __add__(self, other: SourceStr) -> Source:
         if isinstance(other, str):
-            lines = utils.split_lines(other, keepends=True)
+            lines = other.split('\n')  # LF only (§13.3), never splitlines
             return Source(
                 filename=self.filename,
                 start=self.start,
-                end=Pos(index=self.end.index + len(other), line=self.end.line + len(lines), column=len(lines[-1])),
+                end=Pos(
+                    index=self.end.index + 1 + len(other),  # +1: the joining '\n'
+                    line=self.end.line + len(lines),
+                    column=len(lines[-1]),
+                ),
                 text=f'{self.text}\n{other}',
             )
         if isinstance(other, Source):

@@ -86,7 +86,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             line        = indent (comment / blank / structure / data) &eol
             structure   = list_item / key_value / (section &eol)
 
-            indent      = ~"\s*"
+            indent      = ~r"\s*"
 
             blank       = &eol
             comment     = ~"(#|//+)+" text?
@@ -99,7 +99,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             quoted_key_value   = section ws? quoted_value ~" *"
             data_key_value     = section ws data
             section     = key ":"
-            key         = ~"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set)
+            key         = ~r"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set)
 
             eol         = "\n" / ~"$"
             ws          = ~" +"   # Required whitespace (spaces only; a tab does not satisfy this, see §7.5)

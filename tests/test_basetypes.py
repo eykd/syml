@@ -103,6 +103,58 @@ class TestSource:
         with pytest.raises(TypeError):
             source + 5  # type: ignore[operator]
 
+    def test_add_str_end_index_counts_the_joining_newline(self) -> None:
+        r"""Contract 08 §Source.__add__ (pass 20).
+
+        `Source.__eq__` compares by text alone, so the existing `+ '  baz'`
+        test above cannot catch a wrong `end`. Assert `.end` directly: the
+        joining `\n` inserted between `self.text` and `other` must be
+        counted in `end.index`, and line/column counting must go through
+        `str.split('\n')`, never `str.splitlines()`.
+        """
+        source = basetypes.Source(
+            filename='foo.txt',
+            start=basetypes.Pos(index=0, line=1, column=0),
+            end=basetypes.Pos(index=3, line=1, column=3),
+            text='foo',
+        )
+
+        new_source = source + 'bar'
+
+        # 3 (existing text) + 1 (joining '\n') + 3 ('bar') = 7
+        assert new_source.end == basetypes.Pos(index=7, line=2, column=3)
+
+    def test_add_str_splits_on_lf_only_not_unicode_line_separators(self) -> None:
+        """A Unicode line separator (U+2028) in `other` must not be counted as a line break."""
+        source = basetypes.Source(
+            filename='foo.txt',
+            start=basetypes.Pos(index=0, line=1, column=0),
+            end=basetypes.Pos(index=3, line=1, column=3),
+            text='foo',
+        )
+
+        other = 'a\u2028b'
+        new_source = source + other
+
+        assert new_source.end == basetypes.Pos(index=len('foo') + 1 + len(other), line=2, column=3)
+
+    def test_add_empty_str_does_not_raise(self) -> None:
+        r"""`splitlines('')` returns `[]`, so the old `lines[-1]` raised `IndexError`.
+
+        `''.split('\n')` returns `['']`, so `Source + ''` is a valid, empty
+        continuation line: one joining `\n` and no characters after it.
+        """
+        source = basetypes.Source(
+            filename='foo.txt',
+            start=basetypes.Pos(index=0, line=1, column=0),
+            end=basetypes.Pos(index=3, line=1, column=3),
+            text='foo',
+        )
+
+        new_source = source + ''
+
+        assert new_source.end == basetypes.Pos(index=4, line=2, column=0)
+
     def test_it_should_not_equal_non_str_operands_by_stringified_value(self) -> None:
         """Contract 08 §Equality and hashing (§10.3, R-07).
 
