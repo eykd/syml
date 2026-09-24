@@ -1,5 +1,6 @@
 """SYML (Simple YAML-like Markup Language) is a simple markup language with similar structure to YAML, but without all the gewgaws and folderol."""
 
+from pathlib import Path
 from typing import IO, Any
 
 from . import parsers
@@ -38,7 +39,13 @@ def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[st
 
 def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
     """Load a SYML document from a text or binary file-like object."""
-    raw = file_obj.read()
+    if filename is None:
+        name = getattr(file_obj, 'name', None)
+        filename = name if isinstance(name, str | Path) else None
+    try:
+        raw = file_obj.read()
+    except UnicodeDecodeError as err:
+        raise encoding_error(err, filename) from err
     if isinstance(raw, bytes):
         try:
             text = raw.decode('utf-8')

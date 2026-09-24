@@ -56,6 +56,21 @@ class TestLoadAcceptsTextAndBinaryStreams:
             syml.load(handle)
 
 
+class TestLoadResolvesFilenameFromFileObj:
+    """Contract 06 §`load`: `filename` defaults to `file_obj.name`; an explicit `filename` wins."""
+
+    def test_an_explicit_filename_argument_wins_over_file_obj_name(self) -> None:
+        """`load(file_obj, filename='given.syml')` uses the given name, not `file_obj.name`."""
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = 'ignored.syml'
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle, filename='given.syml')
+
+        assert 'given.syml' in exc_info.value.message
+        assert 'ignored.syml' not in exc_info.value.message
+
+
 class TestParseIsAPublicExport:
     """Contract 06 §`parse`: promoted from `syml.parsers.parse` to `syml.parse` (US5)."""
 
