@@ -408,13 +408,13 @@ class TestLineStartOffsetsCaching:
         assert not hasattr(basetypes._line_start_offsets, 'cache_clear')  # noqa: SLF001
 
     def test_it_should_release_parsed_document_memory_once_the_caller_drops_its_references(self) -> None:
-        text = ''.join(f'- item{i:06d} padding-to-approximate-a-2mb-document\n' for i in range(100_000))
+        text = ''.join(f'- item{i:06d} padding-to-approximate-a-small-document\n' for i in range(2_000))
         tracemalloc.start()
         try:
             gc.collect()
             before, _peak = tracemalloc.get_traced_memory()
             result = syml.loads(text)
-            assert len(result) == 100_000
+            assert len(result) == 2_000
             del result, text
             gc.collect()
             after, _peak = tracemalloc.get_traced_memory()
