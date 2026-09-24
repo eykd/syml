@@ -1,5 +1,7 @@
 """Tests for `syml.quoting`."""
 
+import pytest
+
 from syml import parsers, quoting
 
 
@@ -36,3 +38,33 @@ class TestDecodeDoubleQuoted:
         assert quoting.decode_double_quoted(r'"☺"') == '☺'
         assert quoting.decode_double_quoted(r'"\u2603"') == '\u2603'
         assert quoting.decode_double_quoted(r'"\U0001F600"') == '\U0001f600'
+
+
+class TestDecodeDoubleQuotedMalformed:
+    """`decode_double_quoted` raises `QuotedStringDefect` for a bad decoded code point (Contract 04)."""
+
+    def test_it_should_raise_on_a_surrogate_or_out_of_range_code_point(self) -> None:
+        r"""`\ud800` is a surrogate and `\U00110000` is above U+10FFFF \u2014 both always errors (D3, US6.6, US6.7)."""
+        with pytest.raises(quoting.QuotedStringDefect) as excinfo:
+            quoting.decode_double_quoted(r'"\ud800"')
+        assert excinfo.value.escape == '\\ud800'
+        assert excinfo.value.code_point == 0xD800
+
+        with pytest.raises(quoting.QuotedStringDefect) as excinfo:
+            quoting.decode_double_quoted(r'"\U00110000"')
+        assert excinfo.value.escape == '\\U00110000'
+        assert excinfo.value.code_point == 0x110000
+
+
+class TestDiagnoseMalformed:
+    """`diagnose_malformed` reports the first invalid escape in a quote-guard fallthrough (Contract 04)."""
+
+    def test_it_should_diagnose_the_first_invalid_or_incomplete_escape(self) -> None:
+        r"""`\x` and an incomplete `\u12` are both reported as the offending `.escape` (US6.5)."""
+        assert quoting.diagnose_malformed(r'"a\xb"') == '\\x'
+        assert quoting.diagnose_malformed(r'"a\u12"') == '\\u12'
+
+    def test_it_should_report_none_for_an_unterminated_value(self) -> None:
+        """No defect found before end of line means merely unterminated, for either quote style (US6.9)."""
+        assert quoting.diagnose_malformed('"unterminated') is None
+        assert quoting.diagnose_malformed("'a''") is None

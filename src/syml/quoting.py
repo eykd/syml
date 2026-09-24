@@ -6,7 +6,9 @@ signal. :func:`decode_double_quoted` decodes the §4.7 escape table (``\n``,
 every escape it receives is syntactically valid per the grammar.
 :func:`decode_single_quoted` strips the surrounding quotes and decodes the
 ``''`` -> one apostrophe escape (D2); backslashes stay literal.
-``diagnose_malformed`` belongs to a later US6 leaf and is not stubbed here.
+:func:`diagnose_malformed` reports the first invalid/incomplete escape in a
+candidate quoted literal that failed to match `quoted_value` (Contract 04
+§What the quote-guard reports); it is a stub pending its Green leaf.
 """
 
 from __future__ import annotations
@@ -61,3 +63,13 @@ def decode_double_quoted(raw: str) -> str:
         result.append(chr(int(hex_digits, 16)))
         index += 2 + width
     return ''.join(result)
+
+
+def diagnose_malformed(text: str) -> str | None:
+    """Diagnose why `text` failed to match `quoted_value` (Contract 04 §What the quote-guard reports).
+
+    A left-to-right scan from the opening quote for the first invalid or
+    incomplete escape. Returns that escape's text, or `None` if the value
+    is merely unterminated.
+    """
+    raise NotImplementedError
