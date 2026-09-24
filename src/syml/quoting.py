@@ -1,8 +1,9 @@
-"""Quoted-string decoding for SYML documents (§4.7, Contract 04, US6).
+r"""Quoted-string decoding for SYML documents (§4.7, Contract 04, US6).
 
 :class:`QuotedStringDefect` is a real, fully-specified module-private
-signal. :func:`decode_double_quoted` is a stub that raises
-``NotImplementedError`` until US6 implements the escape table.
+signal. :func:`decode_double_quoted` decodes the §4.7 escape table (``\n``,
+``\t``, ``\r``, ``\\``, ``\/``, ``\"``, ``\uXXXX``, ``\UXXXXXXXX``);
+every escape it receives is syntactically valid per the grammar.
 :func:`decode_single_quoted` strips the surrounding quotes only (D2); its
 ``''`` -> one apostrophe and literal-backslash handling belong to a later
 US6 leaf. ``diagnose_malformed`` belongs to a later US6 leaf and is not
@@ -27,7 +28,40 @@ def decode_single_quoted(raw: str) -> str:
     return raw[1:-1].replace("''", "'")
 
 
+_SIMPLE_ESCAPES = {
+    '\\': '\\',
+    '/': '/',
+    '"': '"',
+    'n': '\n',
+    't': '\t',
+    'r': '\r',
+}
+
+
 def decode_double_quoted(raw: str) -> str:
-    """Decode a "..." literal per the §4.7 escape table (Contract 04). Not yet implemented (US6)."""
-    message = f'decode_double_quoted is not yet implemented (US6): {raw!r}'
-    raise NotImplementedError(message)
+    """Decode a "..." literal per the §4.7 escape table (Contract 04)."""
+    body = raw[1:-1]
+    result: list[str] = []
+    index = 0
+    length = len(body)
+    while index < length:
+        char = body[index]
+        if char != '\\':
+            result.append(char)
+            index += 1
+            continue
+        escape_char = body[index + 1]
+        if escape_char in _SIMPLE_ESCAPES:
+            result.append(_SIMPLE_ESCAPES[escape_char])
+            index += 2
+            continue
+        if escape_char == 'u':
+            hex_digits = body[index + 2 : index + 6]
+            result.append(chr(int(hex_digits, 16)))
+            index += 6
+            continue
+        assert escape_char == 'U'  # noqa: S101 -- grammar guarantees only u/U reach here
+        hex_digits = body[index + 2 : index + 10]
+        result.append(chr(int(hex_digits, 16)))
+        index += 10
+    return ''.join(result)

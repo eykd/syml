@@ -1,7 +1,5 @@
 """Tests for `syml.quoting`."""
 
-import pytest
-
 from syml import parsers, quoting
 
 
@@ -27,11 +25,6 @@ class TestDecodeSingleQuoted:
 class TestDecodeDoubleQuoted:
     """`decode_double_quoted` decodes a "..." literal against the §4.7 escape table (Contract 04)."""
 
-    def test_it_should_raise_not_implemented_error(self) -> None:
-        """The escape table is not implemented yet; the stub raises `NotImplementedError`."""
-        with pytest.raises(NotImplementedError):
-            quoting.decode_double_quoted('"foo"')
-
     def test_it_should_decode_the_escape_table(self) -> None:
         """Each §4.7 escape decodes to its table result (US6)."""
         assert quoting.decode_double_quoted(r'"hello\nworld"') == 'hello\nworld'
@@ -41,4 +34,5 @@ class TestDecodeDoubleQuoted:
         assert quoting.decode_double_quoted(r'"a\/b"') == 'a/b'
         assert quoting.decode_double_quoted(r'"she said \"hi\""') == 'she said "hi"'
         assert quoting.decode_double_quoted(r'"☺"') == '☺'
+        assert quoting.decode_double_quoted(r'"\u2603"') == '\u2603'
         assert quoting.decode_double_quoted(r'"\U0001F600"') == '\U0001f600'
