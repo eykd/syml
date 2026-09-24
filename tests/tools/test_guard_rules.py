@@ -109,6 +109,54 @@ class TestBlockedRules:
         assert evaluate_command('git stash clearfix') is None
 
 
+class TestQuoteBypass:
+    """Regression coverage for syml-x0m.6.3: quoting must not bypass a rule."""
+
+    @pytest.mark.parametrize(
+        ('command', 'rule_id'),
+        [
+            ('git reset "--hard"', 'reset-hard'),
+            ("git reset '--hard'", 'reset-hard'),
+            ('git reset --ha""rd', 'reset-hard'),
+            ('git commit "--am""end" -m x', 'commit-amend'),
+            ('git clean "-fd"', 'clean-force'),
+            ('git branch "-D" foo', 'branch-force-delete'),
+            ('git stash "drop"', 'stash-drop'),
+            ('git checkout "."', 'checkout-dot'),
+            ('rm -rf "/"', 'catastrophic-rm'),
+        ],
+    )
+    def test_it_should_block_quoted_and_split_quoted_dangerous_tokens(self, command: str, rule_id: str) -> None:
+        assert block_id(command) == rule_id
+
+    @pytest.mark.parametrize(
+        'command',
+        [
+            'git commit -m "do not --amend"',
+            'git commit -am "do not --amend"',
+            'git commit --message "do not --amend"',
+            'git commit --message="do not --amend"',
+        ],
+    )
+    def test_it_should_still_allow_a_commit_message_mentioning_a_dangerous_phrase(self, command: str) -> None:
+        assert evaluate_command(command) is None
+
+    def test_it_should_fail_closed_on_unbalanced_quotes(self) -> None:
+        assert block_id('git reset "--hard') == 'reset-hard'
+
+    def test_it_should_drop_a_message_flag_value_at_the_end_of_the_command(self) -> None:
+        assert evaluate_command('git commit -m') is None
+
+    def test_it_should_dequote_and_split_shell_separated_subcommands(self) -> None:
+        assert block_id('echo hi && git reset "--hard"') == 'reset-hard'
+
+    def test_it_should_skip_empty_groups_between_repeated_separators(self) -> None:
+        assert guard_rules.dequote_subcommands('a && && b') == ['a', 'b']
+
+    def test_it_should_drop_a_trailing_separator_with_no_trailing_group(self) -> None:
+        assert guard_rules.dequote_subcommands('a &&') == ['a']
+
+
 class TestStripOrdering:
     def test_it_should_block_a_bypass_flag_hidden_in_quotes(self) -> None:
         assert block_id('git commit -m "use --no-verify never"') == 'hook-bypass'

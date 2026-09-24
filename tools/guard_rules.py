@@ -13,12 +13,22 @@ The pipeline mirrors the TypeScript original exactly:
 4. :func:`strip_quoted_content` removes heredocs and quoted strings, the result
    is split on shell separators, and :data:`POST_STRIP_RULES` runs against each
    sub-command independently.
+5. In parallel, :func:`dequote_subcommands` removes heredocs, then uses
+   ``shlex`` to de-quote (rather than content-strip) each sub-command, so a
+   dangerous token hidden behind shell quoting (``git reset "--hard"``,
+   ``--ha""rd``) still matches. Commit-message payloads (``-m``/``--message``
+   and short clusters like ``-am``) are dropped before matching, so a message
+   that merely mentions a dangerous phrase stays allowed. :data:`POST_STRIP_RULES`
+   also runs against these de-quoted sub-commands; a command is blocked if
+   either rendering matches. Unbalanced quotes fail closed onto a
+   quote-character-stripped rendering instead of skipping the check.
 
 The Cloudflare/wrangler rules of the original are deliberately dropped: this
 repository has no Cloudflare surface.
 """
 
 import re
+import shlex
 from dataclasses import dataclass
 
 
@@ -322,6 +332,71 @@ def split_commands(command: str) -> list[str]:
     return [part for part in re.split(r'\s*(?:&&|\|\||[;|])\s*', command) if part]
 
 
+_HEREDOC_RE = re.compile(r"<<-?'?(\w+)'?\n[\s\S]*?\n\s*\1")
+_SEPARATOR_TOKENS = frozenset({';', '|', '||', '&&', '&', '(', ')'})
+_MESSAGE_FLAG_RE = re.compile(r'^-[a-zA-Z]*m$')
+
+
+def _drop_message_payloads(tokens: list[str]) -> list[str]:
+    """Drop commit-message flag values so their text cannot trip a rule.
+
+    Handles ``-m <value>``, short clusters ending in ``m`` (``-am <value>``),
+    ``--message <value>``, and ``--message=<value>``.
+
+    :param tokens: The de-quoted argv tokens for one sub-command.
+    :returns: The tokens with message-flag values removed.
+    """
+    result: list[str] = []
+    skip_next = False
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if token.startswith('--message='):
+            result.append('--message')
+            continue
+        if token == '--message' or _MESSAGE_FLAG_RE.match(token):  # noqa: S105 -- CLI flag, not a secret
+            result.append(token)
+            skip_next = True
+            continue
+        result.append(token)
+    return result
+
+
+def dequote_subcommands(command: str) -> list[str] | None:
+    """Tokenize and de-quote each sub-command, dropping message payloads.
+
+    Unlike :func:`strip_quoted_content`, this preserves de-quoted content
+    (``"--hard"`` becomes ``--hard``, not ``""``) so a rule keyed on that
+    token still matches, while commit-message flag values are dropped so a
+    message that merely mentions a dangerous phrase is not flagged.
+
+    :param command: The normalized command string.
+    :returns: The de-quoted sub-command strings, or ``None`` on unbalanced
+        quotes (the caller should fail closed in that case).
+    """
+    heredoc_stripped = _HEREDOC_RE.sub('', command)
+    lexer = shlex.shlex(heredoc_stripped, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    tokens = _drop_message_payloads(tokens)
+    subcommands: list[str] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in _SEPARATOR_TOKENS:
+            if current:
+                subcommands.append(' '.join(current))
+                current = []
+        else:
+            current.append(token)
+    if current:
+        subcommands.append(' '.join(current))
+    return subcommands
+
+
 _SHELL_WRAPPER_RE = re.compile(r'^(?:bash|sh|zsh|dash)\s+-c\s+')
 _EVAL_WRAPPER_RE = re.compile(r'^eval\s+')
 _MAX_SHELL_DEPTH = 1
@@ -414,6 +489,17 @@ def _evaluate_inner(command: str, depth: int) -> Verdict | None:
         return verdict
 
     for sub in split_commands(strip_quoted_content(normalized)):
+        verdict = _first_block(POST_STRIP_RULES, sub)
+        if verdict is not None:
+            return verdict
+
+    dequoted = dequote_subcommands(normalized)
+    if dequoted is None:
+        # Unbalanced quotes: fail closed onto a quote-character-stripped
+        # rendering rather than skipping the de-quoted check entirely.
+        heredoc_stripped = _HEREDOC_RE.sub('', normalized)
+        dequoted = split_commands(re.sub(r'["\']', '', heredoc_stripped))
+    for sub in dequoted:
         verdict = _first_block(POST_STRIP_RULES, sub)
         if verdict is not None:
             return verdict
