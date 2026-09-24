@@ -93,11 +93,17 @@ OptionalNodes = NodeOrNodes | None
 class ContainerNode(SymlNode):
     """A container node that may contain a child value."""
 
-    def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
-        """Return this node as primitive data types with Source objects for strings."""
+    def as_source(self) -> Any:  # noqa: ANN401
+        """Return this node as primitive data types with Source objects for strings.
+
+        A childless container — including a `Root` for an empty or
+        comment-only document — yields a zero-width `Source` at its own
+        `source.end` rather than `None`, at every depth (Contract 03
+        §Absent values, FR-005).
+        """
         if self.children:
             return self.children[0].as_source()
-        return None  # pragma: nocover
+        return Source(filename=self.source.filename, start=self.source.end, end=self.source.end, text='')
 
     def as_data(self) -> Any:  # noqa: ANN401
         """Return the container as primitive data types.
