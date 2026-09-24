@@ -11,7 +11,7 @@ Feature: Quoted strings work exactly where section 4.7 says they do
   Scenario: A single-quoted value does not decode backslash escapes
     Given a SYML document "literal: 'hello\\nworld'"
     When it is parsed
-    Then the result equals {'literal': 'hello\nworld'}
+    Then the result equals {'literal': 'hello\\nworld'}
 
   Scenario: A doubled single quote decodes to one literal apostrophe
     Given a SYML document "with_quote: 'it''s fine'"
@@ -49,7 +49,7 @@ Feature: Quoted strings work exactly where section 4.7 says they do
     Then parsing fails with "MalformedQuotedStringError"
 
   Scenario: A quoted value is complete and accepts no continuation
-    Given a SYML document "key: \"a\"\\n  b"
+    Given a SYML document "key: \"a\"\n  b"
     When it is parsed
     Then parsing fails with "OutOfContextNodeError"
 
@@ -59,6 +59,6 @@ Feature: Quoted strings work exactly where section 4.7 says they do
     Then the result is the scalar "\"unterminated"
 
   Scenario: A continuation line does not quote-decode
-    Given a SYML document "key: He said\\n  'yes'"
+    Given a SYML document "key: He said\n  'yes'"
     When it is parsed
     Then the result equals {'key': "He said\n'yes'"}
