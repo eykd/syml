@@ -100,10 +100,14 @@ class ContainerNode(SymlNode):
         return None  # pragma: nocover
 
     def as_data(self) -> Any:  # noqa: ANN401
-        """Return the container as primitive data types."""
+        """Return the container as primitive data types.
+
+        A childless container yields `''` rather than `None`, at every
+        depth (Contract 03 §Absent values, FR-005).
+        """
         if self.children:
             return self.children[0].as_data()
-        return None  # pragma: nocover
+        return ''
 
     def incorporate_node(self, node: SymlNode) -> SymlNode:
         """Incorporate the given node into this branch."""
