@@ -70,7 +70,11 @@ def key_is_representable(k: str) -> bool:
     begins with '#' or '//', or otherwise fails to fully match the `key`
     grammar rule (e.g. a C0/C1 control character, per §4.5).
     """
-    raise NotImplementedError
+    try:
+        match = _GRAMMAR['key'].match(k)
+    except parsimonious.exceptions.ParseError:
+        return False
+    return match.end == len(k) and not k.startswith(('#', '//'))
 
 
 def _not_representable(value: object) -> TypeError:
@@ -108,6 +112,9 @@ def _render_mapping_lines(mapping: dict[object, object], indent: int) -> list[st
             message = f'{key!r} is not a valid SYML mapping key (must be str)'
             raise TypeError(message, key)
         key_str = str.__str__(key)
+        if not key_is_representable(key_str):
+            message = f'{key_str!r} is not representable as a SYML mapping key (§11.2.3)'
+            raise UnrepresentableValueError(message, key_str)
         value_lines = _render_value_lines(value, indent + 2)
         if isinstance(value, str):
             lines.append(f'{pad}{key_str}: {value_lines[0]}')
