@@ -71,7 +71,9 @@ Only use these flags when explicitly requested by the user.""",
     GuardRule(
         name='force-push',
         category='destructive-git',
-        pattern=re.compile(r'git\s+push[^;&|]*(--force([^-]|$)|-f(\s|$)|--force-with-lease|\s\+\S+)'),
+        pattern=re.compile(
+            r'git\s+push[^;&|]*(--force([^-]|$)|\s-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)' r'|--force-with-lease|\s\+\S+)'
+        ),
         message="""BLOCKED: Force push detected.
 
 Force pushing rewrites remote history and can destroy teammates' work.
@@ -159,10 +161,10 @@ Instead:
     GuardRule(
         name='clean-force',
         category='destructive-git',
-        pattern=re.compile(r'git\s+clean\s+.*-[a-zA-Z]*f'),
+        pattern=re.compile(r'git\s+clean\b.*\s-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)'),
         safe_patterns=(
-            re.compile(r'git\s+clean\s+.*-[a-zA-Z]*n'),
-            re.compile(r'git\s+clean\s+.*--dry-run'),
+            re.compile(r'git\s+clean\b.*\s-[a-zA-Z]*n[a-zA-Z]*(?=\s|$)'),
+            re.compile(r'git\s+clean\b.*\s--dry-run\b'),
         ),
         message="""BLOCKED: git clean -f detected (delete untracked files).
 
@@ -258,7 +260,7 @@ Instead:
     GuardRule(
         name='branch-force-delete',
         category='destructive-git',
-        pattern=re.compile(r'git\s+branch\s+-D(?:\s|$)'),
+        pattern=re.compile(r'git\s+branch\b.*\s-[a-zA-Z]*D[a-zA-Z]*(?=\s|$)'),
         message="""BLOCKED: git branch -D detected (force-delete unmerged branch).
 
 This command deletes a branch even if it has unmerged changes, losing work.
@@ -288,9 +290,9 @@ Only use these flags when explicitly requested by the user.""",
         name='catastrophic-rm',
         category='catastrophic-file-deletion',
         pattern=re.compile(
-            r'rm\s+(?:-[a-zA-Z]*(?:rf|fr)[a-zA-Z]*|-[a-zA-Z]*r\s+-[a-zA-Z]*f'
-            r'|-[a-zA-Z]*f\s+-[a-zA-Z]*r|--recursive\s+--force|--force\s+--recursive)'
-            r'\s+(?:\$\{HOME\}|\$HOME|\.\./|\./|~/|/|~|\.|\*)(?:\s|$)'
+            r'rm\s+(?:-[a-zA-Z]*(?:[rR][fF]|[fF][rR])[a-zA-Z]*|-[a-zA-Z]*[rR]\s+-[a-zA-Z]*[fF]'
+            r'|-[a-zA-Z]*[fF]\s+-[a-zA-Z]*[rR]|--recursive\s+--force|--force\s+--recursive)'
+            r'\s+(?:--\S+\s+)*(?:\$\{HOME\}|\$HOME|\.\./|\./|~/|/|~|\.|\*)(?:/?\*)?(?:\s|$)'
         ),
         message="""BLOCKED: Catastrophic rm detected - targets system-critical path.
 
