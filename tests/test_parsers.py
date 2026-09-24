@@ -423,6 +423,28 @@ class TestSimpleParserFunction:
         key_value = mapping.children[0]
         assert key_value.source.start == expected_start
 
+    def test_it_should_report_line_number_and_line_text_using_lf_only_splitting(self) -> None:
+        r"""`ParseError.line_text` and `.position.line` must use LF-only line splitting (§13.3).
+
+        A U+2028 LINE SEPARATOR inside a value on line 1 must not start a new
+        line: it is not a line terminator under SYML's LF-only rule. The
+        second (and only other) LF-delimited line is ``-   name: Alice``,
+        which then collides with the top-level key/value on line 1 and
+        raises `OutOfContextNodeError` anchored at line 2.
+
+        `utils.get_line_text` (via `utils.split_lines`) currently calls
+        `str.splitlines()`, which *does* treat U+2028 as a line terminator
+        (Contract 01 pass 25, Contract 08 gap 16). That silently
+        renumbers every line after the U+2028 by one, so `line_text` reports
+        the wrong line's contents even though `position.line` (computed by
+        `Pos.from_str_index`, which already splits on ``\\n`` only) is correct.
+        """
+        text = 'a: b c\n-   name: Alice\n  role: admin'  # noqa: RUF001
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            parsers.parse(text)
+        assert exc_info.value.position.line == 2
+        assert exc_info.value.line_text == '-   name: Alice'
+
     def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
         """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
 
