@@ -27,6 +27,11 @@ class TestAllow:
             'git checkout feature-branch',
             'git restore --staged tools/foo.py',
             'git restore -S tools/foo.py',
+            'git checkout main',
+            'git checkout HEAD -- src/x.py',
+            'git restore file.py',
+            'git restore --staged .',
+            'git restore -S .',
             'git clean -n',
             'git clean --dry-run',
             'git clean -fdn',
@@ -172,6 +177,43 @@ class TestGlobalOptionsAndInterleavedFlags:
         ],
     )
     def test_it_should_still_allow_safe_commands_with_global_options(self, command: str) -> None:
+        assert evaluate_command(command) is None
+
+
+class TestInterveningTreeishOrOptionBeforeDotTarget:
+    """Regression coverage for syml-x0m.6.9.
+
+    An intervening tree-ish or option between the subcommand and a
+    standalone "." target must not bypass the checkout/restore discard
+    guard rules.
+    """
+
+    @pytest.mark.parametrize(
+        ('command', 'rule_id'),
+        [
+            ('git checkout HEAD .', 'checkout-treeish-dot'),
+            ('git checkout -f HEAD .', 'checkout-treeish-dot'),
+            ('git restore --worktree .', 'restore-dot'),
+            ('git restore -W .', 'restore-dot'),
+            ('git restore --source=HEAD .', 'restore-dot'),
+            ('git restore --staged --worktree .', 'restore-dot'),
+        ],
+    )
+    def test_it_should_block_intervening_tokens_before_a_dot_target(self, command: str, rule_id: str) -> None:
+        assert block_id(command) == rule_id
+
+    @pytest.mark.parametrize(
+        'command',
+        [
+            'git checkout main',
+            'git checkout -- file.py',
+            'git checkout HEAD -- src/x.py',
+            'git restore file.py',
+            'git restore --staged .',
+            'git restore -S .',
+        ],
+    )
+    def test_it_should_still_allow_safe_commands(self, command: str) -> None:
         assert evaluate_command(command) is None
 
 

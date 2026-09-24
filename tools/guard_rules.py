@@ -129,12 +129,18 @@ Instead:
 - Use `git diff` to review changes before discarding""",
     ),
     GuardRule(
+        # Catch-all for any checkout with a standalone "." target that isn't
+        # already caught by checkout-dot above (dot immediately after
+        # `checkout` or after `--`). Must stay ordered after checkout-dot:
+        # _first_block returns the first matching rule in tuple order, and
+        # this pattern is a superset of checkout-dot's.
         name='checkout-treeish-dot',
         category='destructive-git',
-        pattern=re.compile(r'git\s+checkout\s+.*--\s+\.(\s|$)'),
-        message="""BLOCKED: git checkout <tree-ish> -- . detected (overwrite all files).
+        pattern=re.compile(r'git\s+checkout\b.*\s\.(?=\s|$)'),
+        message="""BLOCKED: git checkout <tree-ish> . detected (overwrite all files).
 
-This command overwrites all working tree files from another commit.
+This command overwrites all working tree files from another commit, with or
+without a `--` separator before the target.
 
 Instead:
 - Use `git checkout <tree-ish> -- <file>` to restore a specific file
@@ -142,12 +148,21 @@ Instead:
 - Use `git stash` to save current changes before restoring""",
     ),
     GuardRule(
+        # Standalone "." target anywhere after `restore`, covering
+        # --worktree/-W and --source=<tree-ish> spellings, not just an
+        # immediate `restore .`.
         name='restore-dot',
         category='destructive-git',
-        pattern=re.compile(r'git\s+restore\s+\.(\s|$)'),
+        pattern=re.compile(r'git\s+restore\b.*\s\.(?=\s|$)'),
         safe_patterns=(
-            re.compile(r'git\s+restore\s+--staged'),
-            re.compile(r'git\s+restore\s+-S'),
+            # Safe only when a staged-only flag is present AND no
+            # worktree-discarding flag is present anywhere in the command
+            # (`--staged --worktree .` still discards working-tree changes).
+            re.compile(
+                r'git\s+restore\b'
+                r'(?=.*(?:--staged\b|\s-[a-zA-Z]*S[a-zA-Z]*(?=\s|$)))'
+                r'(?!.*(?:--worktree\b|\s-[a-zA-Z]*W[a-zA-Z]*(?=\s|$)))'
+            ),
         ),
         message="""BLOCKED: git restore . detected (discard all changes).
 
