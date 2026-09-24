@@ -169,6 +169,17 @@ class TestSymlParser:
         assert parser.parse('-item').as_data() == '-item'
         assert parser.parse('-42').as_data() == '-42'
 
+    def test_it_should_not_treat_a_tab_after_the_colon_as_separator_whitespace(self) -> None:
+        r"""§4.1 grammar ``ws = ~" +"``: only a space satisfies the required separator.
+
+        A tab immediately after the colon never satisfies ``ws``, and there is
+        no key_value guard without a space, so the whole line falls through to
+        a bare ``data`` scalar unchanged. Currently ``src/syml/parsers.py``
+        defines ``ws = ~"[ \\t]+"`` (tab accepted), which contradicts the spec
+        and incorrectly lexes this as a key/value mapping.
+        """
+        assert syml.loads('key:\tv') == 'key:\tv'
+
     def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
         self, parser: parsers.SymlParser
     ) -> None:
