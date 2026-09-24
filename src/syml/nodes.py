@@ -28,13 +28,22 @@ class SymlNode:
 
     def __post_init__(self) -> None:
         self.source = Source.from_node(self.pnode, filename=self.filename)
-        if self.level is not None:
-            self.set_level(self.level)
+        if self.level is None:
+            # R-11: a node's level is the 0-indexed column where its own
+            # marker or content begins — its own `pnode.start`, not
+            # anything inherited from the line it's on.
+            self.level = self.source.start.column
 
     def set_level(self, level: int) -> None:
-        """Set this node's level."""
+        """Set this node's level.
+
+        Only ever called on freshly-constructed, still-childless nodes
+        (an auto-created `Mapping`/`List` intermediary, or the R-11
+        dead-branch callers above), so the recursive step never actually
+        runs — kept for syml-x0m.5.4.16 to remove.
+        """
         self.level = level
-        for child in self.children:
+        for child in self.children:  # pragma: nocover
             child.set_level(level)
 
     def as_data(self) -> Any:  # noqa: ANN401  # pragma: nocover
@@ -59,7 +68,10 @@ class SymlNode:
         """Add a child node."""
         self.children.append(node)
         node.parent = self
-        if node.level is None:
+        if node.level is None:  # pragma: nocover
+            # R-11: every node's level is set at construction from its
+            # own pnode.start, so this branch is unreachable — kept for
+            # syml-x0m.5.4.16 to remove alongside `set_level` itself.
             node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
@@ -147,7 +159,10 @@ class ParentNode(SymlNode):
         """Add a child node."""
         self.children.append(node)
         node.parent = self
-        if node.level is None:
+        if node.level is None:  # pragma: nocover
+            # R-11: every node's level is set at construction from its
+            # own pnode.start, so this branch is unreachable — kept for
+            # syml-x0m.5.4.16 to remove alongside `set_level` itself.
             node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
@@ -204,6 +219,18 @@ class KeyValue(ContainerNode):
     """A key-value item within a mapping"""
 
     key: KeyLeafNode
+
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if this key-value item can add a child node.
+
+        A block value must be strictly deeper than its own key's column
+        (R-11) — except a nested list (the YAML-style "indentless
+        sequence"), whose items conventionally align with the key that
+        introduces them rather than sitting a column deeper.
+        """
+        if isinstance(node, ListItem | List):
+            return not self.children and (node.level is None or (self.level is not None and node.level >= self.level))
+        return super().can_add_node(node)
 
 
 @dataclass(kw_only=True)

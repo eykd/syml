@@ -78,9 +78,11 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
     def visit_line(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a line."""
-        indent, value, _ = children
+        _indent, value, _eol = children
         if value is not None:
-            value.set_level(indent.level)  # type: ignore[arg-type]
+            # R-11: level comes from the node's own column (set at
+            # construction from its own `pnode.start`), not the line's
+            # `indent` token — no longer applied here.
             return value
         return None
 
