@@ -5,6 +5,27 @@ from typing import Any
 
 from . import parsers
 from .basetypes import StrPath
+from .exceptions import (
+    DuplicateKeyError,
+    EncodingError,
+    MalformedQuotedStringError,
+    OutOfContextNodeError,
+    ParseError,
+    TabIndentationError,
+    UnrepresentableValueError,
+)
+
+__all__ = [
+    'DuplicateKeyError',
+    'EncodingError',
+    'MalformedQuotedStringError',
+    'OutOfContextNodeError',
+    'ParseError',
+    'TabIndentationError',
+    'UnrepresentableValueError',
+    'load',
+    'loads',
+]
 
 
 def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:

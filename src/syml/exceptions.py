@@ -76,3 +76,7 @@ class DuplicateKeyError(ParseError):
         super().__init__(message, position, line_text, key, first_position)
         self.key = key
         self.first_position = first_position
+
+
+class UnrepresentableValueError(ValueError):
+    """A value has no SYML encoding (§11.2.2-.4). Raised by `dumps`, not a `ParseError`."""
