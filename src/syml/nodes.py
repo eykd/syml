@@ -10,7 +10,7 @@ if TYPE_CHECKING:  # pragma: nocover
 
 from .basetypes import Pos, Source, StrPath
 from .exceptions import DuplicateKeyError, OutOfContextNodeError
-from .utils import get_line
+from .utils import get_line_text
 
 
 @dataclass(kw_only=True)
@@ -73,7 +73,7 @@ class SymlNode:
         """Report a failure to incorporate a node."""
         pnode = node.pnode
         pos = Pos.from_str_index(pnode.full_text, pnode.start)
-        line = get_line(pnode.full_text, pos.line).rstrip('\r\n')
+        line = get_line_text(pnode.full_text, pos.line)
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 
 
@@ -217,7 +217,7 @@ class Mapping(ParentNode):
             raise DuplicateKeyError(
                 'Duplicate key',
                 node.source.start,
-                get_line(node.pnode.full_text, node.source.start.line).rstrip('\r\n'),
+                get_line_text(node.pnode.full_text, node.source.start.line),
                 key=node.key.as_data(),
                 first_position=first.source.start,
             )

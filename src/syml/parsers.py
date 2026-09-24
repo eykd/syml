@@ -12,7 +12,7 @@ from . import nodes, quoting
 from .basetypes import Pos
 from .exceptions import MalformedQuotedStringError, ParseError, error_message
 from .preprocess import preprocess
-from .utils import get_line
+from .utils import get_line_text
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -117,7 +117,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             raise MalformedQuotedStringError(
                 error_message('Malformed quoted string', self.filename),
                 position,
-                get_line(node.full_text, position.line),
+                get_line_text(node.full_text, position.line),
                 escape=defect.escape,
                 code_point=defect.code_point,
             ) from defect
