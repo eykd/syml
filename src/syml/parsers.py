@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import textwrap
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from parsimonious import Grammar, NodeVisitor
+from parsimonious.exceptions import IncompleteParseError
 from parsimonious.nodes import Node
 
 from . import nodes, quoting
@@ -19,6 +20,27 @@ if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import StrPath
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
     from .preprocess import PositionMap
+
+
+def _malformed_quoted_string(
+    filename: StrPath | None, pnode: Node, *, escape: str | None, code_point: int | None
+) -> MalformedQuotedStringError:
+    """Build a `MalformedQuotedStringError` anchored at `pnode`'s position.
+
+    Shared by `SymlParser.visit_quoted_value` (a decoder defect on a value that
+    matched `quoted_value`), `SymlParser.visit_data_key_value` (the quote-guard
+    rule, R-10: a value that looks quoted but fell through to `data` instead),
+    and `raise_trailing_content` (§4.7/§8.5: content stranded after a closed
+    inline quote).
+    """
+    position = Pos.from_str_index(pnode.full_text, pnode.start)
+    return MalformedQuotedStringError(
+        error_message('Malformed quoted string', filename),
+        position,
+        get_line_text(pnode.full_text, position.line),
+        escape=escape,
+        code_point=code_point,
+    )
 
 
 def _is_zero_length_text(value: SymlNode) -> bool:
@@ -136,24 +158,6 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             leaf.source = self.position_map.to_original_source(leaf.source)
         return leaf
 
-    def _malformed_quoted_string(
-        self, pnode: Node, *, escape: str | None, code_point: int | None
-    ) -> MalformedQuotedStringError:
-        """Build a `MalformedQuotedStringError` anchored at `pnode`'s position.
-
-        Shared by `visit_quoted_value` (a decoder defect on a value that matched
-        `quoted_value`) and `visit_data_key_value` (the quote-guard rule, R-10:
-        a value that looks quoted but fell through to `data` instead).
-        """
-        position = Pos.from_str_index(pnode.full_text, pnode.start)
-        return MalformedQuotedStringError(
-            error_message('Malformed quoted string', self.filename),
-            position,
-            get_line_text(pnode.full_text, position.line),
-            escape=escape,
-            code_point=code_point,
-        )
-
     def visit_quoted_value(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
 
@@ -164,7 +168,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         try:
             text = quoting.decode_single_quoted(raw) if raw.startswith("'") else quoting.decode_double_quoted(raw)
         except quoting.QuotedStringDefect as defect:
-            raise self._malformed_quoted_string(node, escape=defect.escape, code_point=defect.code_point) from defect
+            raise _malformed_quoted_string(
+                self.filename, node, escape=defect.escape, code_point=defect.code_point
+            ) from defect
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
         source = leaf.source
         if self.position_map is not None:
@@ -206,7 +212,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         section, _, value = children
         text = value.source.text
         if text[:1] in ("'", '"'):
-            raise self._malformed_quoted_string(value.pnode, escape=quoting.diagnose_malformed(text), code_point=None)
+            raise _malformed_quoted_string(
+                self.filename, value.pnode, escape=quoting.diagnose_malformed(text), code_point=None
+            )
         _incorporate_inline_value(section, value)
         return section
 
@@ -264,7 +272,31 @@ def find_first(node: Node, expr_name: str) -> Node:
         stack.extend(reversed(current.children))
 
 
+def raise_trailing_content(filename: StrPath | None, text: str, pos: int) -> NoReturn:
+    r"""Convert a `parsimonious.exceptions.IncompleteParseError` at `pos` into a `MalformedQuotedStringError`.
+
+    Contract 05 §The third-party boundary (FR-009): `lines = line*`'s own
+    `line` rule commits to a `value` alternative and then requires `&eol`; a
+    quoted value followed by trailing content (§4.7, e.g. ``key: "a"
+    trailing``) matches `quoted_value` but leaves that trailing content
+    unconsumed, so `line` fails as a whole and `lines` stops short, without
+    backtracking into another alternative. `SymlParser.grammar['value']`
+    matches starting from that same failure point (skipping the line's own
+    `indent`) and, since it re-commits to the identical `quoted_value` /
+    `data`/`key_value` path, always contains the `quoted_value` node that
+    anchors the error -- `data` alone can't trigger an `IncompleteParseError`,
+    since `text = ~"[^\\n]*"` always consumes to end of line.
+    """
+    indent_end = SymlParser.grammar['indent'].match(text, pos=pos).end
+    value_node = SymlParser.grammar['value'].match(text, pos=indent_end)
+    quoted_node = find_first(value_node, 'quoted_value')
+    raise _malformed_quoted_string(filename, quoted_node, escape=None, code_point=None)
+
+
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
     doc = preprocess(source_syml, filename)
-    return SymlParser(filename=filename, position_map=doc.position_map).parse(doc.normalized)
+    try:
+        return SymlParser(filename=filename, position_map=doc.position_map).parse(doc.normalized)
+    except IncompleteParseError as exc:
+        raise_trailing_content(filename, doc.normalized, exc.pos)
