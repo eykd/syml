@@ -120,4 +120,4 @@ class TestDumpsLeadingFeffProtectiveDoubling:
     """A leading U+FEFF gets one extra U+FEFF prepended, since loads strips one (§9.0)."""
 
     def test_it_should_double_a_leading_feff_on_a_root_scalar(self) -> None:
-        assert serializer.dumps('﻿hello') == '﻿﻿hello\n'
+        assert serializer.dumps('\ufeffhello') == '\ufeff\ufeffhello\n'

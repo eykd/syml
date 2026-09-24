@@ -17,6 +17,8 @@ _GRAMMAR = SymlParser.grammar
 
 _CONTROL_CHAR_PATTERN = re.compile('[\x00-\x1f\x7f-\x9f]')
 
+_BOM = '﻿'
+
 _RELEX_ESCAPES = {
     '\\': '\\\\',
     '"': '\\"',
@@ -50,8 +52,8 @@ def dumps(data: SymlInput) -> str:
             message = f'{text!r} is not representable as a SYML root scalar (§11.2.4)'
             raise UnrepresentableValueError(message, text)
     rendered = '\n'.join(_render_value_lines(data, 0)) + '\n'
-    if rendered.startswith('﻿'):
-        rendered = '﻿' + rendered
+    if rendered.startswith(_BOM):
+        rendered = _BOM + rendered
     return rendered
 
 
