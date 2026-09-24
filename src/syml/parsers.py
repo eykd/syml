@@ -43,7 +43,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
             eol         = "\n" / ~"$"
             ws          = ~"[ \t]+"
-            text        = ~".+"
+            text        = ~"[^\n]*"
 
             value       = structure / data
             data        = text
@@ -105,7 +105,8 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     def visit_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value."""
         section, _, value = children
-        section.incorporate_node(value)
+        if not (isinstance(value, nodes.TextLeafNode) and value.source.text == ''):
+            section.incorporate_node(value)
         return section
 
     def visit_section(self, node: PNode, children: SymlNodes) -> nodes.KeyValue:
