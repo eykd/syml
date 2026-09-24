@@ -171,6 +171,29 @@ class TestStripOrdering:
         assert block_id('git clean -n && git clean -f') == 'clean-force'
 
 
+class TestQuotedProgramOrSubcommandBypass:
+    """Regression coverage for syml-x0m.6.4: quoting the program or subcommand
+
+    word must not bypass PRE_STRIP_RULES or PLATFORM_RULES.
+    """
+
+    @pytest.mark.parametrize(
+        ('command', 'rule_id'),
+        [
+            ('"git" commit --no-verify -m x', 'hook-bypass'),
+            ("'git' push --force", 'force-push'),
+            ('git "push" --force', 'force-push'),
+            ('"gh" repo delete x', 'gh-repo-delete'),
+            ('gh "repo" delete x', 'gh-repo-delete'),
+        ],
+    )
+    def test_it_should_block_quoted_program_or_subcommand_words(self, command: str, rule_id: str) -> None:
+        assert block_id(command) == rule_id
+
+    def test_it_should_still_allow_a_commit_message_mentioning_a_dangerous_phrase(self) -> None:
+        assert evaluate_command('git commit -m "do not --amend"') is None
+
+
 class TestNormalizeCommand:
     def test_it_should_collapse_line_continuations(self) -> None:
         assert guard_rules.normalize_command('git push \\\n  --force') == 'git push  --force'

@@ -500,7 +500,7 @@ def _evaluate_inner(command: str, depth: int) -> Verdict | None:
         heredoc_stripped = _HEREDOC_RE.sub('', normalized)
         dequoted = split_commands(re.sub(r'["\']', '', heredoc_stripped))
     for sub in dequoted:
-        verdict = _first_block(POST_STRIP_RULES, sub)
+        verdict = _first_block(PRE_STRIP_RULES + PLATFORM_RULES + POST_STRIP_RULES, sub)
         if verdict is not None:
             return verdict
     return None
