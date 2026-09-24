@@ -10,16 +10,17 @@ change from 0.6.2 is listed below, numbered to match Contract 09's audit
 1. Absent values: `None` → `""`, at every depth.
 2. Tabs in indentation → `TabIndentationError`.
 3. Duplicate keys → `DuplicateKeyError`.
-4. Quoted inline values now decode — and an apostrophe-initial inline value
-   (`key: 'Tis`) is now `MalformedQuotedStringError`. More generally, an
-   inline value (after `key: ` or `- `) that begins with `'` or `"` must
-   be exactly one well-formed quoted string, or it raises: trailing text
-   (`title: "Hello" world`) and an invalid escape
-   (`path: "C:\Users\me"`, where `\U` wants eight hex digits) both do.
-   A double-quoted value whose backslashes happen to form valid escapes
-   changes **silently**: `path: "C:\new\temp"` was the literal text with
-   its quotes and is now `C:`, a newline, `ew`, a tab, `emp`. Write such
-   values unquoted or single-quoted.
+4. Keys may not contain an uppercase (or titlecase) character (D19).
+   `Name: x` is now the scalar text `Name: x`, not a mapping — breaking
+   vs 0.6.2, and **silent** for a one-line document. In a mapping it
+   raises instead: `name: a\nName: b` is `OutOfContextNodeError`, because
+   the second line is text at a mapping's level. Rename such keys to
+   lowercase (`name:`). `dumps({'Name': 'x'})` raises
+   `UnrepresentableValueError`. The check is Unicode General_Category
+   `Lu`/`Lt` on any code point, so `É` disqualifies a key while `名前` or
+   `Ⅻ` does not. Quoted strings remain unsupported, as in 0.6.2 (D18): a
+   leading `'` or `"` is ordinary text everywhere, and `title: "Hello"`
+   is the value `"Hello"` with its quotation marks, just as it was.
 5. `-` / `key:value` fallthrough: bare `-` takes a block value;
    `key:value` is a scalar instead of raising.
 6. Sibling indentation is now exact (`==`), and a closed key/item accepts
@@ -54,14 +55,25 @@ change from 0.6.2 is listed below, numbered to match Contract 09's audit
 12. New: `dumps`, `dump`, and `parse` promoted to a public export.
     `syml.parsers.SymlParser` now takes a preprocessed `Document` rather
     than a `filename` and is no longer a whole-document entry point
-    (per-line lexing): call `syml.parse` instead.
+    (per-line lexing): call `syml.parse` instead. `dumps` writes every
+    string as literal text: a single-line value inline, a multi-line
+    string (and any root scalar) in block form with each line indented
+    beneath its key or `-`. It raises `UnrepresentableValueError` for the
+    set in §11.2.1: a control character other than LF/TAB (so `\r`, NUL),
+    a value whose first line begins with a space or tab, a blank,
+    tab-initial, `#`/`//`-initial, or structure-shaped line inside a
+    multi-line value (honouring D19: `Listen: x` is text, `listen: x` is
+    structure), and a single-line list item that would lex as structure
+    (`['- x']`, `['key: v']`, `['-']`). Single-line mapping values are
+    otherwise unrestricted (`{'k': '- x'}` and `{'k': "''"}` round-trip).
 13. Known limitation: deep nesting raises the host `RecursionError` — past
     roughly 500 levels of **block** nesting (one level per line), but past
     only roughly 120 levels of **inline** nesting on a single line
     (`- - - … x`, a ~250-byte input) at CPython's default recursion limit,
-    because lexing that one line recurses in Parsimonious. A deeply
-    inline-nested *string* is not affected in the dump direction: `dumps`
-    serializes `'- - … x'` as a quoted value. Deeply nested *data*
+    because lexing that one line recurses in Parsimonious. A string of
+    the form `'- - … x'` is `UnrepresentableValueError` at a list
+    position (it would lex as structure) and is written literally, with
+    no lexing, at a mapping position. Deeply nested *data*
     (roughly 1,000 levels of lists or mappings) may raise `RecursionError`
     from `dumps` as well. The figures scale with
     `sys.getrecursionlimit()`: about limit/2 block levels and limit/8
