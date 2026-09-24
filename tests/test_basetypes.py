@@ -5,7 +5,7 @@ import pytest
 from parsimonious.expressions import Literal
 from parsimonious.nodes import Node
 
-from syml import basetypes
+from syml import basetypes, parsers
 from syml.preprocess import PositionMap
 
 
@@ -149,3 +149,25 @@ class TestPosFromStrIndex:
         text = 'a: b\u2028c\nx: y'
         index = text.index('x')
         assert basetypes.Pos.from_str_index(text, index) == basetypes.Pos(index, 2, 0)
+
+
+class TestQuotedValueSpanReporting:
+    """Contract 08 \u00a7Quoted-value spans.
+
+    `start` is the opening quote and `end` is just past the closing quote
+    (exclusive, before any trailing ` *`) \u2014 both in the *original* text's
+    coordinates (\u00a7 Original-text coordinates), not the CRLF-normalized text
+    the grammar actually parses. `text` is the decoded value, so its length
+    need not match the raw token's.
+    """
+
+    def test_it_should_report_the_original_text_span_of_a_quoted_value_on_a_crlf_line(self) -> None:
+        original = "a: b\r\nk: 'it''s' \n"
+        tree = parsers.parse(original, filename='doc.syml')
+
+        source = tree.as_source()['k']
+
+        assert source.text == "it's"
+        assert source.start.index == 9
+        assert source.end.index == 16
+        assert original[source.start.index : source.end.index] == "'it''s'"
