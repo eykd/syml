@@ -64,9 +64,12 @@ spread through the codebase.
 
 - **`OutOfContextNodeError`** — raised when no ancestor in the parent chain
   accepts an incoming node; a subclass of `ParseError` (itself a
-  `ValueError`). `unwrapped_exceptions` names the base, `(ParseError,)`, so
-  every `ParseError` subclass — not just this one — passes the Parsimonious
-  visitor unwrapped.
+  `ValueError`). `unwrapped_exceptions` names `(ParseError, RecursionError)`,
+  so every `ParseError` subclass — not just this one — passes the
+  Parsimonious visitor unwrapped, and a host `RecursionError` raised from
+  inside a `visit_*` method surfaces as itself rather than being re-wrapped
+  as `parsimonious.exceptions.VisitationError` (Contract 05 §Other
+  Parsimonious exceptions).
 
 - **`as_data()`** — the rendering on every node that returns plain
   `str`/`list`/`dict` values, discarding source position information.

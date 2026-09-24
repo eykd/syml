@@ -639,3 +639,34 @@ class TestTrailingContentAfterClosedInlineQuote:
         """Trailing content after a closed quote must raise `MalformedQuotedStringError`, not leak."""
         with pytest.raises(exceptions.MalformedQuotedStringError):
             syml.loads('key: "a" trailing')
+
+
+class TestUnwrappedRecursionError:
+    """Contract 05 §Other Parsimonious exceptions, rule 1.
+
+    `unwrapped_exceptions = (ParseError, RecursionError)` so a recursion
+    overflow raised from inside a `visit_*` method surfaces as the host
+    `RecursionError`, never `parsimonious.exceptions.VisitationError`. A
+    deeply nested inline structure overflows the interpreter's own recursion
+    limit inside `Grammar.parse` before `NodeVisitor.visit` ever runs, so it
+    can't discriminate what `unwrapped_exceptions` governs; this class also
+    forces the overflow to happen *inside* a `visit_*` method directly.
+    """
+
+    def test_a_single_deep_inline_list_line_raises_the_host_recursion_error(self) -> None:
+        """`'- ' * 200 + 'x'` must raise `RecursionError`, never `VisitationError`."""
+        with pytest.raises(RecursionError):
+            syml.loads('- ' * 200 + 'x')
+
+    def test_a_recursion_error_raised_inside_a_visit_method_crosses_the_visitor_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `RecursionError` raised from a `visit_*` method must not become `VisitationError`."""
+
+        def fake_visit_text(_self: parsers.SymlParser, _node: Node, _children: object) -> None:
+            raise RecursionError
+
+        monkeypatch.setattr(parsers.SymlParser, 'visit_text', fake_visit_text)
+
+        with pytest.raises(RecursionError):
+            parsers.SymlParser().parse('key: value')

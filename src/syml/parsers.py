@@ -118,7 +118,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             """
         )
     )
-    unwrapped_exceptions = (ParseError,)
+    unwrapped_exceptions = (ParseError, RecursionError)
 
     def __init__(self, filename: StrPath | None = None, position_map: PositionMap | None = None) -> None:
         super().__init__()
