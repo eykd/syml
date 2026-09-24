@@ -8,10 +8,9 @@ from typing import TYPE_CHECKING, Any, NoReturn, cast
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
-    from .preprocess import PositionMap
-
-from .basetypes import Pos, Source, StrPath, get_line_text, map_pos
+from .basetypes import Pos, Source, StrPath, get_line_text
 from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
+from .preprocess import PositionMap
 
 
 @dataclass(kw_only=True)
@@ -88,7 +87,7 @@ class SymlNode:
         caller's original text.
         """
         pnode = node.pnode
-        pos = map_pos(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
+        pos = PositionMap.map(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
         line = get_line_text(pnode.full_text, pos.line)
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 

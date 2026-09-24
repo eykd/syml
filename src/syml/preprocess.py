@@ -33,6 +33,18 @@ class PositionMap:
         column = pos.column + self.bom_offset if pos.line == 1 else pos.column
         return Pos(index, pos.line, column)
 
+    @staticmethod
+    def map(pos: Pos, position_map: PositionMap | None) -> Pos:
+        """Translate `pos` through `position_map.to_original`, or return it unchanged when there is no map.
+
+        The one `raw Pos -> conditionally re-anchored Pos` step shared by every
+        error-position construction site that has only a bare `Pos` (not a whole
+        `Source`) to re-anchor onto the caller's original text (Contract 08,
+        FR-013, R-02, US8). `Source`-shaped values go through
+        `to_original_source` instead.
+        """
+        return pos if position_map is None else position_map.to_original(pos)
+
     def to_original_source(self, source: Source) -> Source:
         """Return `source` with its `start`/`end` translated into original-document coordinates.
 
