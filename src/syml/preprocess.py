@@ -44,6 +44,7 @@ class Document:
 
 
 _LINE_ENDING = re.compile(r'\r\n|\r')
+_BOM = '﻿'
 
 
 def is_blank(text: str) -> bool:
@@ -106,7 +107,7 @@ def split_lines_lf(text: str) -> list[str]:
 
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
     """Apply §9.0 steps 1-3 to `text`. Raises `TabIndentationError`."""
-    bom_offset = 1 if text.startswith('﻿') else 0
+    bom_offset = 1 if text.startswith(_BOM) else 0
     stripped = text[bom_offset:]
     normalized, crlf_indices = _normalize_line_endings(stripped)
     _scan_for_tab_indentation(normalized)
