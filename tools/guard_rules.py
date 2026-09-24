@@ -107,6 +107,28 @@ Fix the root problem rather than bypassing the safety mechanism.
 Only use this override when explicitly requested by the user.""",
     ),
     GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(
+            r'git\s+config\b(?!(?:.*\b(?:--get(?:-all)?|--list|--unset|unset|get)\b))'
+            r'[^|;&]*\bcore\.hookspath\b\s+\S',
+            re.IGNORECASE,
+        ),
+        message="""BLOCKED: git config core.hooksPath write detected.
+
+Setting core.hooksPath (locally, per-worktree, or globally) disables every
+pre-commit hook (ruff, mypy, coverage, commit-msg) for all later commits,
+just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
         name='force-push',
         category='destructive-git',
         pattern=re.compile(
