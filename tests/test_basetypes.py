@@ -225,3 +225,24 @@ class TestUnquotedSpanReporting:
         assert value_source.start.index == 6
         assert value_source.end.index == 11
         assert original[value_source.start.index : value_source.end.index] == 'value'
+
+
+class TestFromTextCoveragePragma:
+    """Contract 08 §Coverage / Contract 03 §Coverage without pragmas (FR-012).
+
+    `Source.from_text`'s `substring is None` default branch currently
+    carries `# pragma: no cover` instead of being exercised directly. A
+    real call that hits the defaulting branch should cover it without any
+    pragma present on the source line.
+    """
+
+    def test_it_should_cover_the_default_substring_branch_without_a_pragma(self) -> None:
+        source = basetypes.Source.from_text('value')
+
+        assert source.text == 'value'
+
+        import inspect
+
+        source_lines = inspect.getsource(basetypes.Source.from_text).splitlines()
+        offending = [line for line in source_lines if 'substring is None' in line and 'pragma' in line]
+        assert not offending, f'pragma still present on defaulting branch: {offending}'
