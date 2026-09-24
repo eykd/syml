@@ -15,6 +15,15 @@ class TestWhereQuotingIsRecognized:
         assert result.as_data() == {'key': 'a'}
 
 
+class TestDecodeSingleQuoted:
+    """`decode_single_quoted` decodes a '...' literal (Contract 04)."""
+
+    def test_it_should_decode_doubled_quotes_and_keep_backslashes_literal(self) -> None:
+        """`''` decodes to one apostrophe; backslashes survive with no escape processing (US6.2, US6.3)."""
+        assert quoting.decode_single_quoted("'it''s fine'") == "it's fine"
+        assert quoting.decode_single_quoted("'hello\\nworld'") == 'hello\\nworld'
+
+
 class TestDecodeDoubleQuoted:
     """`decode_double_quoted` is a stub pending US6's escape table (Contract 04)."""
 
