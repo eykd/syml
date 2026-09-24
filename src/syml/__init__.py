@@ -1,7 +1,6 @@
 """SYML (Simple YAML-like Markup Language) is a simple markup language with similar structure to YAML, but without all the gewgaws and folderol."""
 
-from io import TextIOBase
-from typing import Any
+from typing import IO, Any
 
 from . import parsers
 from .basetypes import StrPath
@@ -33,6 +32,6 @@ def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[st
     return parsers.parse(document, filename=filename).as_data()
 
 
-def load(file_obj: TextIOBase, filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
-    """Load a SYML document from a file-like object."""
-    return loads(file_obj.read(), filename=filename)
+def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
+    """Load a SYML document from a text or binary file-like object."""
+    return loads(file_obj.read(), filename=filename)  # type: ignore[arg-type]

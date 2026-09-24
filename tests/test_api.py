@@ -1,11 +1,13 @@
-"""Tests for the `loads` end-to-end entry point (src/syml/__init__.py, Contract 06)."""
+"""Tests for the `loads`/`load` end-to-end entry points (src/syml/__init__.py, Contract 06)."""
 
 from __future__ import annotations
+
+import io
 
 import pytest
 
 import syml
-from syml.exceptions import DuplicateKeyError
+from syml.exceptions import DuplicateKeyError, EncodingError
 
 
 class TestLoadsCarriesFilenameIntoEveryParseErrorMessage:
@@ -24,3 +26,19 @@ class TestLoadsCarriesFilenameIntoEveryParseErrorMessage:
             syml.loads('key: value1\nkey: value2', filename='example.syml')
 
         assert 'example.syml' in exc_info.value.message
+
+
+class TestLoadAcceptsTextAndBinaryStreams:
+    """Contract 06 §`load`: `IO[str] | IO[bytes]`, `EncodingError` on invalid UTF-8 (US5.5, US5.6)."""
+
+    def test_load_from_a_binary_stream_with_valid_utf8_matches_a_text_stream(self) -> None:
+        """`load` on a `BytesIO` of valid UTF-8 yields the same result as `load` on a `StringIO`."""
+        text_result = syml.load(io.StringIO('key: value'))
+        binary_result = syml.load(io.BytesIO(b'key: value'))
+
+        assert binary_result == text_result
+
+    def test_load_from_a_binary_stream_with_invalid_utf8_raises_encoding_error(self) -> None:
+        """`load` on a `BytesIO` carrying invalid UTF-8 bytes raises `EncodingError`, not `UnicodeDecodeError`."""
+        with pytest.raises(EncodingError):
+            syml.load(io.BytesIO(b'key: \xff\xfe'))
