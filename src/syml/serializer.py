@@ -49,7 +49,10 @@ def dumps(data: SymlInput) -> str:
         if not _root_scalar_is_representable(text):
             message = f'{text!r} is not representable as a SYML root scalar (§11.2.4)'
             raise UnrepresentableValueError(message, text)
-    return '\n'.join(_render_value_lines(data, 0)) + '\n'
+    rendered = '\n'.join(_render_value_lines(data, 0)) + '\n'
+    if rendered.startswith('﻿'):
+        rendered = '﻿' + rendered
+    return rendered
 
 
 def dump(data: SymlInput, file_obj: IO[str]) -> None:
