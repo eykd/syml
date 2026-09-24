@@ -132,3 +132,8 @@ class TestPosFromStrIndex:
 
     def test_returns_last_line_and_first_column_of_bad_index(self, text: str) -> None:
         assert basetypes.Pos.from_str_index(text, len(text) + 5) == basetypes.Pos(len(text), 6, 0)
+
+    def test_it_should_count_lines_by_lf_only_not_unicode_line_breaks(self) -> None:
+        text = 'a: b\u2028c\nx: y'
+        index = text.index('x')
+        assert basetypes.Pos.from_str_index(text, index) == basetypes.Pos(index, 2, 0)
