@@ -2,14 +2,23 @@
 
 <!--
 Sync Impact Report:
-- Version: (none) → 1.0.0 (MAJOR - initial ratification)
-- Modified principles: N/A (initial version)
-- Added sections: Preamble, I-VI Core Principles, Governance
+- Version: 1.0.0 → 2.0.0 (MAJOR - principle IV redefined)
+- Modified principles:
+  - III (Coverage and Lint Gates): dropped the stale nodes.py/parsers.py
+    pragma example.
+  - IV (Spec vs Implementation Discipline): dropped the claim that the spec
+    is aspirational and doesn't describe current behavior; dropped the
+    todo.txt-as-ledger framing (todo.txt is being retired, US9 of
+    syml-1.0-conformance); citations now point at SYML-SPEC-REVIEW.md's
+    D1-D17 decisions, B-/M-numbered findings, and FR-NNN requirements; an
+    open spec question may now be settled by a spec edit landing in the same
+    commit as the behavior change that exposed it.
+- Added sections: None
 - Removed sections: None
-- Templates requiring updates: .specify/templates/plan-template.md (✅ already
-  aligned — Technical Context defaults to Python/Parsimonious/pytest),
-  .specify/templates/spec-template.md (✅ no changes needed),
-  .specify/templates/checklist-template.md (✅ no changes needed)
+- Templates requiring updates: .specify/templates/plan-template.md (✅ no
+  principle-IV or todo.txt wording present), .specify/templates/
+  spec-template.md (✅ no changes needed), .specify/templates/
+  checklist-template.md (✅ no changes needed)
 - Follow-up TODOs: None
 -->
 
@@ -57,9 +66,8 @@ misuse of that surface before it reaches a caller.
 100% branch coverage is enforced at commit time and in CI
 (`--cov-fail-under=100`), covering `src/` and `tools/`. ruff runs in preview
 mode with pydocstyle (`D`) rules enabled. `# pragma: nocover` /
-`# pragma: nobranch` are permitted only for provably unreachable branches
-(the established pattern in `nodes.py` and `parsers.py`), never as a shortcut
-past an untested path.
+`# pragma: nobranch` are permitted only for provably unreachable branches,
+never as a shortcut past an untested path.
 
 **Rationale**: A grammar-driven parser has many structurally-required branches
 that ordinary test-writing skips; the 100% gate forces every one of them to be
@@ -67,17 +75,16 @@ either exercised or explicitly justified as unreachable.
 
 ### IV. Spec vs Implementation Discipline
 
-`SYML-SPECIFICATION.md` (v1.1) is aspirational and was written ahead of the
-implementation; it does not describe current parser behavior. `todo.txt` is
-the empirically verified conformance ledger between spec and parser. Any
-behavior change — in either direction — MUST cite a `todo.txt` entry or a
-design decision (D1–D17) from `SYML-SPEC-REVIEW.md`. An open spec question
-noted in either document MUST be settled (recorded as a decision) before
-implementing against it.
+Any behavior change — in either direction — MUST cite a design decision
+(D1–D17) or a B-/M-numbered finding from `SYML-SPEC-REVIEW.md`, or an FR-NNN
+requirement from the current feature's plan. An open spec question MUST be
+settled (recorded as a decision) before implementing against it, except that
+a specification edit MAY land in the same commit as the behavior change that
+exposed the question.
 
 **Rationale**: Without this discipline, "fixing" a mismatch between spec and
-parser is a coin flip about which one was actually wrong; citing the ledger or
-a numbered decision makes every behavior change traceable to a considered
+parser is a coin flip about which one was actually wrong; citing a numbered
+decision or requirement makes every behavior change traceable to a considered
 choice.
 
 ### V. Simplicity / YAGNI
@@ -137,4 +144,4 @@ This constitution follows semantic versioning:
   silent exception.
 - Use `CLAUDE.md` for day-to-day runtime guidance to Claude Code.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-13
+**Version**: 2.0.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-23

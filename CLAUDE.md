@@ -41,13 +41,13 @@ Two renderings exist on every node: `as_data()` returns plain `str`/`list`/`dict
 
 ## Spec vs. implementation
 
-`SYML-SPECIFICATION.md` (v1.1) was written ahead of the parser and deliberately breaks compatibility with the shipped 0.6.2 behavior. `todo.txt` is the empirically verified list of conformance gaps between the two, and `SYML-SPEC-REVIEW.md` records the design decisions (D1–D17) behind v1.1. Do not assume the parser matches the spec; check `todo.txt` before "fixing" behavior in either direction, and settle open spec questions noted there before implementing.
+`SYML-SPECIFICATION.md` (v1.1) deliberately breaks compatibility with the shipped 0.6.2 behavior. `SYML-SPEC-REVIEW.md` records the design decisions (D1–D17) and B-/M-numbered findings behind v1.1. Cite one of those decisions/findings or an FR-NNN requirement from the current feature's plan before "fixing" behavior in either direction; an open spec question may be settled by a spec edit landing in the same commit as the behavior change that exposed it.
 
 ## Conventions
 
 - mypy is strict and covers `tests/` too: every test function needs `-> None` and fixtures need return annotations.
 - ruff runs in preview mode with single quotes inline and double quotes for docstrings; public functions and classes need docstrings (pydocstyle `D` rules).
-- Unreachable branches satisfy the coverage gate with `# pragma: nocover` / `# pragma: nobranch`, which is the established pattern in `nodes.py` and `parsers.py`.
+- `src/` carries only `if TYPE_CHECKING:` pragmas, enforced by a test in `tests/test_nodes.py`; an unreachable stub is deleted or tested directly instead of pragma'd.
 - Tests run in random order, so they must not depend on each other. New pytest markers must be registered in pyproject (`--strict-markers`).
 
 ## Spec-kit workflow

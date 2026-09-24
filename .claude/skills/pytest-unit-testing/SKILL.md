@@ -18,7 +18,7 @@ branch-coverage mandate**.
 | A pure function (`syml.loads`)    | Test directly, no mocks                    |
 | A `SymlNode` subclass in isolation | Fresh instance per test, no shared state   |
 | A grammar/parser behavior          | Drive it through `SymlParser.parse` or `syml.loads`, not internal visitor methods |
-| A genuinely unreachable branch     | `# pragma: nocover` / `# pragma: nobranch`, sparingly (see below) |
+| A genuinely unreachable branch     | Delete the stub, or test it directly — not a pragma (see below) |
 
 `syml` has almost no I/O and no external dependencies to mock — most tests are
 plain input → output assertions against `syml.loads`/`syml.load`, or against
@@ -129,38 +129,25 @@ in a different order every invocation. This means:
 If a test fails only under certain random seeds, that is a bug in the test's
 isolation, not a flaky test to retry.
 
-## `# pragma: nocover` / `# pragma: nobranch` Policy
+## Coverage Policy: No Pragma-on-Unreachable-Branch
 
 The coverage gate (`--cov-fail-under=100`, branch coverage on) is enforced
 only by pre-commit and CI — a green `uv run pytest` locally can still fail at
-commit time. Before reaching for a pragma, ask: can this branch actually be
-exercised by a test? Almost always yes.
+commit time. `src/` carries only `if TYPE_CHECKING:` pragmas; a test in
+`tests/test_nodes.py` fails on any other pragma appearing under `src/`.
 
-Reserve `# pragma: nocover` / `# pragma: nobranch` for branches that are
-**provably unreachable**, matching the established pattern in `nodes.py` and
-`parsers.py`:
+Before reaching for a pragma, ask: can this branch actually be exercised by a
+test? Almost always yes. If a branch is reachable by *some* real SYML
+document or Python call, write that test — don't skip it because writing the
+test is inconvenient or because triggering an error path takes a slightly
+awkward input.
 
-```python
-# src/syml/nodes.py — an abstract method's default body, never actually
-# executed because every concrete subclass overrides it
-def as_data(self) -> Any:  # noqa: ANN401  # pragma: nocover
-    """Render this node as plain data."""
-
-# src/syml/parsers.py — an `else` branch that mirrors an `if` already proven
-# exhaustive by the grammar, kept only for defensive clarity
-else:  # pragma: nocover  # noqa: RET505
-    ...
-```
-
-**Acceptable**: an abstract/overridden method body, a defensive `else` that
-the grammar makes unreachable, a branch that only differs in whether a
-condition variable is truthy in a way the type system or call sites already
-rule out.
-
-**Not acceptable**: skipping a branch because writing the test is
-inconvenient, or because triggering an error path takes a slightly awkward
-input. If a branch is reachable by *some* real SYML document or Python call,
-write that test instead of pragma-ing it away.
+If a branch is genuinely unreachable (e.g. an abstract method's default body
+that every concrete subclass overrides, or a defensive `else` the grammar
+makes unreachable), don't pragma it away — either delete the unreachable
+stub, or write a direct test that exercises it (e.g. by instantiating the
+base class or calling the method directly), so the coverage gate stays
+honest about what's actually exercised.
 
 ## Running a Single Test File
 

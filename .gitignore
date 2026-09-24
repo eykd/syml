@@ -15,3 +15,5 @@ dist
 # Claude Code local state
 .claude/settings.local.json
 .claude/tsc-cache/
+# br doctor per-run artifacts
+.doctor/
