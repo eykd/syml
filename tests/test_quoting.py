@@ -14,6 +14,19 @@ class TestWhereQuotingIsRecognized:
         result = parser.parse("key: 'a'")
         assert result.as_data() == {'key': 'a'}
 
+    def test_it_should_not_decode_a_quoted_bare_root_scalar_line(self) -> None:
+        """A bare root-scalar line is never an inline position, so a well-formed quote stays literal text (D2).
+
+        `syml.SYML-SPEC-REVIEW.md` D2: bare lines (root scalars, block values, continuation
+        lines) are never quote-decoded. Today the grammar's `line = indent (... / value) &eol`
+        falls through directly to `value = structure / quoted_value / data`, so a terminated
+        quote on a bare root-scalar line still matches `quoted_value` and gets decoded. Expected
+        to fail until the grammar stops trying `quoted_value` at the bare `line` position.
+        """
+        parser = parsers.SymlParser()
+        result = parser.parse("'yes'")
+        assert result.as_data() == "'yes'"
+
 
 class TestDecodeSingleQuoted:
     """`decode_single_quoted` decodes a '...' literal (Contract 04)."""
