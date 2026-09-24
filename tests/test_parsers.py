@@ -126,6 +126,18 @@ class TestSymlParser:
             Source.from_text(text, 'baz'): Source.from_text(text, 'boo'),
         }
 
+    def test_it_should_drop_a_zero_length_inline_value_after_a_key_colon(self, parser: parsers.SymlParser) -> None:
+        """D6, §9.3: ``key:␠`` lexes with an empty inline ``text`` child.
+
+        A zero-length *unquoted* inline value is normalized to "no inline
+        value at all", identical to ``key:`` with nothing after it -- the
+        node stays open and accepts the following nested block instead of
+        treating the empty text as the value.
+        """
+        text = 'key: \n  nested: content'
+        result = parser.parse(text)
+        assert result.as_data() == {'key': {'nested': 'content'}}
+
     def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
         self, parser: parsers.SymlParser
     ) -> None:
