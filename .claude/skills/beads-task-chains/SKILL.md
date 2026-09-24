@@ -12,7 +12,7 @@ Reusable chain construction patterns for beads tasks. Consumers: `sp-05-tasks`, 
 | Type  | Name           | Description                                                               |
 | ----- | -------------- | ------------------------------------------------------------------------- |
 | **A** | Testable code    | Domain logic, parsers, node types, tools — full ATDD + TDD               |
-| **B** | Docs/spec pages  | SYML-SPECIFICATION.md, todo.txt, SYML-SPEC-REVIEW.md — write + review    |
+| **B** | Docs/spec pages  | SYML-SPECIFICATION.md, SYML-SPEC-REVIEW.md — write + review              |
 | **D** | Documentation    | README, CLAUDE.md updates — write + lint                                 |
 | **E** | Configuration    | pyproject.toml, justfile, pre-commit config, CI — change + validate      |
 | **F** | Remediation      | Review-generated fixes — TDD chain if testable, flat task otherwise      |
@@ -98,7 +98,7 @@ br create "<spec/doc page change description>" --parent $US_ID \
   --description "..." --json
 ```
 
-Validation: content is accurate and internally consistent — no broken cross-references between `SYML-SPECIFICATION.md`, `todo.txt`, and `SYML-SPEC-REVIEW.md`.
+Validation: content is accurate and internally consistent — no broken cross-references between `SYML-SPECIFICATION.md` and `SYML-SPEC-REVIEW.md`.
 
 ## Type D: Documentation
 

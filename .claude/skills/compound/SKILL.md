@@ -123,7 +123,7 @@ If still unclear, ask once: "What problem did you just solve? Describe the sympt
 | `ruff/`               | Lint/format rule conflicts, preview-mode gotchas, pydocstyle `D` rules |
 | `pytest-coverage/`    | 100% coverage patterns, `# pragma: nocover`/`nobranch`, fixture typing |
 | `parsing/`            | Parsimonious PEG grammar quirks, line-oriented lexing, tree-building edge cases |
-| `spec-conformance/`   | SYML-SPECIFICATION.md vs. shipped-parser gaps, `todo.txt` conformance findings |
+| `spec-conformance/`   | SYML-SPECIFICATION.md vs. shipped-parser gaps and conformance findings |
 | `security/`           | Input validation, untrusted-input parsing hazards                  |
 | `clean-architecture/` | Layer violations, dependency direction, node/visitor design         |
 | `tooling/`            | `uv`/`just` recipe quirks, pre-commit hooks, dependency conflicts   |
