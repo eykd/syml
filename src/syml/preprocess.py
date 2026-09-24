@@ -8,13 +8,15 @@ back to the caller's original text.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .basetypes import Pos
 from .exceptions import TabIndentationError
 
 if TYPE_CHECKING:  # pragma: nocover
-    from .basetypes import Pos, StrPath
+    from .basetypes import StrPath
 
 
 @dataclass(slots=True, frozen=True)
@@ -24,9 +26,11 @@ class PositionMap:
     bom_offset: int
     crlf_indices: tuple[int, ...]
 
-    def to_original(self, pos: Pos) -> Pos:  # pragma: nocover
+    def to_original(self, pos: Pos) -> Pos:
         """Translate a normalized `Pos` back into original-document coordinates."""
-        raise NotImplementedError
+        index = pos.index + self.bom_offset + bisect_left(self.crlf_indices, pos.index)
+        column = pos.column + self.bom_offset if pos.line == 1 else pos.column
+        return Pos(index, pos.line, column)
 
 
 @dataclass(slots=True, frozen=True)
