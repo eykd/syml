@@ -75,8 +75,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             value       = structure / data
             data        = text
 
-            quoted_value  = single_quoted
+            quoted_value  = single_quoted / double_quoted
             single_quoted = "'" ~"(?:''|[^'\n])*" "'"
+            double_quoted = "\"" ~"(?:\\\\(?:[\\\\/\"ntr]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})|[^\"\\\\\n])*" "\""
 
             """
         )
