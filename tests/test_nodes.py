@@ -148,3 +148,18 @@ class TestDirectTestsForPreviouslyPragmadBranches:
         comment = nodes.Comment(pnode=_pnode('note'))
 
         assert comment.as_data() == 'note'
+
+
+class TestChildlessRootYieldsEmptyString:
+    """Contract 03 §Absent values (FR-005): empty and comment-only documents yield "".
+
+    A childless `Root` is a `ContainerNode` with no children, so its
+    `as_data()` must return `''` rather than `None` (US4, no `loads`/`load`
+    result may contain `None` at any depth).
+    """
+
+    def test_childless_root_as_data_is_empty_string_not_none(self) -> None:
+        """A Root with no children (empty or comment-only document) returns ''."""
+        root = nodes.Root(pnode=_pnode(''))
+
+        assert root.as_data() == ''
