@@ -3,9 +3,11 @@ from io import StringIO
 
 import pytest
 from parsimonious import Grammar
+from parsimonious.expressions import Literal
+from parsimonious.nodes import Node
 
 import syml
-from syml import exceptions, parsers
+from syml import exceptions, parsers, quoting
 from syml.basetypes import Source
 
 
@@ -428,3 +430,44 @@ class TestFindFirst:
         result = parsers.find_first(tree, 'quoted_value')
 
         assert result is expected
+
+
+class TestVisitQuotedValueDecoderDefectConversion:
+    """Contract 05 §Decoder failures cross the visitor as `ParseError`s.
+
+    `decode_double_quoted` is position-free and raises the module-private
+    `quoting.QuotedStringDefect`; `visit_quoted_value` is the only place that
+    catches it and re-raises `MalformedQuotedStringError`, and that
+    conversion must reach `parser.visit()` **unwrapped** — not
+    `parsimonious.exceptions.VisitationError` — because Parsimonious wraps
+    exceptions raised while visiting a node before the parent's own
+    `visit_*` runs (§ Why not in `visit_key_value` / `visit_list_item`).
+    """
+
+    def test_a_decoder_defect_crosses_the_visitor_as_a_malformed_quoted_string_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A surrogate escape's `QuotedStringDefect` must surface as `MalformedQuotedStringError`.
+
+        Patches the *module attribute* `quoting.decode_double_quoted`, not
+        the name imported into `parsers` — Green must call it via
+        `quoting.decode_double_quoted(...)` (`from . import quoting`) for
+        this patch to take effect (a `from .quoting import
+        decode_double_quoted` binding would not be patched by this).
+        """
+        raw = '"\\ud800"'
+        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
+
+        def fake_decode_double_quoted(_raw: str) -> str:
+            raise quoting.QuotedStringDefect(escape='\\ud800', code_point=0xD800)
+
+        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
+
+        parser = parsers.SymlParser()
+
+        with pytest.raises(exceptions.MalformedQuotedStringError) as excinfo:
+            parser.visit(node)
+
+        assert excinfo.value.escape == '\\ud800'
+        assert excinfo.value.code_point == 0xD800
+        assert isinstance(excinfo.value.__cause__, quoting.QuotedStringDefect)

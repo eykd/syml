@@ -100,6 +100,17 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a text leaf node."""
         return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
+    def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:
+        """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
+
+        Not yet implemented (US6 owns the grammar rule and the decoders);
+        stubbed here so Contract 05's visitor-boundary conversion can be
+        tested ahead of them (`unwrapped_exceptions` must also widen to
+        `ParseError` for the conversion to reach `loads`/`load`/`parse`
+        unwrapped — that is this leaf's Green task).
+        """
+        raise NotImplementedError
+
     def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
         """Return a key leaf node."""
         return nodes.KeyLeafNode(pnode=node, filename=self.filename)

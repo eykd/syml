@@ -44,6 +44,23 @@ class EncodingError(ParseError):
     """Invalid-byte input could not be decoded (§11.3, FR-009, R-04)."""
 
 
+class MalformedQuotedStringError(ParseError):
+    """A quoted string was unterminated, stranded, or carried a bad escape/code point (§8.5, §11.3)."""
+
+    def __init__(
+        self,
+        message: str,
+        position: Pos,
+        line_text: str,
+        escape: str | None,
+        code_point: int | None,
+    ) -> None:
+        """Store the offending escape text and/or out-of-range code point, both nullable."""
+        super().__init__(message, position, line_text, escape, code_point)
+        self.escape = escape
+        self.code_point = code_point
+
+
 class DuplicateKeyError(ParseError):
     """A mapping key repeats an earlier sibling's key at the same level (FR-007, §8.3)."""
 
