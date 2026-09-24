@@ -1,11 +1,12 @@
 """Quoted-string decoding for SYML documents (§4.7, Contract 04, US6).
 
-Only the pieces Contract 05's "decoder failures cross the visitor as
-ParseErrors" leaf needs exist here so far: :class:`QuotedStringDefect` (a
-real, fully-specified module-private signal) and a stub
-:func:`decode_double_quoted` that raises ``NotImplementedError`` until US6
-implements the escape table. ``decode_single_quoted`` and
-``diagnose_malformed`` belong to later US6 leaves and are not stubbed here.
+:class:`QuotedStringDefect` is a real, fully-specified module-private
+signal. :func:`decode_double_quoted` is a stub that raises
+``NotImplementedError`` until US6 implements the escape table.
+:func:`decode_single_quoted` strips the surrounding quotes only (D2); its
+``''`` -> one apostrophe and literal-backslash handling belong to a later
+US6 leaf. ``diagnose_malformed`` belongs to a later US6 leaf and is not
+stubbed here.
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ class QuotedStringDefect(ValueError):  # noqa: N818 -- private signal, never rea
         super().__init__(escape, code_point)
         self.escape = escape
         self.code_point = code_point
+
+
+def decode_single_quoted(raw: str) -> str:
+    """Decode a '...' literal (Contract 04). `raw` includes the surrounding quotes."""
+    return raw[1:-1]
 
 
 def decode_double_quoted(raw: str) -> str:

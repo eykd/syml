@@ -51,7 +51,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             value_list_item  = "-" ws value
             guard_list_item  = "-" &eol
 
-            key_value   = section ws data
+            key_value          = quoted_key_value / data_key_value
+            quoted_key_value   = section ws? quoted_value ~" *"
+            data_key_value     = section ws data
             section     = key ":"
             key         = ~"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set)
 
@@ -61,6 +63,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
             value       = structure / data
             data        = text
+
+            quoted_value  = single_quoted
+            single_quoted = "'" ~"(?:''|[^'\n])*" "'"
 
             """
         )
@@ -103,6 +108,16 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a text leaf node."""
         return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
+    def visit_single_quoted(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:
+        """Decode a single-quoted inline value (D2).
+
+        Parsimonious collapses the `quoted_value = single_quoted` alias, so
+        the grammar's actual match node is named `single_quoted`, not
+        `quoted_value`; `visit_quoted_value` stays for the synthetic-node
+        tests that construct a `quoted_value`-named node directly.
+        """
+        return self.visit_quoted_value(node, children)
+
     def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
 
@@ -111,7 +126,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """
         raw = node.text
         try:
-            text = quoting.decode_double_quoted(raw)
+            text = quoting.decode_single_quoted(raw) if raw.startswith("'") else quoting.decode_double_quoted(raw)
         except quoting.QuotedStringDefect as defect:
             position = Pos.from_str_index(node.full_text, node.start)
             raise MalformedQuotedStringError(
@@ -140,11 +155,17 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')), filename=self.filename
         )
 
-    def visit_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
-        """Visit a mapping value."""
+    def visit_data_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
+        """Visit a mapping value whose data is unquoted text."""
         section, _, value = children
         if not _is_zero_length_text(value):
             section.incorporate_node(value)
+        return section
+
+    def visit_quoted_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
+        """Visit a mapping value at an inline quoted position (D2)."""
+        section, _ws, value, _trailing = children
+        section.incorporate_node(value)
         return section
 
     def visit_section(self, node: PNode, children: SymlNodes) -> nodes.KeyValue:
