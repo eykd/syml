@@ -282,7 +282,9 @@ class TextLeafNode(SymlNode):
         return '\n'.join([str(self.source)] + [c.as_data() for c in self.children])
 
     def can_add_node(self, node: SymlNode) -> bool:
-        """Check if a child node can be added (§5.3, D11)."""
+        """Check if a child node can be added (§5.3, D11, §9.3)."""
+        if self.quoted:
+            return False
         if not isinstance(node, TextLeafNode) or node.level is None:
             return False
         if self.baseline is None:
