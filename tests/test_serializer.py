@@ -7,6 +7,19 @@ import pytest
 from syml import serializer
 
 
+class TestDumpsQuotingTable:
+    """§11.2.1 quoting table rules A-G, including the list-item re-lex rule."""
+
+    def test_it_should_double_quote_and_escape_colon_for_a_list_item_that_would_relex_as_a_mapping(
+        self,
+    ) -> None:
+        # Rule D: 'a: b' at a list-item position would match key_value, so it
+        # must be quoted. Both the single- and plain-double-quoted renderings
+        # re-lex as a mapping (per the re-lex rule), so the emitted form must
+        # be double-quoted with the ':' escaped as :.
+        assert serializer.dumps(['a: b']) == '- "a\\u003a b"\n'
+
+
 class TestDumpsTypeContract:
     def test_it_should_serialize_str_list_and_dict_recursively(self) -> None:
         assert serializer.dumps({'a': ['b', {'c': 'd'}]}) == 'a:\n  - b\n  - c: d\n'
