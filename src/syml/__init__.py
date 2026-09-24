@@ -8,7 +8,6 @@ from .basetypes import StrPath, SymlData, SymlInput
 from .exceptions import (
     DuplicateKeyError,
     EncodingError,
-    MalformedQuotedStringError,
     OutOfContextNodeError,
     ParseError,
     TabIndentationError,
@@ -21,7 +20,6 @@ from .serializer import dump, dumps
 __all__ = [
     'DuplicateKeyError',
     'EncodingError',
-    'MalformedQuotedStringError',
     'OutOfContextNodeError',
     'ParseError',
     'Root',

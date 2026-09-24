@@ -65,12 +65,19 @@ SYML text, such that `loads(dumps(x)) == x`:
 ...     syml.dump({'foo': ['bar', 'baz']}, f)
 ```
 
-The output format is an implementation choice, not part of the SYML
+SYML has no quoted strings: every value is the literal text on the page, so
+a `'` or `"` is ordinary content and `"hello"` round-trips with its quotation
+marks. A string containing a newline is written in block form (the key or
+`-` on its own line, each line of the value indented beneath it). The output
+format is otherwise an implementation choice, not part of the SYML
 conformance requirements: two-space indentation, no blank lines, exactly one
-trailing newline, keys written in insertion order, and single quotes
-preferred whenever quoting is required. `dumps` raises `TypeError` for
-anything that isn't `str`, `list`, or `dict` (including a non-`str` mapping
-key), and `UnrepresentableValueError` for a value with no SYML encoding.
+trailing newline, and keys written in insertion order. `dumps` raises
+`TypeError` for anything that isn't `str`, `list`, or `dict` (including a
+non-`str` mapping key), and `UnrepresentableValueError` for a value with no
+SYML encoding — a control character, a leading space or tab, a blank or
+`#`-initial or structure-shaped line inside a multi-line value, a `- x` or
+`key: v` shaped list item, or a mapping key with whitespace, a colon, or an
+uppercase letter (see the specification's §11.2.1–§11.2.3).
 
 `dump` writes through the file object's own codec and does not check it, so
 always open the handle with `encoding='utf-8'` — SYML documents are UTF-8.

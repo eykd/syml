@@ -274,7 +274,6 @@ class TextLeafNode(SymlNode):
     """A leaf node containing a text value."""
 
     inline: bool = field(default=False)
-    quoted: bool = field(default=False)
     # anchor_level/baseline default to these sentinel values until the
     # accepting ContainerNode.add_node sets them on attach (contract 03):
     # anchor_level = self.level, baseline = None if node.inline else node.level.
@@ -308,8 +307,6 @@ class TextLeafNode(SymlNode):
 
     def can_add_node(self, node: SymlNode) -> bool:
         """Check if a child node can be added (§5.3, D11, §9.3)."""
-        if self.quoted:
-            return False
         if not isinstance(node, TextLeafNode) or node.level is None:
             return False
         if self.baseline is None:

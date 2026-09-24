@@ -8,7 +8,7 @@ broad — synonyms, related terms, tech names, problem descriptions.
 
 ## syml 1.0 Spec Conformance
 
-Keywords: syml 1.0, spec conformance, SYML-SPECIFICATION, parser conformance, quoted strings, MalformedQuotedStringError, duplicate keys, DuplicateKeyError, tab indentation, TabIndentationError, BOM, CRLF normalization, pre-processing, multiline baseline, continuation lines, OutOfContextNodeError, sibling indentation, empty value returns empty string not None, error taxonomy, EncodingError, dumps, dump, serializer, round-trip, source tracking, Source, Pos, migration from 0.6.2, breaking changes, todo.txt retirement, release 1.0.0
+Keywords: syml 1.0, spec conformance, SYML-SPECIFICATION, parser conformance, literal values, no quoted strings (D18), case-restricted keys (D19), duplicate keys, DuplicateKeyError, tab indentation, TabIndentationError, BOM, CRLF normalization, pre-processing, multiline baseline, continuation lines, OutOfContextNodeError, sibling indentation, empty value returns empty string not None, error taxonomy, EncodingError, dumps, dump, serializer, round-trip, source tracking, Source, Pos, migration from 0.6.2, breaking changes, todo.txt retirement, release 1.0.0
 Spec: specs/001-syml-1-0-conformance/spec.md
 
 ---

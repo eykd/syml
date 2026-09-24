@@ -82,8 +82,9 @@ def when_migration_notes_read(changelog_text: str) -> str:
 
 @then(
     'they list the null-to-empty-string change, tabs and duplicate keys '
-    'becoming errors, quoted values decoding, the leading-marker and '
-    'key-colon-value fallthrough, third-party parser exceptions no longer '
+    'becoming errors, quoted strings staying unsupported and keys losing '
+    'uppercase, the leading-marker and key-colon-value fallthrough, '
+    'third-party parser exceptions no longer '
     'escaping, the new load input types, and the new dumps and dump'
 )
 def then_migration_notes_list_changes(migration_notes_read: str) -> None:
@@ -93,6 +94,7 @@ def then_migration_notes_list_changes(migration_notes_read: str) -> None:
         'tab',
         'duplicatekeyerror',
         'quoted',
+        'uppercase',
         'fallthrough',
         'parsimonious',
         'load',

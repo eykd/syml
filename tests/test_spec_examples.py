@@ -22,9 +22,10 @@ import syml
 
 SPEC_PATH = Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
 
-#: SC-001's documented count (53) as of the last spec review; guards against
-#: the extractor's regexes silently matching zero blocks and passing vacuously.
-MINIMUM_EXAMPLE_COUNT = 53
+#: SC-001's documented count (54) as of the 2026-09-24 D18/D19 spec amendment;
+#: guards against the extractor's regexes silently matching zero blocks and
+#: passing vacuously.
+MINIMUM_EXAMPLE_COUNT = 54
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
 _INLINE_CODE_RE = re.compile(r'`([^`]*)`')

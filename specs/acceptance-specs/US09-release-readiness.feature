@@ -12,7 +12,7 @@ Feature: A release-ready main with migration notes and one conformance ledger
   Scenario: The migration notes list every user-visible change
     Given the migration notes
     When a 0.6.2 user reads them
-    Then they list the null-to-empty-string change, tabs and duplicate keys becoming errors, quoted values decoding, the leading-marker and key-colon-value fallthrough, third-party parser exceptions no longer escaping, the new load input types, and the new dumps and dump
+    Then they list the null-to-empty-string change, tabs and duplicate keys becoming errors, quoted strings staying unsupported and keys losing uppercase, the leading-marker and key-colon-value fallthrough, third-party parser exceptions no longer escaping, the new load input types, and the new dumps and dump
 
   Scenario: Exactly one conformance ledger exists
     Given the repository
