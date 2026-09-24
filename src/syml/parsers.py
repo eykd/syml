@@ -124,16 +124,6 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a text leaf node."""
         return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
-    def visit_single_quoted(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:
-        """Decode a single-quoted inline value (D2).
-
-        Parsimonious collapses the `quoted_value = single_quoted` alias, so
-        the grammar's actual match node is named `single_quoted`, not
-        `quoted_value`; `visit_quoted_value` stays for the synthetic-node
-        tests that construct a `quoted_value`-named node directly.
-        """
-        return self.visit_quoted_value(node, children)
-
     def _malformed_quoted_string(
         self, pnode: Node, *, escape: str | None, code_point: int | None
     ) -> MalformedQuotedStringError:
