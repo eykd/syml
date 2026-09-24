@@ -111,3 +111,6 @@ class TestDumpsUnrepresentableRootScalars:
     def test_it_should_raise_unrepresentable_value_error_for_a_root_scalar_with_no_encoding(self, value: str) -> None:
         with pytest.raises(UnrepresentableValueError):
             serializer.dumps(value)
+
+    def test_it_should_serialize_a_representable_root_scalar(self) -> None:
+        assert serializer.dumps('hello') == 'hello\n'

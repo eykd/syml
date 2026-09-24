@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import IO, TYPE_CHECKING
 
 import parsimonious
@@ -13,6 +14,8 @@ if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import SymlInput
 
 _GRAMMAR = SymlParser.grammar
+
+_CONTROL_CHAR_PATTERN = re.compile('[\x00-\x1f\x7f-\x9f]')
 
 _RELEX_ESCAPES = {
     '\\': '\\\\',
@@ -41,6 +44,11 @@ def dumps(data: SymlInput) -> str:
     exactly one leading mark. A str subclass, such as a (str, Enum)
     member, is written as its string value.
     """
+    if isinstance(data, str):
+        text = str.__str__(data)
+        if not _root_scalar_is_representable(text):
+            message = f'{text!r} is not representable as a SYML root scalar (§11.2.4)'
+            raise UnrepresentableValueError(message, text)
     return '\n'.join(_render_value_lines(data, 0)) + '\n'
 
 
@@ -75,6 +83,28 @@ def key_is_representable(k: str) -> bool:
     except parsimonious.exceptions.ParseError:
         return False
     return match.end == len(k) and not k.startswith(('#', '//'))
+
+
+def _root_scalar_is_representable(s: str) -> bool:
+    """Return whether `s` can be written as a SYML root scalar (§11.2.4, D17).
+
+    False if any of its lines would lex as `list_item`, `key_value`, or
+    `section` (condition a); it begins with '#' or '//' (b); it contains a
+    control character (c); any of its lines has leading or trailing
+    whitespace (d); or it is exactly `''` or `""` (e).
+    """
+    if s in ("''", '""'):
+        return False
+    if s.startswith(('#', '//')):
+        return False
+    if _CONTROL_CHAR_PATTERN.search(s):
+        return False
+    for line in s.split('\n'):
+        if line != line.strip():
+            return False
+        if _structure_matches(line):
+            return False
+    return True
 
 
 def _not_representable(value: object) -> TypeError:
