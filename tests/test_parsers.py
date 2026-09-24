@@ -263,6 +263,21 @@ class TestSymlParser:
         with pytest.raises(exceptions.OutOfContextNodeError):
             parser.parse(bad_yaml)
 
+    def test_it_should_compute_level_from_a_nodes_own_column_not_the_lines_indent(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        """A list-item line's inline mapping key is leveled by its own column (R-11).
+
+        ``-   name: Alice`` puts ``name`` at column 4. A continuation line
+        indented only to column 2 is therefore *less* indented than ``name``'s
+        own level, so it cannot incorporate as a sibling under the same
+        mapping and the parse must fail with ``OutOfContextNodeError`` — not
+        succeed by inheriting the list item's column 0 for ``name``.
+        """
+        text = '-   name: Alice\n  role: admin'
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            parser.parse(text)
+
 
 class TestSimpleParserFunction:
     def test_it_should_parse_a_simple_list(self) -> None:
