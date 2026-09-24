@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from syml import nodes
+from syml.exceptions import DuplicateKeyError
 from syml.parsers import SymlParser
 
 if TYPE_CHECKING:
@@ -79,3 +82,29 @@ class TestTextLeafNodeContinuationBaseline:
 
         below_baseline = nodes.TextLeafNode(pnode=_pnode('c'), level=2)
         assert leaf.can_add_node(below_baseline) is False
+
+
+class TestMappingDuplicateKeyDetection:
+    """Contract 03 §Duplicate keys (FR-007, §8.3, §10.3).
+
+    `Mapping.can_add_node` raises `DuplicateKeyError` immediately when a
+    same-level `KeyValue` repeats an already-incorporated sibling's key,
+    rather than silently accepting the second occurrence (today's
+    behavior: the later value overwrites the earlier one in `as_data()`).
+    """
+
+    def test_mapping_raises_duplicate_key_error_for_repeated_key_at_same_level(self) -> None:
+        """A second same-level KeyValue whose key repeats an existing child's key raises."""
+        mapping = nodes.Mapping(pnode=_pnode('key: value1'), level=0)
+        first_key = nodes.KeyLeafNode(pnode=_pnode('key'))
+        first_kv = nodes.KeyValue(pnode=_pnode('key: value1'), key=first_key, level=0)
+        mapping.add_node(first_kv)
+
+        second_key = nodes.KeyLeafNode(pnode=_pnode('key'))
+        second_kv = nodes.KeyValue(pnode=_pnode('key: value2'), key=second_key, level=0)
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            mapping.can_add_node(second_kv)
+
+        assert exc_info.value.key == 'key'
+        assert exc_info.value.first_position == first_kv.source.start
