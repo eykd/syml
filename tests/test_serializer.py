@@ -16,7 +16,7 @@ class TestDumpsQuotingTable:
         # Rule D: 'a: b' at a list-item position would match key_value, so it
         # must be quoted. Both the single- and plain-double-quoted renderings
         # re-lex as a mapping (per the re-lex rule), so the emitted form must
-        # be double-quoted with the ':' escaped as :.
+        # be double-quoted with the ':' escaped as \u003a.
         assert serializer.dumps(['a: b']) == '- "a\\u003a b"\n'
 
     def test_it_should_single_quote_a_list_item_that_stays_literal_after_quoting(

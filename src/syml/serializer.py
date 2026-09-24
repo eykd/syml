@@ -35,7 +35,7 @@ def dumps(data: SymlInput) -> str:
     insertion order. The empty string serializes to the empty document ''.
     When quoting is required, single quotes are preferred. At a list-item
     position, a quoted value that would re-read as a mapping is written
-    double-quoted with every ':' escaped as :. If the output would
+    double-quoted with every ':' escaped as \u003a. If the output would
     begin with U+FEFF, one extra U+FEFF is prepended, because loads strips
     exactly one leading mark. A str subclass, such as a (str, Enum)
     member, is written as its string value.
