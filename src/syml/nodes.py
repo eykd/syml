@@ -215,6 +215,14 @@ class KeyValue(ContainerNode):
 class TextLeafNode(SymlNode):
     """A leaf node containing a text value."""
 
+    inline: bool = field(default=False)
+    quoted: bool = field(default=False)
+    # anchor_level/baseline are stub fields here (contract 03): the accepting
+    # node is meant to set them on attach, but that assignment is not yet
+    # implemented — see syml-x0m.5.2.3.
+    anchor_level: int = field(default=-1)
+    baseline: int | None = field(default=0)
+
     def as_source(self) -> Source:  # pragma: nocover
         """Return this node as primitive data types with Source objects for strings."""
         source = self.source
