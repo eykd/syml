@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from syml import utils
 
@@ -14,6 +14,12 @@ if TYPE_CHECKING:  # pragma: nocover
 
 
 StrPath = str | Path
+
+# Contract 07 §Surface: `SymlData` is the recursive return type of `loads`;
+# `SymlInput` is the deliberately widened parameter type of `dumps`/`dump`,
+# because `list`/`dict` invariance would otherwise reject every typed caller.
+type SymlData = str | list[SymlData] | dict[str, SymlData]
+SymlInput = str | list[Any] | dict[str, Any]
 
 
 @dataclass(slots=True, frozen=True)
