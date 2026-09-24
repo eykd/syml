@@ -73,6 +73,26 @@ class TestDumpsQuotingTable:
         value = '- ' * 150 + 'x'
         assert serializer.dumps([value]) == "- '" + value + "'\n"
 
+    def test_it_should_round_trip_a_mapping_value_with_leading_and_trailing_space(
+        self,
+    ) -> None:
+        # §11.2.1's quoting table is only wired up for list items so far
+        # (syml-x0m.5.8.5-.7); a mapping value with leading/trailing
+        # whitespace is written raw (`_render_mapping_lines` does not quote),
+        # so `loads` strips the padding on read-back and the round trip
+        # fails.
+        value = {'k': ' x '}
+        assert loads(serializer.dumps(value)) == value
+
+    def test_it_should_not_raise_parse_error_for_a_value_whose_single_quote_relex_fails(
+        self,
+    ) -> None:
+        # `_relexes_as_literal` calls the `line` grammar rule without
+        # catching parsimonious.exceptions.ParseError, so a candidate whose
+        # single-quoted rendering fails to re-lex crashes `dumps` instead of
+        # falling back to the escaped double-quoted form.
+        serializer.dumps(["k: 'v' x"])
+
 
 class TestDumpsUnrepresentableEmptyContainers:
     """§11.2.2 — empty list/mapping raise UnrepresentableValueError at any depth (D1)."""
