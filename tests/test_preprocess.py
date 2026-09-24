@@ -1,4 +1,7 @@
+import pytest
+
 from syml import preprocess
+from syml.exceptions import TabIndentationError
 
 
 class TestPreprocessBomStripping:
@@ -26,3 +29,16 @@ class TestPreprocessLineEndings:
         document = preprocess.preprocess('a: b\r')
         assert document.normalized == 'a: b\n'
         assert document.position_map.crlf_indices == ()
+
+
+class TestPreprocessBlankClassificationAndTabScan:
+    def test_it_should_raise_tab_indentation_error_for_a_leading_tab_but_not_for_a_blank_line(
+        self,
+    ) -> None:
+        with pytest.raises(TabIndentationError):
+            preprocess.preprocess('\tkey: value')
+
+        # A tab-bearing line with nothing else on it is blank (§4.4, D14) and
+        # is exempt from the tab scan entirely.
+        document = preprocess.preprocess('  \t  \nkey: v')
+        assert document.normalized == '  \t  \nkey: v'
