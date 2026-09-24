@@ -62,6 +62,10 @@ acceptance-missing:
 # Run both unit tests and acceptance tests
 test-all: test acceptance
 
+# Build the sdist and wheel into dist/ (what the release workflow uploads to PyPI)
+build:
+    uv build
+
 # ============================================================================
 # Beads Task Tracker
 # ============================================================================

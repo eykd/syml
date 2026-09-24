@@ -51,6 +51,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/syml"]
 
+[tool.hatch.build.targets.sdist]
+# Hatchling's default sdist is "everything not gitignored", which here means
+# the beads database, .claude/, and specs/. Ship only what a user needs.
+only-include = ["src/syml", "README.md", "LICENSE", "CHANGELOG.md", "SYML-SPECIFICATION.md"]
+
 [tool.ruff]
 # Python linter & formatter
 # https://docs.astral.sh/ruff/

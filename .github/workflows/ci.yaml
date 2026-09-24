@@ -37,7 +37,7 @@ jobs:
       env:
         PYTHONDONTWRITEBYTECODE: 1
     # Feature branches are expected to fail this until their step bindings land;
-    # main only ever receives hardened branches, so it stays green there.
+    # master only ever receives hardened branches, so it stays green there.
     - name: Acceptance tests (pytest-bdd)
       run: |
         just acceptance
