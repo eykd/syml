@@ -537,3 +537,24 @@ class TestVisitQuotedValueDecoderDefectConversion:
         assert leaf.source.text == 'foo'
         assert leaf.quoted is True
         assert leaf.inline is True
+
+
+class TestVisitCommentWithNoTrailingText:
+    """FR-009: no third-party exception may escape `loads` (Contract 05).
+
+    A comment-only line whose markers consume the whole line (e.g. `'####'`)
+    leaves the grammar's optional trailing `text?` unmatched. Parsimonious
+    visits that unmatched optional to `None`, not a zero-length node, so
+    `visit_comment`'s `text.pnode` access raises `AttributeError`, which
+    Parsimonious re-wraps as `parsimonious.exceptions.VisitationError` --
+    a third-party exception type that must never escape `syml.loads`.
+    """
+
+    def test_a_comment_only_document_does_not_leak_a_parsimonious_exception(self) -> None:
+        """Parsing `'####'` must not raise `parsimonious.exceptions.VisitationError`."""
+        try:
+            result = syml.loads('####')
+        except exceptions.ParseError:
+            pass
+        else:
+            assert isinstance(result, str)
