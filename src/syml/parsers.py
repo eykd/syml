@@ -112,11 +112,6 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         key, _ = children
         return nodes.KeyValue(pnode=node, key=key, filename=self.filename)  # type: ignore[arg-type]
 
-    def visit_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
-        """Visit a list item."""
-        (li,) = children
-        return li  # type: ignore[return-value]
-
     def visit_value_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item carrying an inline value."""
         _, _, value = children
