@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import textwrap
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from parsimonious import Grammar, NodeVisitor
 
@@ -188,6 +188,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         if text[:1] in ("'", '"'):
             raise self._malformed_quoted_string(value.pnode, escape=quoting.diagnose_malformed(text), code_point=None)
         if not _is_zero_length_text(value):
+            cast('nodes.TextLeafNode', value).inline = True
             section.incorporate_node(value)
         return section
 
@@ -207,6 +208,8 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
         if value is not None and not _is_zero_length_text(value):  # pragma: nobranch
+            if isinstance(value, nodes.TextLeafNode):
+                value.inline = True
             li.incorporate_node(value)
         return li
 
