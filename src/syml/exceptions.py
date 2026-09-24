@@ -33,6 +33,10 @@ class TabIndentationError(ParseError):
     """A tab character was found in a line's leading whitespace (§9.0.3)."""
 
 
+class EncodingError(ParseError):
+    """Invalid-byte input could not be decoded (§11.3, FR-009, R-04)."""
+
+
 class DuplicateKeyError(ParseError):
     """A mapping key repeats an earlier sibling's key at the same level (FR-007, §8.3)."""
 

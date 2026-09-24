@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .basetypes import Pos
-from .exceptions import TabIndentationError
+from .exceptions import EncodingError, TabIndentationError
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import StrPath
@@ -108,6 +108,19 @@ def split_lines_lf(text: str) -> list[str]:
     U+000B, U+000C, or U+001C-U+001E as line terminators.
     """
     return text.split('\n')
+
+
+def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> EncodingError:
+    """Derive an `EncodingError` from a `UnicodeDecodeError` (Contract 05 §R-04).
+
+    `err.start` is a byte offset; this converts it to code-point coordinates
+    over `(err.object, err.start, err.encoding)` alone.
+
+    :param err: The `UnicodeDecodeError` raised while decoding.
+    :param filename: The filename to include in the message, if any.
+    :returns: An `EncodingError` positioned at the first invalid byte.
+    """
+    raise NotImplementedError
 
 
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
