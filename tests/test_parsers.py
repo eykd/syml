@@ -350,6 +350,16 @@ class TestSimpleParserFunction:
         """A continuation line indented deeper than the value's baseline keeps its extra spaces (§5.3, D11, todo.txt A9)."""
         assert syml.loads(text) == expected
 
+    def test_it_should_join_a_continuation_line_under_an_inline_key_value(self) -> None:
+        """An inline key/value value must set inline=True so its baseline stays open (D11).
+
+        'Big Warning: do not touch' fails the key_value grammar (space before
+        the colon) and falls through to plain text, so it should join as a
+        continuation of 'Note' rather than raising OutOfContextNodeError.
+        """
+        text = 'a: Note\n  Big Warning: do not touch'
+        assert syml.loads(text) == {'a': 'Note\nBig Warning: do not touch'}
+
     def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
         """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
 
