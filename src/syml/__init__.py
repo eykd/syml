@@ -40,20 +40,19 @@ def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[st
 def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
     """Load a SYML document from a text or binary file-like object."""
     if filename is None:
-        name = getattr(file_obj, 'name', None)
-        filename = name if isinstance(name, str | Path) else None
+        filename = _resolve_filename(file_obj)
     try:
         raw = file_obj.read()
+        text = raw.decode('utf-8') if isinstance(raw, bytes) else raw
     except UnicodeDecodeError as err:
         raise encoding_error(err, filename) from err
-    if isinstance(raw, bytes):
-        try:
-            text = raw.decode('utf-8')
-        except UnicodeDecodeError as err:
-            raise encoding_error(err, filename) from err
-    else:
-        text = raw
     return loads(text, filename=filename)
+
+
+def _resolve_filename(file_obj: IO[str] | IO[bytes]) -> StrPath | None:
+    """Return `file_obj.name` when it is a usable path-like value, else `None`."""
+    name = getattr(file_obj, 'name', None)
+    return name if isinstance(name, str | Path) else None
 
 
 def parse(document: str, filename: StrPath | None = None) -> Root:
