@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import syml
-from syml import nodes
+from syml import nodes, parsers
 from syml.exceptions import DuplicateKeyError
 from syml.parsers import SymlParser
 
@@ -186,3 +186,41 @@ class TestValuelessKeyYieldsEmptyStringAtEveryDepth:
             'top': {'mid': {'deep': ''}, 'sib': ''},
             'after': '',
         }
+
+
+def _assert_no_null_leaves(value: object) -> None:
+    """Recursively walk `value`, failing if any leaf (non-dict/list) is None."""
+    if isinstance(value, dict):
+        for item in value.values():
+            _assert_no_null_leaves(item)
+    elif isinstance(value, list):
+        for item in value:
+            _assert_no_null_leaves(item)
+    else:
+        assert value is not None
+
+
+class TestNoLeafOfAnyAcceptedDocumentIsEverANull:
+    """Contract 03 §Worked cases: no leaf of an accepted document is ever `None`.
+
+    US4 scenario 5 states the invariant in `loads` terms (`as_data`), and
+    it already holds there. But `ContainerNode.as_source` — the sibling
+    rendering used for `Source`-carrying output — still returns `None` for
+    a childless container (nodes.py's `as_source` docstring/branch), so the
+    same recursive walk over `as_source()` output finds a null leaf where a
+    valueless key's value should be an empty `Source`.
+    """
+
+    @pytest.mark.parametrize(
+        'document',
+        [
+            'a:\n',
+            'top:\n  mid:\n    deep:\n  sib:\nafter:\n',
+            '- \n- \n',
+        ],
+    )
+    def test_as_source_never_yields_a_null_leaf(self, document: str) -> None:
+        """Walking `as_source()` for accepted documents never finds a None leaf."""
+        root = parsers.parse(document)
+
+        _assert_no_null_leaves(root.as_source())
