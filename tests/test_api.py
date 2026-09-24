@@ -7,6 +7,7 @@ import io
 import pytest
 
 import syml
+from syml import basetypes, serializer
 from syml.exceptions import DuplicateKeyError, EncodingError
 
 
@@ -80,3 +81,23 @@ class TestParseIsAPublicExport:
 
         assert isinstance(root, syml.Root)
         assert root.as_data() == syml.loads('key: value')
+
+
+class TestDumpsDumpSymlDataSymlInputArePublicExports:
+    """Contract 09 FR-015 (CHANGELOG.md items 12/14): `dumps`/`dump`/`SymlData`/`SymlInput` are public exports."""
+
+    def test_dumps_is_importable_from_the_syml_package_and_matches_the_serializer(self) -> None:
+        """`syml.dumps` is the same callable as `syml.serializer.dumps`."""
+        assert syml.dumps is serializer.dumps
+
+    def test_dump_is_importable_from_the_syml_package_and_matches_the_serializer(self) -> None:
+        """`syml.dump` is the same callable as `syml.serializer.dump`."""
+        assert syml.dump is serializer.dump
+
+    def test_symldata_is_importable_from_the_syml_package(self) -> None:
+        """`syml.SymlData` is the same type alias as `syml.basetypes.SymlData`."""
+        assert syml.SymlData is basetypes.SymlData
+
+    def test_symlinput_is_importable_from_the_syml_package(self) -> None:
+        """`syml.SymlInput` is the same type alias as `syml.basetypes.SymlInput`."""
+        assert syml.SymlInput is basetypes.SymlInput
