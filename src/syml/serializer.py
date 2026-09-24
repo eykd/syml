@@ -63,6 +63,16 @@ def dump(data: SymlInput, file_obj: IO[str]) -> None:
     raise NotImplementedError  # pragma: nocover
 
 
+def key_is_representable(k: str) -> bool:
+    """Return whether `k` can be written as a SYML mapping key (§11.2.3, D1, M8).
+
+    False for a key that contains whitespace or ':', is the empty string,
+    begins with '#' or '//', or otherwise fails to fully match the `key`
+    grammar rule (e.g. a C0/C1 control character, per §4.5).
+    """
+    raise NotImplementedError
+
+
 def _not_representable(value: object) -> TypeError:
     """Build the TypeError raised for a value that is not str, list, or dict."""
     message = f'{value!r} is not representable in SYML (not str, list, or dict)'

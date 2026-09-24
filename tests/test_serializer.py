@@ -71,3 +71,21 @@ class TestDumpsTypeContract:
     def test_it_should_raise_type_error_for_non_str_mapping_keys(self, key: object) -> None:
         with pytest.raises(TypeError):
             serializer.dumps({key: 'v'})  # type: ignore[dict-item]
+
+
+class TestDumpsUnrepresentableKeys:
+    """§11.2.3 — keys with no encoding raise UnrepresentableValueError (D1, M8)."""
+
+    @pytest.mark.parametrize(
+        'key',
+        [
+            '',
+            'a b',
+            'a:b',
+            '#comment',
+            '//comment',
+        ],
+    )
+    def test_it_should_raise_unrepresentable_value_error_for_a_key_with_no_encoding(self, key: str) -> None:
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps({key: 'v'})
