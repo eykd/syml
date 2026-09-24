@@ -86,6 +86,27 @@ Fix the root problem rather than bypassing the safety mechanism.
 Only use this override when explicitly requested by the user.""",
     ),
     GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(
+            r'GIT_CONFIG_PARAMETERS=|GIT_CONFIG_KEY_\d+=[\'"]*core\.hooksPath\b',
+            re.IGNORECASE,
+        ),
+        message="""BLOCKED: GIT_CONFIG_* environment override of core.hooksPath detected.
+
+Git reads config from GIT_CONFIG_PARAMETERS / GIT_CONFIG_KEY_<n> environment
+variables, so setting core.hooksPath this way disables every pre-commit hook
+(ruff, mypy, coverage, commit-msg) just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
         name='force-push',
         category='destructive-git',
         pattern=re.compile(
@@ -574,6 +595,20 @@ def _check_shell_wrapper(normalized: str, depth: int) -> Verdict | None:
     return _evaluate_inner(payload, depth - 1)
 
 
+def _pre_strip_verdict(command: str, normalized: str) -> Verdict | None:
+    """Run PRE_STRIP_RULES against both the raw and normalized command.
+
+    Checking the raw text too means ``normalize_command``'s env-wrapper
+    stripping cannot erase a ``GIT_CONFIG_*`` environment assignment that
+    hides a hook-bypass before a rule ever sees it.
+
+    :param command: The raw, un-normalized command string.
+    :param normalized: The normalized command string.
+    :returns: A :class:`Verdict` when blocked, else ``None``.
+    """
+    return _first_block(PRE_STRIP_RULES, command) or _first_block(PRE_STRIP_RULES, normalized)
+
+
 def _evaluate_inner(command: str, depth: int) -> Verdict | None:
     """Run the full guard pipeline against one command string.
 
@@ -585,7 +620,7 @@ def _evaluate_inner(command: str, depth: int) -> Verdict | None:
     if not normalized.strip():
         return None
 
-    verdict = _first_block(PRE_STRIP_RULES, normalized)
+    verdict = _pre_strip_verdict(command, normalized)
     if verdict is not None:
         return verdict
 

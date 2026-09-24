@@ -56,6 +56,8 @@ class TestAllow:
             'git commit -m "mention -n in prose"',
             'git commit -am wip',
             'git commit -m x',
+            'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m y',
+            'env FOO=bar git status',
         ],
     )
     def test_it_should_allow_safe_commands(self, command: str) -> None:
@@ -78,6 +80,19 @@ class TestBlockedRules:
             ('git -c "core.hooksPath=/dev/null" commit -m x', 'hook-bypass'),
             ("git -c 'core.hooksPath=/tmp/none' push", 'hook-bypass'),
             ('git -c "core.hooksPath=/tmp/none" push', 'hook-bypass'),
+            (
+                'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+                'hook-bypass',
+            ),
+            (
+                'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null '
+                'git commit -m x',
+                'hook-bypass',
+            ),
+            (
+                """env GIT_CONFIG_PARAMETERS="'core.hooksPath=/dev/null'" git commit -m x""",
+                'hook-bypass',
+            ),
             ('git push --force origin main', 'force-push'),
             ('git push -f ', 'force-push'),
             ('git push -f', 'force-push'),
