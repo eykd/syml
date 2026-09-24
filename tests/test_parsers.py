@@ -2,12 +2,10 @@ import textwrap
 from io import StringIO
 
 import pytest
-from parsimonious import Grammar
-from parsimonious.expressions import Literal
 from parsimonious.nodes import Node
 
 import syml
-from syml import exceptions, parsers, quoting
+from syml import exceptions, nodes, parsers
 from syml.basetypes import Pos, Source
 
 
@@ -132,7 +130,7 @@ class TestSymlParser:
     def test_it_should_drop_a_zero_length_inline_value_after_a_key_colon(self, parser: parsers.SymlParser) -> None:
         """D6, §9.3: ``key:␠`` lexes with an empty inline ``text`` child.
 
-        A zero-length *unquoted* inline value is normalized to "no inline
+        A zero-length inline value is normalized to "no inline
         value at all", identical to ``key:`` with nothing after it -- the
         node stays open and accepts the following nested block instead of
         treating the empty text as the value.
@@ -144,7 +142,7 @@ class TestSymlParser:
     def test_it_should_drop_a_zero_length_inline_value_after_a_list_item_dash(self) -> None:
         """D6, §9.3: ``-␠`` lexes with an empty inline ``text`` child.
 
-        A zero-length *unquoted* inline value is normalized to "no inline
+        A zero-length inline value is normalized to "no inline
         value at all", identical to ``-`` with nothing after it -- the list
         item node stays open and accepts the following nested block instead
         of treating the empty text as the value.
@@ -319,30 +317,6 @@ class TestSymlParser:
         text = '-   name: Alice\n  role: admin'
         with pytest.raises(exceptions.OutOfContextNodeError):
             parser.parse(text)
-
-    def test_it_should_decode_a_double_quoted_inline_key_value(self, parser: parsers.SymlParser) -> None:
-        """`key: "a"` is an inline position, so the double quotes decode too (US6, §4.7).
-
-        Mirrors `TestWhereQuotingIsRecognized.test_it_should_decode_a_single_quoted_inline_key_value`
-        in tests/test_quoting.py, but for double quotes. The grammar's `quoted_value` rule
-        currently only defines `single_quoted`, so this is expected to fail with
-        `MalformedQuotedStringError` from the `data_key_value` quote-guard (R-10) until
-        a `double_quoted` grammar production is added.
-        """
-        result = parser.parse('key: "a"')
-        assert result.as_data() == {'key': 'a'}
-
-    def test_it_should_decode_a_single_quoted_list_item(self, parser: parsers.SymlParser) -> None:
-        """A single-quoted list item decodes its quotes (§4.1/§4.7), not just inline key values.
-
-        `value_list_item = "-" ws value` and `value = structure / data` have no
-        quoted-value alternative at a list-item position, so `- 'x'` currently
-        parses as the literal string `"'x'"` (quotes kept) instead of the
-        unquoted `'x'`. Expected to fail until the grammar gains a quoted
-        alternative for list-item values.
-        """
-        result = parser.parse("- 'x'\n")
-        assert result.as_data() == ['x']
 
 
 class TestSimpleParserFunction:
@@ -535,95 +509,6 @@ class TestSimpleParserFunction:
         }
 
 
-class TestFindFirst:
-    """Contract 05 §The third-party boundary (FR-009, R-09): the `find_first` helper.
-
-    `raise_trailing_content` uses `find_first` to locate the `quoted_value`
-    node that anchors a stranded-content error at the opening quote, since
-    parsimonious's `Node` has no such lookup itself.
-    """
-
-    def test_find_first_returns_the_first_matching_node_in_depth_first_order(self) -> None:
-        """It must return the nested, document-first match — not the root, and not by luck."""
-        grammar = Grammar(
-            r"""
-            root         = wrapper other
-            wrapper      = quoted_value / other_char
-            other_char   = ~"Z"
-            quoted_value = ~"Q\\d"
-            other        = quoted_value / other_char
-            """
-        )
-        tree = grammar['root'].parse('Q1Q2')
-        expected = tree.children[0].children[0]
-        assert expected.expr_name == 'quoted_value'
-
-        result = parsers.find_first(tree, 'quoted_value')
-
-        assert result is expected
-
-
-class TestVisitQuotedValueDecoderDefectConversion:
-    """Contract 05 §Decoder failures cross the visitor as `ParseError`s.
-
-    `decode_double_quoted` is position-free and raises the module-private
-    `quoting.QuotedStringDefect`; `visit_quoted_value` is the only place that
-    catches it and re-raises `MalformedQuotedStringError`, and that
-    conversion must reach `parser.visit()` **unwrapped** — not
-    `parsimonious.exceptions.VisitationError` — because Parsimonious wraps
-    exceptions raised while visiting a node before the parent's own
-    `visit_*` runs (§ Why not in `visit_key_value` / `visit_list_item`).
-    """
-
-    def test_a_decoder_defect_crosses_the_visitor_as_a_malformed_quoted_string_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A surrogate escape's `QuotedStringDefect` must surface as `MalformedQuotedStringError`.
-
-        Patches the *module attribute* `quoting.decode_double_quoted`, not
-        the name imported into `parsers` — Green must call it via
-        `quoting.decode_double_quoted(...)` (`from . import quoting`) for
-        this patch to take effect (a `from .quoting import
-        decode_double_quoted` binding would not be patched by this).
-        """
-        raw = '"\\ud800"'
-        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
-
-        def fake_decode_double_quoted(_raw: str) -> str:
-            raise quoting.QuotedStringDefect(escape='\\ud800', code_point=0xD800)
-
-        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
-
-        parser = parsers.SymlParser()
-
-        with pytest.raises(exceptions.MalformedQuotedStringError) as excinfo:
-            parser.visit(node)
-
-        assert excinfo.value.escape == '\\ud800'
-        assert excinfo.value.code_point == 0xD800
-        assert isinstance(excinfo.value.__cause__, quoting.QuotedStringDefect)
-
-    def test_a_successful_decode_returns_a_quoted_inline_text_leaf_with_the_decoded_text(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When the decoder succeeds, the leaf carries the decoded text, not the raw quoted form."""
-        raw = '"foo"'
-        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
-
-        def fake_decode_double_quoted(_raw: str) -> str:
-            return 'foo'
-
-        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
-
-        parser = parsers.SymlParser()
-
-        leaf = parser.visit(node)
-
-        assert leaf.source.text == 'foo'
-        assert leaf.quoted is True
-        assert leaf.inline is True
-
-
 class TestVisitCommentWithNoTrailingText:
     """FR-009: no third-party exception may escape `loads` (Contract 05).
 
@@ -643,24 +528,6 @@ class TestVisitCommentWithNoTrailingText:
             pass
         else:
             assert isinstance(result, str)
-
-
-class TestTrailingContentAfterClosedInlineQuote:
-    """§4.7: an inline quoted value followed by trailing content on the same line is malformed.
-
-    `key: "a" trailing` currently escapes the grammar's `lines = line*` rule
-    unmatched (the `line` rule fails to consume the trailing text), so
-    `parsimonious.exceptions.IncompleteParseError` -- a third-party exception
-    (FR-009) -- leaks straight through `parse()` instead of being converted to
-    `exceptions.MalformedQuotedStringError` (§8.5's documented example row).
-    """
-
-    def test_trailing_content_after_a_closed_inline_quote_raises_malformed_quoted_string_error(
-        self,
-    ) -> None:
-        """Trailing content after a closed quote must raise `MalformedQuotedStringError`, not leak."""
-        with pytest.raises(exceptions.MalformedQuotedStringError):
-            syml.loads('key: "a" trailing')
 
 
 class TestUnwrappedRecursionError:
@@ -692,3 +559,143 @@ class TestUnwrappedRecursionError:
 
         with pytest.raises(RecursionError):
             parsers.SymlParser().parse('key: value')
+
+
+class TestKeyHasUppercase:
+    """D19, §4.5: a key may not contain a code point of General_Category Lu or Lt."""
+
+    @pytest.mark.parametrize(
+        'key',
+        [
+            'effect',
+            'look-in-dark',
+            '名前',
+            '\u216b',  # ROMAN NUMERAL TWELVE is Nl, not uppercase
+            '\u217b',  # SMALL ROMAN NUMERAL TWELVE is Nl too
+            'k1_2',
+            '',
+        ],
+    )
+    def test_it_should_accept_a_key_with_no_uppercase_code_point(self, key: str) -> None:
+        assert parsers.key_has_uppercase(key) is False
+
+    @pytest.mark.parametrize(
+        'key',
+        [
+            'Name',
+            'nAme',
+            '\u00c9t\u00e9',  # É is Lu
+            '\u01c5',  # ǅ LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON is Lt
+            '\u0394elta',  # Greek capital delta is Lu
+        ],
+    )
+    def test_it_should_reject_a_key_with_an_uppercase_or_titlecase_code_point(self, key: str) -> None:
+        assert parsers.key_has_uppercase(key) is True
+
+
+class TestUppercaseKeyFallsThroughToText:
+    """D19: a line whose would-be key contains an uppercase code point is a text line.
+
+    `visit_key_value` and `visit_section_line` both hand back a
+    `TextLeafNode` over the whole line, exactly as if it had lexed as `data`,
+    whether the line sits at the root, under a key, or inline after a list
+    marker.
+    """
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('\u00c9t\u00e9: chaud', '\u00c9t\u00e9: chaud'),
+            ('a:\n  B: c', {'a': 'B: c'}),
+            ('x:\n  - Listen: here', {'x': ['Listen: here']}),
+            ('- Listen: here', ['Listen: here']),
+            ('a: Note\n  Listen: here', {'a': 'Note\nListen: here'}),
+        ],
+    )
+    def test_a_key_value_line_with_an_uppercase_key_is_text(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('\u00c9t\u00e9:', '\u00c9t\u00e9:'),
+            ('a:\n  B:', {'a': 'B:'}),
+            ('- Listen:', ['Listen:']),
+        ],
+    )
+    def test_a_section_line_with_an_uppercase_key_is_text(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('effect: x', {'effect': 'x'}),
+            ('look-in-dark:', {'look-in-dark': ''}),
+            ('\u540d\u524d: x', {'\u540d\u524d': 'x'}),
+            ('\u216b: x', {'\u216b': 'x'}),
+        ],
+    )
+    def test_a_key_with_no_uppercase_code_point_still_lexes_as_structure(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    def test_the_fallthrough_leaf_spans_the_whole_line_at_the_root(self) -> None:
+        root = parsers.parse('\u00c9t\u00e9: chaud')
+
+        leaf = root.children[0]
+
+        assert isinstance(leaf, nodes.TextLeafNode)
+        assert leaf.source.text == '\u00c9t\u00e9: chaud'
+        assert leaf.source.start == Pos(index=0, line=1, column=0)
+        assert leaf.source.end == Pos(index=10, line=1, column=10)
+
+    def test_the_fallthrough_leaf_spans_the_whole_line_under_a_key(self) -> None:
+        root = parsers.parse('a:\n  B: c')
+
+        leaf = root.children[0].children[0].children[0]
+
+        assert isinstance(leaf, nodes.TextLeafNode)
+        assert leaf.source.text == 'B: c'
+        assert leaf.source.start == Pos(index=5, line=2, column=2)
+        assert leaf.source.end == Pos(index=9, line=2, column=6)
+
+    def test_the_fallthrough_leaf_spans_the_rest_of_the_line_after_a_list_marker(self) -> None:
+        root = parsers.parse('- Listen:')
+
+        leaf = root.children[0].children[0].children[0]
+
+        assert isinstance(leaf, nodes.TextLeafNode)
+        assert leaf.inline is True
+        assert leaf.source.text == 'Listen:'
+        assert leaf.source.start == Pos(index=2, line=1, column=2)
+        assert leaf.source.end == Pos(index=9, line=1, column=9)
+
+    def test_the_fallthrough_leaf_reports_original_text_coordinates_on_a_bom_crlf_document(self) -> None:
+        original = '\ufeffx:\r\n  B: c\r\n'
+
+        source = parsers.parse(original).as_source()['x']
+
+        assert source.text == 'B: c'
+        assert original[source.start.index : source.end.index] == 'B: c'
+
+
+class TestQuotesAreLiteralText:
+    """D18: SYML has no quoted strings; `'` and `"` are ordinary characters."""
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('k: \'Tis\n  "q"', {'k': '\'Tis\n"q"'}),
+            ('- "x" y', ['"x" y']),
+            ('k: ""', {'k': '""'}),
+            ("k: ''", {'k': "''"}),
+            ('key: "a" trailing', {'key': '"a" trailing'}),
+            ("- 'x'", ["'x'"]),
+            ('"just text"', '"just text"'),
+        ],
+    )
+    def test_it_should_keep_quote_characters_as_part_of_the_value(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    def test_a_quote_bearing_inline_value_still_accepts_continuation_lines(self) -> None:
+        """An inline value that begins with a quote is ordinary text, so it is never 'complete'."""
+        assert syml.loads('k: "a"\n  b') == {'k': '"a"\nb'}

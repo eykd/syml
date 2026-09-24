@@ -1,0 +1,31 @@
+given:
+  - Charm = 3
+
+stranger:
+
+  - when:
+      - [Met Stranger] == 0
+
+  - A tall figure stepped out of the rain and into the doorway.
+
+  - "You're late," she said, shaking water from her hat.
+
+  - choice: "I got held up."
+
+  - choice:
+
+      - "Late for what?"
+
+      - "Don't play games with me, Marlowe."
+
+  - choice:
+
+      - [Say nothing.]
+
+      - "Suit yourself," she said, and turned to go.
+
+      - {Charm > 2}"Wait," I said. She stopped.
+
+  - choice: "Who's asking?" I said, reaching for my coat.
+
+  - "Well?"

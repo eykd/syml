@@ -98,12 +98,10 @@ class TestEncodingErrorPositionDerivation:
 class TestWhichErrorForWhichConditionMapping:
     """Contract 05 §Which error for which condition.
 
-    Every one of the seven classes in the mapping table must be reachable
-    through the public `syml` package, not just `syml.exceptions` — a caller
-    who wants to catch "the error for condition X" per the table needs
-    `syml.<ClassName>` to exist. `UnrepresentableValueError` (row 7, raised by
-    `dumps` for a value with no SYML encoding) is the one class the table
-    names that `syml.exceptions` does not yet define at all.
+    Every class in the mapping table must be reachable through the public
+    `syml` package, not just `syml.exceptions` — a caller who wants to catch
+    "the error for condition X" per the table needs `syml.<ClassName>` to
+    exist.
     """
 
     @pytest.mark.parametrize(
@@ -112,7 +110,6 @@ class TestWhichErrorForWhichConditionMapping:
             'OutOfContextNodeError',  # indentation/context violation (§8.1, §8.2)
             'DuplicateKeyError',  # key repeated within one mapping (§8.3)
             'TabIndentationError',  # tab in leading whitespace (§8.4, §9.0.3)
-            'MalformedQuotedStringError',  # unterminated/trailing/bad escape (§8.5, §4.7)
             'EncodingError',  # undecodable bytes from load (§11.1)
             'UnrepresentableValueError',  # value with no SYML encoding (§11.2.2-.4)
         ],

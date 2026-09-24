@@ -51,25 +51,23 @@ def given_installed_library() -> None:
 
 @when(
     '"ParseError", "OutOfContextNodeError", "DuplicateKeyError", "TabIndentationError", '
-    '"MalformedQuotedStringError", "UnrepresentableValueError", and "EncodingError" '
-    'are imported from syml',
+    '"UnrepresentableValueError", and "EncodingError" are imported from syml',
     target_fixture='imported',
 )
-def when_seven_imported() -> dict[str, type[Exception]]:
-    """Import the seven named exception classes from the top-level `syml` package."""
+def when_six_imported() -> dict[str, type[Exception]]:
+    """Import the six named exception classes from the top-level `syml` package."""
     names = [
         'ParseError',
         'OutOfContextNodeError',
         'DuplicateKeyError',
         'TabIndentationError',
-        'MalformedQuotedStringError',
         'UnrepresentableValueError',
         'EncodingError',
     ]
     return {name: getattr(syml, name) for name in names}
 
 
-@then('all seven resolve and their inheritance matches section 11.3 as amended')
+@then('all six resolve and their inheritance matches section 11.3 as amended')
 def then_inheritance_matches(imported: dict[str, type[Exception]]) -> None:
     """Assert the taxonomy's base class and the §11.3 inheritance shape."""
     assert issubclass(imported['ParseError'], ValueError)
@@ -77,13 +75,15 @@ def then_inheritance_matches(imported: dict[str, type[Exception]]) -> None:
         'OutOfContextNodeError',
         'DuplicateKeyError',
         'TabIndentationError',
-        'MalformedQuotedStringError',
         'EncodingError',
     ):
         assert issubclass(imported[name], imported['ParseError'])
     # `UnrepresentableValueError` is raised by `dumps`, not a `ParseError`.
     assert issubclass(imported['UnrepresentableValueError'], ValueError)
     assert not issubclass(imported['UnrepresentableValueError'], imported['ParseError'])
+    # D18 removed quoted strings, and with them `MalformedQuotedStringError`.
+    assert not hasattr(syml, 'MalformedQuotedStringError')
+    assert not hasattr(exc, 'MalformedQuotedStringError')
 
 
 @given(parsers.parse('a SYML document "{text}"'), target_fixture='document_text')

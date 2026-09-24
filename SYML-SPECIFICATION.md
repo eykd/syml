@@ -18,7 +18,7 @@ SYML (Simple YAML-like Markup Language) is a lightweight, structured document ma
 4. **Predictable parsing** - Same input always produces same output
 5. **Source preservation** - Full tracking of source locations for debugging
 
-> **Note:** SYML supports quoted strings (`'...'` and `"..."`) for whitespace preservation and escape sequences, a modest extension that maintains simplicity while enabling common use cases.
+> **Note:** SYML has no quoted strings and no escape sequences. Every value is the literal text on the page: a `'` or `"` is an ordinary character wherever it appears, so dialogue such as `- "Late for what?"` keeps its quotation marks. A value that must span lines is written in block form (§5).
 
 ### 1.2 Comparison with YAML
 
@@ -118,8 +118,7 @@ insertion (source) order: keys MUST appear in the returned mapping in the
 same order they first appear in the document. Consumers MAY rely on this
 ordering when iterating a mapping returned by `loads`. Keys are separated
 from values by a colon (`:`); at least one space MUST follow the colon
-before an unquoted value, though the space is optional before a quoted
-value (see §7.5).
+before an inline value (see §7.5).
 
 ```syml
 name: Alice
@@ -149,71 +148,52 @@ structure      = list_item / key_value / section
 indent         = ~" *"              # Spaces only, no tabs (leading-tab scan is §9.0, before this grammar runs)
 comment        = ("#" / "//") text?
 list_item      = ("-" ws value) / ("-" &eol)    # A "-" is a marker only before whitespace or EOL
-key_value      = (key_colon ws? quoted_value ~" *") / (key_colon ws data)
+key_value      = key_colon ws data
 section        = key_colon &eol             # A standalone section header must end the line
 key_colon      = key ":"
-key            = ~"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set)
+key            = ~"[^\s:\x00-\x1f\x7f-\x9f]+"   # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set); see also the no-uppercase rule below
 eol            = &"\n" / ~"\Z"              # Lookahead only: "\n" is consumed by `document`, never by `line`
 ws             = ~" +"              # Required whitespace (spaces only; a tab does not satisfy this, see §7.5)
 text           = ~"[^\n]*"          # Any characters to end of line (including empty)
 
-value          = structure / (quoted_value ~" *") / data
-data           = text
-
-# Quoted strings
-quoted_value   = single_quoted / double_quoted
-single_quoted  = "'" ("''" / ~"[^'\n]")* "'"
-double_quoted  = '"' (escape_seq / ~"[^\"\\\\\n]")* '"'
-escape_seq     = ('\\' ~"[\\\\/\"nrt]") / ('\\u' ~"[0-9a-fA-F]{4}") / ('\\U' ~"[0-9a-fA-F]{8}")
+value          = structure / data
+data           = text               # Literal text: there is no quoted-string rule anywhere in this grammar
 ```
 
 `document` is the top rule. It joins `line` matches with explicit literal
 `"\n"` tokens rather than having each `line` consume its own trailing
 newline, and its final `line` is optional so a document may or may not
-end in a newline (§4.8). `eol` is used only as a zero-width lookahead
+end in a newline (§4.7). `eol` is used only as a zero-width lookahead
 *inside* a line (after a bare `-` in `list_item`, or after `key:` in
 `section`), to check that nothing else follows on the current line — it
 is never itself consumed. There is no separate `blank` rule: a blank line
 (§4.4) is simply a line whose `comment`/`structure` alternatives both
 fail and whose `data` therefore matches the empty string.
 
-**Quoting is recognized only at an inline position.** `value` — the only
-rule that offers `quoted_value` as an alternative to plain text — appears
-solely inside `list_item`'s inline slot (`"-" ws value`). `key_value`
-offers `quoted_value` directly in its own first alternative. Every other
-physical line in a document — a root scalar's lines, a block value's
-lines (including its first line), and any continuation line — is parsed
-directly via `line`'s own `(comment / structure / data)` choice: it may
-still become nested `structure` (a `list_item`, `key_value`, or `section`
-— this is how a block value's line can instead become a nested list or
-mapping, §7.3/§6.1), but if it falls all the way through to `data`, that
-`data` never attempts `quoted_value` — unlike the two inline positions
-above, which route through `value`/`quoted_value` before ever falling
-back to plain `data`. A leading `'` or `"` on a bare line that falls
-through to `data` is therefore ordinary text, not a malformed quote
-(§7.6 states the resulting exception to the "never guesses" rule).
+**Values are literal text.** `value` (a list item's inline slot) and
+`data` (everything else) are the plain characters to the end of the
+line. There is no quoted-string rule, no escape sequence, and no
+position at which a `'` or `"` means anything but itself: `key: "a"` is
+the three-character value `"a"`, quotation marks included. Every physical
+line in a document — a root scalar's lines, a block value's lines, and
+any continuation line — is parsed via `line`'s own
+`(comment / structure / data)` choice: it may become nested `structure`
+(a `list_item`, `key_value`, or `section` — this is how a block value's
+line can instead become a nested list or mapping, §7.3/§6.1), and if it
+falls all the way through to `data` it is text, taken as written (§7.6).
 
-**The quote-guard rule (normative, not expressible in PEG alone):** a PEG
-parser cannot backtrack out of a partially-matched alternative once it has
-committed and a later element of the same sequence fails (§7.6 explains
-why the `eol`/`&eol` guards exist at all). Because of this, an unterminated
-or otherwise malformed quoted value does not fail to parse on its own —
-`quoted_value` simply fails to match, and `value`/`key_value` fall through
-to their `data` alternative, matching the rest of the line (opening quote
-included) as plain text. A conforming implementation MUST treat this
-specifically, but **only at the two inline positions above**: whenever
-the `data` matched by `key_value`'s second alternative, or by `list_item`'s
-inline `value`, begins with `'` or `"`, that is a `MalformedQuotedStringError`
-(§8.5), not a valid scalar value. This is how the grammar and the error
-taxonomy together catch unterminated quotes at an inline position, despite
-the grammar itself having no way to raise on them directly. A quoted
-inline value that closes correctly but is followed by non-whitespace text
-before the end of the line (e.g. `key: "a" trailing`) fails the whole
-`line` sequence outright — the PEG stranding case — and is likewise
-reported as `MalformedQuotedStringError`. A quoted inline value is also
-*complete*: because a quoted TextLeaf accepts no continuation (§9.3), a
-following, more-indented line is never a continuation of it — it is re-offered up the tree and,
-finding the node closed, raises `OutOfContextNodeError` (§8.2, §9.3).
+**The no-uppercase key rule (normative, not expressible in PEG alone):**
+in addition to matching the `key` pattern above, the text a `key_value`
+or `section` would take as its key MUST contain no code point whose
+Unicode General_Category is `Lu` (uppercase letter) or `Lt` (titlecase
+letter). A conforming implementation applies this check outside the PEG,
+to the `key` matched by `key_value` and by `section`, on every line. A
+line whose would-be key fails it is lexed exactly as if both rules had
+failed to match: it reaches `data` and is literal text (§4.5, §7.6).
+Inside a list item's inline `value` the same fallthrough applies, so
+`- Listen: here` is the item text `Listen: here` and `- Listen:` is the
+item text `Listen:`, whereas `- listen: here` is an inline mapping
+(§7.2). The rule applies to the key only; value text is unrestricted.
 
 ### 4.2 Indentation
 
@@ -224,9 +204,10 @@ Indentation determines the hierarchical structure of a SYML document.
 2. Tab characters in indentation are a parse error (§8.4, detected by §9.0's pre-processing scan)
 3. Tabs within values (after the initial content) are permitted. A value
    that begins with a tab (for example, the content immediately following
-   the separator space in `key: \tv`) parses without error, but MUST be
-   quoted when serialized by `dumps` (§11.2.1 rule B), since an unquoted
-   leading tab is easily confused with indentation by a reader.
+   the separator space in `key: \tv`) parses without error, but such a
+   value is unrepresentable by `dumps` (§11.2.1 rule B), since a leading
+   tab is easily confused with indentation by a reader and SYML has no
+   escape for it.
 4. Indentation level = number of leading space characters
 5. Child elements MUST have greater indentation than their parent
 6. Sibling elements MUST have equal indentation
@@ -312,24 +293,63 @@ A `key:` token matches when the text before the colon:
 - Contains no whitespace characters
 - Contains no colons (`:`)
 - Contains no control characters (U+0000-U+001F, U+007F-U+009F)
-- MAY contain any other printable Unicode characters (letters, numbers, punctuation, emoji)
-- Pattern: `[^\s:\x00-\x1f\x7f-\x9f]+` (printable non-whitespace, non-colon)
+- Contains no uppercase or titlecase letter: no code point whose Unicode
+  General_Category is `Lu` or `Lt` (checked outside the PEG, §4.1)
+- MAY contain any other printable Unicode characters (lowercase and
+  caseless letters, numbers, punctuation, emoji)
+- Pattern: `[^\s:\x00-\x1f\x7f-\x9f]+` (printable non-whitespace, non-colon), plus the no-uppercase rule
 - Keys MUST be unique within their mapping; duplicate keys are a parse error (§8.3)
 
-A line whose text before the first colon does not match this pattern is not a
-key-value pair at all; it is parsed as scalar text (see §7.6).
+A line whose text before the first colon does not match this pattern, or
+contains an uppercase or titlecase letter, is not a key-value pair at all;
+it is parsed as scalar text (see §7.6).
+
+**Why no uppercase:** a colon after a capitalized word is how prose and
+dialogue are written (`Listen: here's what you need`, `Warning: do not
+touch`), and SYML values are literal text, so a key must be visibly
+distinguishable from such a line. Lowercase keys (`listen:`, `warning:`,
+`look-in-dark:`) are how mappings are written; a capitalized word before
+the colon is always text. The check is by General_Category, not by a
+letter's case mapping: `É` (Lu) and `ǅ` (Lt) disqualify a key, while a
+caseless letter such as `名` or a letterlike number such as `Ⅻ` (Nl) does
+not.
+
+```syml
+- Listen: here's what you need
+```
+**Output:** `["Listen: here's what you need"]` — `Listen` contains an
+uppercase letter, so the line is not a `key_value`; it is the list item's
+literal text.
+
+```syml
+Été: chaud
+```
+**Output:** `"Été: chaud"` — a root scalar, not a mapping.
+
+```syml
+look-in-dark: torch
+effect: none
+名前: value
+```
+**Output:** `{"look-in-dark": "torch", "effect": "none", "名前": "value"}`
+
+**Residual hazard:** a prose line that begins with a *lowercase* word
+followed by `: ` still lexes as a key-value pair (`note: see below` is a
+mapping, never text). Authors writing prose in block form should
+capitalize such a word or avoid the `word: ` shape; see §5.1 rule 6 and
+§7.6.
 
 **Exception:** A key may not begin with `#` or `//`. Per §4.1, `comment` is
 tried before `structure` on every line, so a line starting with either
 marker is always read as a comment (§4.3), regardless of whether the
 remaining text would otherwise form a valid key. There is no way to write
-a key beginning with `#` or `//` in v1.1 (a quoted-key syntax is a v1.2
-candidate — see §11.2.3).
+a key beginning with `#` or `//` in this version (a quoted-key syntax is
+a v1.2 candidate — see §11.2.3).
 
-A key containing whitespace or `:`, the empty-string key, or a key
-beginning with `#`/`//` cannot be produced by `loads` (the grammar never
-recognizes such text as a key), and cannot be produced by `dumps` either —
-see §11.2.3.
+A key containing whitespace, `:`, or an uppercase or titlecase letter,
+the empty-string key, or a key beginning with `#`/`//` cannot be produced
+by `loads` (the grammar never recognizes such text as a key), and cannot
+be produced by `dumps` either — see §11.2.3.
 
 The `\s` in the key pattern above denotes exactly the set of code points
 with the Unicode `White_Space` property: U+0009–U+000D, U+0020, U+0085,
@@ -386,8 +406,7 @@ key:
 
 Unlike keys (§4.5), value text MAY contain any Unicode code point except
 the line-separator U+000A (excluded structurally, since it terminates a
-line per §13.3) and the characters that are structurally significant to
-quoting (§4.7). In particular, C0 and C1 control characters
+line per §13.3). In particular, C0 and C1 control characters
 (U+0000-U+001F, U+007F-U+009F) — other than the tab handling defined in
 §4.2 rule 3 — ARE permitted verbatim in value text, including U+0000
 (NUL), and implementations MUST pass them through unmodified. Applications
@@ -396,129 +415,7 @@ pipelines) SHOULD document this explicitly rather than silently stripping
 or rejecting such characters, since silent stripping would violate §1.1's
 predictable-parsing principle.
 
-### 4.7 Quoted Strings
-
-SYML supports quoted strings for whitespace preservation and escape
-sequences, **recognized only at an inline position**: immediately after a
-key's colon (`key: "..."`) or a list item's marker (`- "..."`). Per
-§4.1, no other line in a document — a root scalar, a block value's first
-or continuation lines, or a mapping/list-item's own continuation lines —
-ever attempts to decode a quoted string; a leading `'` or `"` there is
-ordinary text (§7.6). A quoted string MUST be single-line: it opens and
-closes on the same line as written, and its content may not contain a
-literal, unescaped newline. A value that must span multiple lines uses
-the `\n` escape inside a double-quoted string.
-
-#### Single-Quoted Strings (`'...'`)
-
-Single-quoted strings are literal: no escape processing is performed.
-
-- Content is taken literally, including backslashes
-- To include a single quote within the string, use `''` (two single quotes)
-- Leading and trailing whitespace inside the quotes is preserved (§7.5)
-- Content may not contain a literal newline (see above)
-
-```syml
-literal: 'hello\nworld'
-with_quote: 'it''s fine'
-padded: '  spaces  '
-```
-
-**Output:**
-```json
-{
-  "literal": "hello\\nworld",
-  "with_quote": "it's fine",
-  "padded": "  spaces  "
-}
-```
-
-#### Double-Quoted Strings (`"..."`)
-
-Double-quoted strings support escape sequences:
-
-| Escape | Result |
-|--------|--------|
-| `\\` | Backslash (`\`) |
-| `\/` | Forward slash (`/`) |
-| `\"` | Double quote (`"`) |
-| `\n` | Newline (LF) |
-| `\t` | Tab |
-| `\r` | Carriage return (CR) |
-| `\uXXXX` | Unicode code point (4 hex digits) |
-| `\UXXXXXXXX` | Unicode code point (8 hex digits) |
-
-```syml
-escaped: "hello\nworld"
-with_quote: "she said \"hi\""
-unicode: "smiley: \u263A"
-```
-
-**Output:**
-```json
-{
-  "escaped": "hello\nworld",
-  "with_quote": "she said \"hi\"",
-  "unicode": "smiley: ☺"
-}
-```
-
-#### Malformed and Out-of-Range Quoted Values
-
-At an inline position (after `key:` or `- `), the following are all
-`MalformedQuotedStringError` (§8.5, §11.3), and never fall through to a
-literal-text reading (see §4.1's quote-guard rule). These conditions do
-not apply to a bare line (root scalar, block value, or continuation
-line) — quoting is not recognized there at all, so a leading quote
-character on such a line is simply text:
-
-- An opening quote (`'` or `"`) with no matching closing quote before the
-  end of the line — e.g. `key: "unterminated`.
-- A quoted value that closes correctly but is followed by non-whitespace
-  text before the end of the line — e.g. `key: "a" trailing`.
-- An invalid or incomplete escape sequence inside a double-quoted string.
-- A `\U` escape whose 8 hex digits encode a value greater than U+10FFFF.
-- Any escape (`\u` or `\U`) that decodes to a surrogate code point
-  (U+D800-U+DFFF), whether or not it is part of what would otherwise be a
-  valid UTF-16 surrogate pair. v1.1 does not combine adjacent `\u` escapes
-  into one supplementary-plane code point (see the note below); a
-  supplementary-plane character is written as a single `\U0001XXXX`
-  escape, or literally.
-
-```syml
-key: "unterminated
-```
-**Output:** `ERROR: MalformedQuotedStringError` (unterminated quote)
-
-```syml
-key: "a" trailing
-```
-**Output:** `ERROR: MalformedQuotedStringError` (trailing content after a closed quote)
-
-> **Note (surrogates):** JSON and JavaScript combine an adjacent
-> `\uD800`-`\uDBFF` / `\uDC00`-`\uDFFF` pair into one supplementary-plane
-> code point. SYML v1.1 deliberately does not: each `\u` escape decodes
-> independently, and any escape that decodes to a surrogate is an error.
-> This is simpler to implement and keeps every double-quoted string a
-> valid, re-encodable Unicode string; use `\U0001XXXX` (or the literal
-> character) for supplementary-plane content. Surrogate-pair combining is
-> a v1.2 candidate (recorded in the v1.1 review report, not in this
-> specification) if it is ever needed.
-
-#### Whitespace in Quoted Strings
-
-Quoted strings preserve leading and trailing whitespace exactly as
-written; see §7.5 for the general whitespace rule that governs both
-quoted and unquoted values.
-
-```syml
-padded: "  hello  "
-unquoted: hello
-```
-
-**Output:** `{"padded": "  hello  ", "unquoted": "hello"}`
-
-### 4.8 Line Endings
+### 4.7 Line Endings
 
 Line endings are normalized before parsing begins; §9.0 specifies the
 exact pre-processing algorithm (BOM stripping and CRLF/CR normalization)
@@ -528,9 +425,10 @@ that a conforming implementation MUST perform. In summary:
 - `\r` (CR, old Mac) is converted to `\n` (LF)
 - Documents may end with or without a trailing newline
 
-Normalization applies to the **entire document**, including content that
-will become part of a quoted string. To include a literal CR in a value,
-use the `\r` escape sequence (§4.7).
+Normalization applies to the **entire document**. A value therefore
+cannot contain a literal CR: there is no escape sequence to write one
+(§4.1), and `dumps` treats a string containing `\r` as unrepresentable
+(§11.2.1).
 
 ---
 
@@ -550,15 +448,16 @@ When a scalar value spans multiple lines, continuation lines are joined with new
 4. A continuation line that begins with `#` or `//` (after its own
    indentation) is parsed as a comment (§4.3) and is skipped: it does not
    contribute to the value and does not terminate the continuation block,
-   at any indentation. To include literal text starting with `#` or `//`
-   in a multiline value, write the value inline as a double-quoted string
-   (§4.7) instead of using block continuation.
+   at any indentation. A multiline value with a line that begins with `#`
+   or `//` therefore has no SYML encoding: such a value is
+   unrepresentable by `dumps` (§11.2.1). (A single-line inline value may
+   begin with `#` or `//`: `- #x` is the item `#x`, §4.3.)
 5. A blank or whitespace-only line inside a multiline value is discarded
    the same way: it neither adds an empty line to the value nor
    terminates it, regardless of its own indentation. A value that must
    contain a blank line (a paragraph break) cannot be written using block
-   continuation at all — write it inline as a double-quoted string with
-   an explicit `\n\n` (or more) between the paragraphs.
+   continuation at all, and since SYML has no escape sequences it has no
+   encoding: such a value is unrepresentable by `dumps` (§11.2.1).
 6. Every physical line is lexed independently of its position in the
    document (§4.1): a line at a continuation position that itself parses
    as `list_item`, `key_value`, or `section` is that structure, not
@@ -705,8 +604,8 @@ note: hello
 ```
 **Output:** `ERROR: OutOfContextNodeError`
 
-`more: text` lexes as a valid `key_value` (`more` has no whitespace, so
-it is a valid key) regardless of it looking like a continuation of
+`more: text` lexes as a valid `key_value` (`more` has no whitespace and
+no uppercase letter, so it is a valid key) regardless of it looking like a continuation of
 `note`'s prose; being deeper than `note`, it is offered as a child of
 `note`'s KeyValue, which is already closed by the inline value `hello`,
 so it raises. See §7.6 for the contrasting case where the text before
@@ -864,10 +763,12 @@ written:
 ```
 **Output:** `[{"name": "Alice", "role": "admin"}]`
 
-A serializer emitting a list item's inline value MUST quote it if it
-would itself match `list_item`, `key_value`, or `section` (§11.2.1 rule
-D). A root scalar cannot be quoted at all (§4.7); see §11.2.4 for the
-root scalars `dumps` cannot emit.
+A string that would itself match `list_item`, `key_value`, or `section`
+therefore has no encoding as a list item's inline value, and `dumps`
+MUST raise for it there (§11.2.1 rule B); the same string is written
+literally as a mapping's inline value. A root scalar is parsed
+structurally line by line as well; see §11.2.1 for the strings `dumps`
+cannot emit at each position.
 
 ### 7.3 Section Headers (Keys Without Values)
 
@@ -898,7 +799,7 @@ An empty document (or document with only comments/blank lines) produces an empty
 ### 7.5 Whitespace Handling
 
 - Leading whitespace before content determines indentation level.
-- The required whitespace after `:` (before an unquoted value) and after
+- The required whitespace after `:` (before an inline value) and after
   a list marker's `-` is one or more literal space characters (`ws` in
   §4.1); a tab does not satisfy this requirement. `key:\tvalue` and
   `-\tvalue` are therefore not recognized as a key-value pair or list
@@ -908,24 +809,35 @@ An empty document (or document with only comments/blank lines) produces an empty
   whitespace immediately after `:` or `-` is consumed by the required
   separator and is never part of the value; there is no separate
   "trimming" step.
-- Trailing whitespace on unquoted values is preserved as-is — it is
-  never trimmed, because nothing after the value's content consumes it.
-- Whitespace before a quoted value is optional (`ws?` in §4.1).
+- Trailing whitespace on a value is preserved as-is — it is never
+  trimmed, because nothing after the value's content consumes it.
 - A `-` forms a list marker only when followed by whitespace or end-of-line; otherwise the line is scalar text (§7.6).
 
-> **Editor Compatibility Note:** Many text editors automatically strip trailing whitespace on save. This may inadvertently modify SYML values. Authors who depend on trailing whitespace should use quoted strings or configure their editors accordingly.
+> **Editor Compatibility Note:** Many text editors automatically strip trailing whitespace on save. This may inadvertently modify SYML values, and SYML has no quoting or escape syntax that could protect the whitespace. Authors who depend on trailing whitespace should configure their editors accordingly.
+
+Quotation marks are ordinary value characters, and a value begins only
+after the required separator space:
+
+```syml
+a: value
+b: "value"
+```
+**Output:** `{"a": "value", "b": "\"value\""}` — `b`'s value is the seven
+characters `"value"`, quotation marks included.
 
 ```syml
 a: value
 b: "value"
 c:"value"
 ```
-All three forms are valid, producing `{"a": "value", "b": "value", "c": "value"}`.
+**Output:** `ERROR: OutOfContextNodeError` — `c:"value"` has no space
+after the colon, so it is not a `key_value` but scalar text (§7.6), and
+plain text at a mapping's own level has nowhere to attach (§6.4).
 
 ```syml
 key:value
 ```
-**Output:** `"key:value"` — no space before the unquoted value; the whole
+**Output:** `"key:value"` — no space before the value; the whole
 line is scalar text (§7.6).
 
 ```syml
@@ -957,32 +869,28 @@ whitespace or end-of-line after the `-`, and `section` requires end-of-line afte
 the `key:`, so neither can swallow a prefix of `-item` or `key:value` and then
 fail. Both lines are rejected by every structural rule and reach `data` intact.
 
-The one exception to "never guesses, always takes the line literally" is
-an **inline** value (after `key:` or `- `) that begins with `'` or `"`:
-per §4.1's quote-guard rule, an unquoted inline `data` match beginning
-with a quote character is not scalar text — it is a
-`MalformedQuotedStringError` (§4.7, §8.5). This exception does not apply
-to a bare line (a root scalar, a block value, or a continuation line):
-quoting is never attempted there, so a leading quote is ordinary text
-(§4.7).
+There is no exception for quotation marks. A value that begins with `'`
+or `"` — at an inline position or on a bare line — is scalar text with
+that character as its first character, since SYML has no quoted strings
+(§4.1).
 
 | Input | Result | Why |
 |-------|--------|-----|
 | `invalid key: value` | `"invalid key: value"` | Key pattern (§4.5) rejects the space |
+| `Invalid: value` | `"Invalid: value"` | Key contains an uppercase letter (§4.5) |
 | `key:value` | `"key:value"` | No whitespace after the colon (§7.5) |
 | `-item` | `"-item"` | No whitespace after the list marker (§7.5) |
 | `-42` | `"-42"` | Same rule; keeps negative numbers usable as scalars |
 | `key: - not a list` | `{"key": "- not a list"}` | See §7.2 |
 | `key:\tv` | `"key:\tv"` | Tab is not separator whitespace (§7.5) |
-| `key: "a" trailing` | `ERROR: MalformedQuotedStringError` | Trailing content after a closed inline quote (§4.7) |
-| `key: "unterminated` | `ERROR: MalformedQuotedStringError` | Quote-guard rule: an inline `data` match may not begin with a quote character (§4.1, §4.7) |
-| `"unterminated` (root scalar) | `"\"unterminated"` | Not an inline position — quoting is never attempted; the leading `"` is ordinary text |
+| `key: "a" trailing` | `{"key": "\"a\" trailing"}` | Quotation marks are ordinary value characters (§4.1) |
+| `"unterminated` (root scalar) | `"\"unterminated"` | The leading `"` is ordinary text |
 
 **Every line is lexed independently (§5.1 rule 6), regardless of what it
 looks like in context.** A continuation-position line whose text before
-its first colon is not a valid key (§4.5) — for example, because it
-contains whitespace — cannot lex as `key_value`, so it falls through to
-`data` and joins as literal prose:
+its first colon is not a valid key (§4.5) — because it contains
+whitespace, or an uppercase letter — cannot lex as `key_value`, so it
+falls through to `data` and joins as literal prose:
 
 ```syml
 a: Note
@@ -992,6 +900,14 @@ a: Note
 contains a space, so it is not a valid key; the whole line joins `a`'s
 multiline value as prose text.
 
+```syml
+a: Note
+  Warning: do not touch
+```
+**Output:** `{"a": "Note\nWarning: do not touch"}` — `Warning` contains
+an uppercase letter, so it is not a valid key either (§4.5); the line
+joins as prose.
+
 But if the same continuation-position text before the colon *is* a valid
 key, the line lexes as `key_value` regardless of how it reads as prose,
 and — since `a`'s KeyValue is already closed by its inline value — it
@@ -999,16 +915,31 @@ has nowhere to attach:
 
 ```syml
 a: Note
-  Warning: do not touch
+  warning: do not touch
 ```
-**Output:** `ERROR: OutOfContextNodeError` — `Warning` has no whitespace,
-so it is a valid key; the line is offered as a child KeyValue, not as
-continuation text, and `a`'s KeyValue cannot accept it (§9.3).
+**Output:** `ERROR: OutOfContextNodeError` — `warning` has no whitespace
+and no uppercase letter, so it is a valid key; the line is offered as a
+child KeyValue, not as continuation text, and `a`'s KeyValue cannot
+accept it (§9.3).
+
+Dialogue and prose therefore round-trip as written, quotation marks and
+all, as long as no line starts with a lowercase word followed by `: `:
+
+```syml
+stranger:
+  - "You're late," she said.
+  - choice: "I got held up."
+```
+**Output:**
+```json
+{"stranger": ["\"You're late,\" she said.", {"choice": "\"I got held up.\""}]}
+```
 
 This is why colons are usable in prose at all: not because SYML detects
-"this looks like prose," but because whether a given continuation line
-is text or structure is decided purely by whether its own text lexes as
-a key, independently of everything around it.
+"this looks like prose," but because whether a given line is text or
+structure is decided purely by whether its own text lexes as a key —
+the §4.5 pattern plus the no-uppercase rule — independently of
+everything around it.
 
 ---
 
@@ -1061,9 +992,11 @@ key2: value2
 Two keys are considered "the same key" if and only if they are equal as
 sequences of Unicode code points (ordinal/code-point equality). Keys are
 compared with NO Unicode normalization (NFC/NFD/NFKC/NFKD are all treated
-as distinct unless already code-point-identical) and WITH case
-sensitivity (`Key` and `key` are different keys). Implementations MUST
-NOT apply locale-, platform-, or collation-aware comparison.
+as distinct unless already code-point-identical) and with NO case
+folding (a key never contains an uppercase or titlecase letter, §4.5, but
+lowercase letters with distinct code points, such as `ı` and `i`, are
+distinct). Implementations MUST NOT apply locale-, platform-, or
+collation-aware comparison.
 
 When the same key (by this definition) appears multiple times in a
 mapping, implementations MUST raise `DuplicateKeyError` (§11.3):
@@ -1098,28 +1031,7 @@ marker's `-` or a key's `:` is not leading indentation and is not this
 error — it fails to satisfy the required separator whitespace (§7.5) and
 the line is read as scalar text instead (§7.6); it does not raise.
 
-### 8.5 Malformed Quoted Strings
-
-Implementations MUST raise `MalformedQuotedStringError` (§11.3) for any
-of the conditions listed in §4.7: an unterminated quote, trailing content
-after a closed quote, an invalid escape sequence, a `\U` value above
-U+10FFFF, or an escape that decodes to a surrogate code point.
-
-```syml
-key: "unterminated
-```
-**Output:** `ERROR: MalformedQuotedStringError`
-
-```syml
-key: "a" trailing
-```
-**Output:** `ERROR: MalformedQuotedStringError`
-
-§8.1 and §8.2 both raise `OutOfContextNodeError`; `MalformedQuotedStringError`
-is a distinct exception class, since it is a lexical/value-decoding
-failure rather than a tree-incorporation failure.
-
-### 8.6 Document Limits
+### 8.5 Document Limits
 
 Implementations SHOULD enforce the recommended limits in §13.4 (maximum
 nesting depth, line length, and document size) and raise
@@ -1146,9 +1058,9 @@ order:
    leading BOM and nothing else, once the BOM is stripped, is the empty
    document defined in §7.4 and yields `""`.
 2. Normalize line endings by replacing every `\r\n` and every remaining
-   bare `\r` with `\n`. This includes CR sequences inside what will
-   later be parsed as quoted-string content (§4.8) — normalization
-   happens on the raw document text, before any grammar rule sees it.
+   bare `\r` with `\n` (§4.7) — normalization happens on the raw
+   document text, before any grammar rule sees it, so no value ever
+   contains a CR.
 3. For each line, compute its **leading whitespace**: the maximal run of
    U+0020 (space) and U+0009 (tab) characters, in any mixture, starting
    at the beginning of the line. If nothing follows that run before the
@@ -1211,13 +1123,14 @@ nesting to produce the documented output.
 ### 9.3 Node Acceptance Rules
 
 **Empty**, for a ListItem or KeyValue, means "has no children." A
-zero-length *unquoted* inline value (`- ` or `key: ` with nothing, or
-only whitespace already consumed by the required `ws`, following) is
+zero-length inline value (`- ` or `key: ` with nothing, or only
+whitespace already consumed by the required `ws`, following) is
 normalized to "no inline value at all" and does not create a child —
-such a node remains empty. A zero-length *quoted* value (`key: ""`) is
-not normalized; it is a real child and closes the node. Only spaces are
-consumed by `ws`: `key: \t` (space, then a tab) has the one-character
-value `"\t"`, not an empty value. **Empty**, for a
+such a node remains empty. There is no way to write an explicit,
+present empty inline value: `key: ""` is the two-character value `""`
+(quotation marks are ordinary text, §4.1), a real child that closes the
+node. Only spaces are consumed by `ws`: `key: \t` (space, then a tab)
+has the one-character value `"\t"`, not an empty value. **Empty**, for a
 List or Mapping, means "has no children" (this can only be observed
 transiently during §9.4's automatic container creation).
 
@@ -1230,9 +1143,9 @@ if the first line is written `key:` followed by one or more trailing
 spaces (not shown literally here, since editors and pre-commit hooks
 strip trailing whitespace; see §7.5's editor note). A trailing space after
 `key:` does not create an empty-string value: `key:` and `key: ` behave
-identically (§9.3's zero-length-value normalization), unlike `key: ""`
-(§4.7), which is a real, present empty string and would close the node to
-further nesting.
+identically (§9.3's zero-length-value normalization), unlike `key: ""`,
+which is the real, present two-character value `""` and would close the
+node to further nesting.
 
 | Current Node | Can Accept | Conditions |
 |--------------|------------|------------|
@@ -1260,10 +1173,6 @@ TextLeaf originated:
   scalar**, its baseline is fixed immediately at creation: to the block
   value's own first-line level, or unconditionally to `0` for a root
   scalar (regardless of that first line's own level).
-- If the TextLeaf holds a **quoted** inline value (§4.7), it accepts no
-  continuation at all: `can_accept` is false for every candidate,
-  regardless of level. The candidate is re-offered up the tree by §9.2
-  and, the owning node being closed, raises `OutOfContextNodeError`.
 
 Once the baseline is fixed (immediately for block/root, on the first
 continuation for inline), a TextLeaf accepts a further candidate TextLeaf
@@ -1405,47 +1314,72 @@ parse(document: string, filename?: string) -> Node
 
 dumps(data: any) -> string
     Serialize native data structures to SYML format.
-    (Not implemented in reference; see §11.2.1-§11.2.3 for the
-    normative rules a conforming implementation MUST follow.)
+    (See §11.2.1-§11.2.3 for the normative rules a conforming
+    implementation MUST follow; the reference implementation provides
+    it.)
 
 dump(data: any, file: file_object) -> None
     Serialize to SYML and write to file.
-    (Not implemented in reference.)
 ```
 
-#### 11.2.1 Serialization Quoting Rules
+#### 11.2.1 Serialization Rules for Strings
 
-A conforming `dumps` MUST choose an unquoted, single-quoted, or
-double-quoted representation for each scalar string such that
-`loads(dumps(x)) == x`. A string MUST be quoted if any of the following
-apply; otherwise it MAY be emitted unquoted.
+SYML has no quoted strings, so a conforming `dumps` has exactly one way
+to write each string: as the literal text on the page, such that
+`loads(dumps(x)) == x`. The layout depends on the string and on its
+position (a mapping value after `key:`, a list item value after `-`, or
+the document root):
 
-A. It is the empty string — use the position's empty-value convention
-   (nothing after `key:`, nothing after `-`, or a bare `-`), never `''`
-   or `""` (see rule F).
-B. It has leading or trailing space or tab characters (§7.5).
-C. It contains `\n`, `\r`, or any other control character (§4.6.1).
-   `dumps` MUST NOT represent a string containing `\n` via multiline
-   block continuation (§5) — the indentation-preservation and
-   termination rules there are for parsing convenience, not a
-   serialization target. Use a double-quoted string with `\n` escaped
-   instead.
-D. It is written as a list item's inline value (`- ...`) and would itself
-   match `list_item`, `key_value`, or `section` (§7.2). A mapping's
-   *inline* value is exempt, since `key_value`'s inline alternative never
-   attempts `structure`. (`dumps` never emits block-form lines: rule C
-   forbids block continuation for `\n`, and nothing else needs it.)
-E. It is written at an inline position (immediately after `key:` or
-   `- `) and starts with `'` or `"` (§4.1's quote-guard rule, §7.6).
-F. It is exactly the two characters `''` or `""`.
-G. It is a list item's inline mapping value (`- key: v`): `dumps` MUST
-   emit exactly one space between `-` and the key, so the key's column —
-   and therefore the required column for any of its sibling keys (§6.2)
-   — is deterministic.
+A. **Empty string.** Use the position's empty-value convention: nothing
+   after `key:`, a bare `-`, or the empty document for a root scalar
+   (§7.3, §7.4).
+B. **Single-line value at a mapping or list position** (no `\n`). Write
+   it inline, after `key: ` or `- `, exactly as is. It MUST NOT begin
+   with a space or tab (the separator would absorb a space, §7.5, and a
+   leading tab is unrepresentable, §4.2 rule 3). Trailing whitespace is
+   preserved by `loads` and round-trips (§7.5). It is otherwise
+   unrestricted at a mapping position: `{"k": "- x"}`, `{"k": "#x"}`,
+   `{"k": "key: value"}`, and `{"k": "''"}` are all written literally,
+   because `key_value`'s inline `data` never re-enters `structure`
+   (§7.2). At a list position it MUST NOT itself lex as `list_item`,
+   `key_value`, or `section` (`- - x` would nest; `- key: v` would be a
+   mapping; `- -` would be a nested empty item, §7.2); such a string is
+   unrepresentable there, though `["#x"]` and `["'x"]` are fine.
+C. **Multi-line value** (contains `\n`), or **any root scalar**. Write it
+   in block form: `key:` or `-` on its own line, then each line of the
+   value on its own physical line, indented two spaces past the key or
+   marker; a root scalar is written as bare lines at column 0. Because
+   §5.1/§5.3 preserve indentation beyond the baseline, only the *first*
+   line's leading whitespace is restricted: it MUST NOT begin with a
+   space or tab (at a key or list position a leading space would move
+   the baseline; at every position a leading tab is a tab in indentation,
+   §8.4); later lines keep their own leading spaces. Every line of a
+   block value MUST survive
+   being lexed on its own (§5.1 rule 6), so the value is unrepresentable
+   if any of its lines: is blank or whitespace-only (§5.1 rule 5);
+   begins with a tab after any leading spaces (§9.0 step 3); begins with
+   `#` or `//` after any leading spaces (§5.1 rule 4); or lexes as
+   `list_item`, `key_value`, or `section` after any leading spaces,
+   honouring §4.5's no-uppercase rule (`Listen: here` is text and
+   round-trips; `listen: here` is structure and does not).
+D. **Control characters.** A string containing `\r` (§4.7), NUL, or any
+   other control character except LF and TAB (§4.6.1) is unrepresentable
+   at every position: there is no escape sequence to write one. TAB is
+   fine inside a value (`a\tb`) but not as a line's first character.
+G. **Inline mapping in a list item** (`- key: v`): `dumps` MUST emit
+   exactly one space between `-` and the key, so the key's column — and
+   therefore the required column for any of its sibling keys (§6.2) —
+   is deterministic. (Rules E and F of the draft, which governed quoted
+   values, were retired with quoted strings; the letter G is kept so
+   existing references stay valid.)
 
-When quoting is required and the value contains no control characters,
-prefer single-quoting over double-quoting, to keep output literal per
-the Design Philosophy (§1.1).
+A conforming `dumps` MUST raise `UnrepresentableValueError` (§11.3) for
+any string ruled unrepresentable above, rather than emit text that would
+not read back as the same value. Such a string can often be carried at a
+different position (a structure-shaped single line as a mapping value
+rather than a list item), but a string containing a control character, a
+blank line, or a comment-shaped or structure-shaped line inside a
+multi-line value has no SYML encoding at all in this version.
 
 #### 11.2.2 Unrepresentable Values: Empty Containers
 
@@ -1460,16 +1394,18 @@ string or omitting the key that held it.
 entire value at a `value`/`data` position, denoting an empty list and
 empty mapping respectively, without introducing general flow-collection
 syntax. Trade-offs: closes this gap and matches JSON/YAML reader
-expectations, but requires a new quoting rule (a *string* whose value is
-literally `[]` or `{}` would need quoting), and risks scope creep toward
-general flow collections, which §1.2 rejects for SYML.
+expectations, but makes a *string* whose value is literally `[]` or `{}`
+unrepresentable (there is no quoting to disambiguate it), and risks
+scope creep toward general flow collections, which §1.2 rejects for SYML.
 
 #### 11.2.3 Keys With No Encoding
 
-A key containing whitespace or `:`, the empty-string key, or a key
-beginning with `#` or `//` cannot be represented in v1.1 — there is no
-quoted-key syntax, and a leading `#`/`//` is always read as a comment
-regardless of what follows (§4.5). A conforming `dumps` MUST raise
+A key containing whitespace, `:`, a control character, or an uppercase
+or titlecase letter (§4.5's no-uppercase rule: `Name` would read back as
+the text `Name: ...`), the empty-string key, or a key beginning with `#`
+or `//` cannot be represented in this version — there is no quoted-key
+syntax, and a leading `#`/`//` is always read as a comment regardless of
+what follows (§4.5). A conforming `dumps` MUST raise
 `UnrepresentableValueError` (§11.3) rather than emit a key that would
 not read back correctly.
 
@@ -1478,18 +1414,6 @@ to `key_colon`. This would need to explicitly except a line beginning
 with a quote character from the `comment` rule's priority, or a key
 like `'#tag'` would remain unrepresentable for the same reason unquoted
 `#tag` is today.
-
-#### 11.2.4 Root Scalars With No Encoding
-
-A root scalar (a document whose entire value is one string) is written as
-bare lines, where quoting is not recognized (§4.7). A conforming `dumps`
-MUST raise `UnrepresentableValueError` (§11.3) for a root scalar that:
-(a) would lex as `list_item`, `key_value`, or `section` on any of its
-lines; (b) begins with `#` or `//` (it would be a comment); (c) contains
-`\n`, `\r`, or any other control character; (d) has leading or trailing
-whitespace on any line; or (e) is exactly `''` or `""`. The empty string
-is representable as the empty document (§7.4). Any such value can be
-carried instead as a mapping or list value, where quoting is available.
 
 ### 11.3 Exceptions
 
@@ -1513,18 +1437,12 @@ DuplicateKeyError(ParseError)
 TabIndentationError(ParseError)
     A tab character appeared in leading indentation (§4.2 rule 2; §8.4).
 
-MalformedQuotedStringError(ParseError)
-    A quoted string was opened but never validly closed, was followed
-    by trailing content after closing, contained an invalid escape
-    sequence, or decoded to an invalid code point (§4.7, §8.5).
-    Additional attributes: escape: str | None, code_point: int | None
-
 DocumentLimitError(ParseError)
     A document exceeded a recommended implementation limit (§13.4).
 
 UnrepresentableValueError(ValueError)
     Raised by `dumps`, not `loads`, when asked to serialize a value with
-    no SYML encoding in this version (§11.2.2, §11.2.3, §11.2.4).
+    no SYML encoding in this version (§11.2.1, §11.2.2, §11.2.3).
 ```
 
 A conforming implementation MUST expose these exact class names (or
@@ -1629,12 +1547,12 @@ types_demo:
     "null_value": "null",
     "tilde": "~",
     "empty": "",
-    "quoted": "still a string"
+    "quoted": "\"still a string\""
   }
 }
 ```
 
-Note that the quoted value has its quotes stripped - they are syntax, not content. The `empty` key has an empty string value, not null.
+Note that the `quoted` value keeps its quotation marks — they are content, not syntax, since SYML has no quoted strings (§4.1). The `empty` key has an empty string value, not null.
 
 ---
 
@@ -1667,8 +1585,8 @@ encoding" fallback (see §11.1's `load()` decoding rule). Implementations should
 - Treat a line boundary as exactly one U+000A (LF), and only after the
   §9.0 CR/CRLF normalization pass has run. No other Unicode line- or
   paragraph-separator code point (including U+000B, U+000C, U+0085,
-  U+2028, U+2029, and U+001C-U+001E) terminates a line, whether inside
-  or outside quoted strings. Implementations MUST NOT use a
+  U+2028, U+2029, and U+001C-U+001E) terminates a line, anywhere in a
+  document. Implementations MUST NOT use a
   general-purpose "split into lines" library routine (e.g. Python's
   `str.splitlines()`, which recognizes additional separators) for
   tokenization, position tracking, or error-message line numbering;
@@ -1679,9 +1597,9 @@ encoding" fallback (see §11.1's `load()` decoding rule). Implementations should
   any other pre-processing (§9.0) or parsing occurs. Exactly one leading
   BOM is stripped; if a second U+FEFF immediately follows, it is
   ordinary content and MUST NOT also be stripped. A U+FEFF appearing
-  anywhere else in the document — at the start of a non-initial line,
-  inside a quoted string, or elsewhere in value text — is ordinary
-  Unicode content and MUST be preserved verbatim.
+  anywhere else in the document — at the start of a non-initial line or
+  elsewhere in value text — is ordinary Unicode content and MUST be
+  preserved verbatim.
 
 ### 13.4 Recommended Implementation Limits
 
@@ -1696,9 +1614,11 @@ hang on, at least:
   the host language's call stack.
 - **Maximum line length:** 1,048,576 characters (1 MiB) per line. Longer
   lines SHOULD be rejected outright rather than parsed at reduced
-  performance, particularly for unterminated-quoted-string inputs, whose
-  failure cost can grow super-linearly with line length in a
-  straightforward PEG transcription of §4.1's `double_quoted` rule.
+  performance. Since every value is literal text (§4.1), a line's
+  lexing cost is linear in its length, but a list item's inline `value`
+  re-enters `structure` (§7.2), so a long run of `- - - …` on one line
+  recurses once per marker; implementations SHOULD bound that depth as
+  part of the nesting limit above.
 - **Maximum document size:** 10 MiB. Larger documents SHOULD be rejected
   before parsing begins (a size check against the raw input, prior to
   any grammar work) rather than partially parsed.
@@ -1715,7 +1635,7 @@ worst-case behavior on untrusted input.
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2026-09 | Initial specification formalizing SYML syntax, released as the conforming reference implementation. Includes quoted strings, escape sequences, tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. Clarifies that malformed structural lines parse as scalars rather than raising, and that whitespace after `:` is required before an unquoted value. Consistency release; no new syntax. §4.1 grammar corrected to load in Parsimonious and to consume line endings (fixes alternation stranding, illegal escape-sequence atoms, single-quote escaping requiring four quote characters, and `&eol`-only lines that stopped parsing after one line). New §9.0 pre-processing step formalizes BOM stripping, CRLF/CR normalization, and a leading-tab scan that raises `TabIndentationError`. §9.3 sibling acceptance changed from `>=` to `==` for List/Mapping, enforcing §4.2 rule 6 and §6.4's homogeneity rule. Duplicate-key detection added at incorporation time, raising `DuplicateKeyError`; key equality is code-point equality, case-sensitive, with no Unicode normalization (§8.3). §5.3's TextLeaf baseline/termination rules made concrete: the baseline is the level of the first line of the value that occupies a line of its own — for an inline value, its first continuation line; for a block value, its first block line (unlike the inline case, this sets the baseline immediately); for a root scalar, a fixed 0 — and a below-baseline line terminates the value and is re-offered to the owning container rather than silently joining or vanishing. Comment and blank/whitespace-only lines inside a continuation block are always skipped and never terminate or affect the baseline, and a value containing a literal blank line (a paragraph break) cannot be written via block continuation at all — write it inline as a double-quoted string with `\n\n` (§5.1 rules 4-5). Quoted strings are recognized only at an inline position (immediately after `key:` or `- `); a bare line (root scalar, block value, or continuation line) never attempts to quote-decode, so a leading `'`/`"` there is ordinary text, while at an inline position an unquoted value beginning with `'` or `"` is `MalformedQuotedStringError` rather than silently falling through to literal text, as is an inline quoted value followed by trailing content, an invalid escape, a `\U` value above U+10FFFF, or an escape decoding to a surrogate code point (§4.1, §4.7, §8.5). §7.2 clarified: a mapping's inline value is always literal, but a list item's inline value is parsed structurally and must be quoted to stay literal (`- - x` nests; `key: - x` does not); a root scalar is parsed structurally and cannot be quoted, so `dumps` raises for one that would lex as structure (§11.2.4). Every physical line is now lexed independently of its position in the document: a continuation-position line that itself lexes as `key_value`/`list_item`/`section` is that structure, not literal text, and — once its owning node is closed — raises `OutOfContextNodeError`; plain text at a container's own level (alongside sibling key-value pairs) is likewise an error (§5.1 rule 6, §6.4, §7.6). A key written inline after a list marker (`- name: v`) sets its sibling column to the key's own column, not the marker's, regardless of spacing after `-` (§6.2); `dumps` MUST emit exactly one space after `-` for this reason (§11.2.1 rule G). The key pattern's `\s` is now defined as exactly the Unicode `White_Space` code points, not a host regex engine's default `\s` (§4.5). The formal grammar's top rule is now `document = (line "\n")* line?` with `eol` as a lookahead-only rule anchored on absolute end-of-input, replacing the nullable-repetition-prone `lines = line*`/`~"$"` pair; there is no separate `blank` rule (§4.1, §4.4). Every example in §4.2 and §8.1-§8.6 had its trailing `# Level N`/`# ERROR: ...` annotation removed in favor of prose or an **Output:** line, since those annotations were themselves invalid SYML content that would otherwise become part of the parsed value. §4.5: a key may not begin with `#` or `//` (the comment rule makes it unreachable); keys with whitespace, a colon, or no encoding are documented as unrepresentable (§11.2.3). §3.3: mapping insertion order is now a MUST, replacing the earlier disclaimer that consumers must not depend on it. A zero-length unquoted inline value (`key: `, `- `) is now normalized to the same as no value at all (`key:`, `-`); only an explicit `key: ""` is a real, present empty string (§9.3). §7.3's empty-value rule extended explicitly to list items. §11.1 clarifies that an empty or comment-only document is the scalar case (`""`), not a fourth return shape; `load()` now MUST decode strictly as UTF-8, raising rather than silently repairing invalid bytes. New §11.2.1-§11.2.3 give `dumps` normative quoting rules and require `UnrepresentableValueError` for empty containers and keys with no encoding. §11.3's exception list expanded to `DuplicateKeyError`, `TabIndentationError`, `MalformedQuotedStringError`, `DocumentLimitError`, and `UnrepresentableValueError`; there is no `InconsistentIndentationError` — §8.1 and §8.2 both raise `OutOfContextNodeError`. §13.2's tab bullet corrected: there is no tab normalization, only rejection. §13.3 defines a line boundary as exactly one LF (not the general Unicode line-separator set a naive `splitlines()` would use) and fully specifies BOM scope (index 0 only, exactly one, ordinary content everywhere else). New §13.4 recommends default limits (500 levels of nesting, 1 MiB lines, 10 MiB documents). New §4.6.1 states that control characters other than LF, including NUL, are permitted verbatim in values. §9.2 specifies that `add_child` returns the tip of the added subtree and that inline structural values (`- key: v`, `- - x`) are incorporated through the same algorithm. Quoted strings are single-line; a literal newline inside quotes is excluded by the grammar, and a quoted inline value accepts no continuation lines (§4.7, §9.3). §11.3: `ParseError` derives from the host's `ValueError`-equivalent, `UnrepresentableValueError` is a `ValueError` raised by `dumps`, and the exception class names are normative. New §11.2.4 lists the root scalars `dumps` cannot emit, since a root scalar cannot be quoted. Header status line now names `syml` 1.0.0 as the conforming reference implementation. |
+| 1.0 | 2026-09 | Initial specification formalizing SYML syntax, released as the conforming reference implementation. There are no quoted strings and no escape sequences: every value is the literal text on the page and a `'` or `"` is ordinary content at every position, as in 0.6.2 (D18, which supersedes the draft's inline-quoting rules D2, D3, and D17). A mapping key contains no uppercase or titlecase letter (Unicode General_Category `Lu`/`Lt`), so a line such as `Name: x` or `Listen: here` is text, not a mapping (D19; §4.1, §4.5 — breaking vs 0.6.2). Includes tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. Clarifies that malformed structural lines parse as scalars rather than raising, and that whitespace after `:` is required before an inline value. §4.1 grammar corrected to load in Parsimonious and to consume line endings (fixes alternation stranding and `&eol`-only lines that stopped parsing after one line). New §9.0 pre-processing step formalizes BOM stripping, CRLF/CR normalization, and a leading-tab scan that raises `TabIndentationError`. §9.3 sibling acceptance changed from `>=` to `==` for List/Mapping, enforcing §4.2 rule 6 and §6.4's homogeneity rule. Duplicate-key detection added at incorporation time, raising `DuplicateKeyError`; key equality is code-point equality, with no Unicode normalization and no case folding (§8.3). §5.3's TextLeaf baseline/termination rules made concrete: the baseline is the level of the first line of the value that occupies a line of its own — for an inline value, its first continuation line; for a block value, its first block line (unlike the inline case, this sets the baseline immediately); for a root scalar, a fixed 0 — and a below-baseline line terminates the value and is re-offered to the owning container rather than silently joining or vanishing. Comment and blank/whitespace-only lines inside a continuation block are always skipped and never terminate or affect the baseline, and a value containing a literal blank line (a paragraph break) cannot be written at all and is unrepresentable by `dumps` (§5.1 rules 4-5, §11.2.1). §7.2 clarified: a mapping's inline value is always literal, but a list item's inline value is parsed structurally (`- - x` nests; `key: - x` does not), so a structure-shaped string is unrepresentable by `dumps` at a list position; a root scalar is parsed structurally line by line and is always written in block form (§11.2.1). Every physical line is now lexed independently of its position in the document: a continuation-position line that itself lexes as `key_value`/`list_item`/`section` is that structure, not literal text, and — once its owning node is closed — raises `OutOfContextNodeError`; plain text at a container's own level (alongside sibling key-value pairs) is likewise an error (§5.1 rule 6, §6.4, §7.6). A key written inline after a list marker (`- name: v`) sets its sibling column to the key's own column, not the marker's, regardless of spacing after `-` (§6.2); `dumps` MUST emit exactly one space after `-` for this reason (§11.2.1 rule G). The key pattern's `\s` is now defined as exactly the Unicode `White_Space` code points, not a host regex engine's default `\s` (§4.5). The formal grammar's top rule is now `document = (line "\n")* line?` with `eol` as a lookahead-only rule anchored on absolute end-of-input, replacing the nullable-repetition-prone `lines = line*`/`~"$"` pair; there is no separate `blank` rule (§4.1, §4.4). Every example in §4.2 and §8.1-§8.5 had its trailing `# Level N`/`# ERROR: ...` annotation removed in favor of prose or an **Output:** line, since those annotations were themselves invalid SYML content that would otherwise become part of the parsed value. §4.5: a key may not begin with `#` or `//` (the comment rule makes it unreachable); keys with whitespace, a colon, an uppercase or titlecase letter, or no encoding are documented as unrepresentable (§11.2.3). §3.3: mapping insertion order is now a MUST, replacing the earlier disclaimer that consumers must not depend on it. A zero-length inline value (`key: `, `- `) is now normalized to the same as no value at all (`key:`, `-`); `key: ""` is the two-character value `""` (§9.3). §7.3's empty-value rule extended explicitly to list items. §11.1 clarifies that an empty or comment-only document is the scalar case (`""`), not a fourth return shape; `load()` now MUST decode strictly as UTF-8, raising rather than silently repairing invalid bytes. New §11.2.1-§11.2.3 give `dumps` normative serialization rules — a single-line string is written inline, a multi-line string or any root scalar in block form, and a string with no literal encoding (a control character other than LF/TAB, a leading space or tab, a blank, tab-initial, comment-shaped, or structure-shaped line in block form, or a structure-shaped list item value) is `UnrepresentableValueError` — and require `UnrepresentableValueError` for empty containers and keys with no encoding. §11.3's exception list expanded to `DuplicateKeyError`, `TabIndentationError`, `DocumentLimitError`, and `UnrepresentableValueError`; there is no `InconsistentIndentationError` — §8.1 and §8.2 both raise `OutOfContextNodeError`. §13.2's tab bullet corrected: there is no tab normalization, only rejection. §13.3 defines a line boundary as exactly one LF (not the general Unicode line-separator set a naive `splitlines()` would use) and fully specifies BOM scope (index 0 only, exactly one, ordinary content everywhere else). New §13.4 recommends default limits (500 levels of nesting, 1 MiB lines, 10 MiB documents). New §4.6.1 states that control characters other than LF, including NUL, are permitted verbatim in values. §9.2 specifies that `add_child` returns the tip of the added subtree and that inline structural values (`- key: v`, `- - x`) are incorporated through the same algorithm. §11.3: `ParseError` derives from the host's `ValueError`-equivalent, `UnrepresentableValueError` is a `ValueError` raised by `dumps`, and the exception class names are normative. Header status line now names `syml` 1.0.0 as the conforming reference implementation. |
 
 ---
 

@@ -248,26 +248,24 @@ class TestPosFromStrIndexEquivalenceWithReferenceImplementation:
             assert basetypes.Pos.from_str_index(text, index) == _reference_from_str_index(text, index)
 
 
-class TestQuotedValueSpanReporting:
-    """Contract 08 \u00a7Quoted-value spans.
+class TestLiteralQuoteSpanReporting:
+    """Contract 08 §Original-text coordinates, for a value holding quote characters (D18).
 
-    `start` is the opening quote and `end` is just past the closing quote
-    (exclusive, before any trailing ` *`) \u2014 both in the *original* text's
-    coordinates (\u00a7 Original-text coordinates), not the CRLF-normalized text
-    the grammar actually parses. `text` is the decoded value, so its length
-    need not match the raw token's.
+    Quotes are ordinary characters, so the span of `key: "a"` covers the
+    3-character literal text `"a"`, quotes included, in the *original* text's
+    coordinates rather than the CRLF-normalized text the grammar parses.
     """
 
-    def test_it_should_report_the_original_text_span_of_a_quoted_value_on_a_crlf_line(self) -> None:
-        original = "a: b\r\nk: 'it''s' \n"
+    def test_it_should_report_the_original_text_span_of_a_quote_bearing_value_on_a_crlf_line(self) -> None:
+        original = 'a: b\r\nk: "a"\r\n'
         tree = parsers.parse(original, filename='doc.syml')
 
         source = tree.as_source()['k']
 
-        assert source.text == "it's"
-        assert source.start.index == 9
-        assert source.end.index == 16
-        assert original[source.start.index : source.end.index] == "'it''s'"
+        assert source.text == '"a"'
+        assert source.start == basetypes.Pos(index=9, line=2, column=3)
+        assert source.end == basetypes.Pos(index=12, line=2, column=6)
+        assert original[source.start.index : source.end.index] == '"a"'
 
 
 class TestContinuationSpanReporting:
@@ -298,7 +296,7 @@ class TestUnquotedSpanReporting:
     """Contract 08 §Original-text coordinates (FR-013, R-02, US8).
 
     Unquoted leaf values and keys must report `Source` positions in
-    *original*-text coordinates too, not only quoted values (§9.9.11-13).
+    *original*-text coordinates (§9.9.11-13).
     A BOM plus a CRLF line exercises both the BOM offset and the CRLF
     collapse that `PositionMap.to_original` must account for.
     """

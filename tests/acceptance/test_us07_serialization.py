@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
-from serialization_corpus import CORPUS
+from serialization_corpus import CORPUS, UNREPRESENTABLE
 
 import syml
 import syml.exceptions
@@ -37,19 +37,16 @@ def then_result_equals_original(context: dict[str, Any]) -> None:
     assert context['result'] == context['value']
 
 
-@given(
-    'a string with leading or trailing whitespace, or containing a line feed, '
-    'a carriage return, or another control character'
-)
-def given_control_char_value(context: dict[str, Any]) -> None:
-    """Store a mapping value containing a line feed."""
+@given(parsers.parse('the unrepresentable corpus value "{corpus_id}"'))
+def given_unrepresentable_corpus_value(context: dict[str, Any], corpus_id: str) -> None:
+    """Store the named unrepresentable corpus value."""
+    context['value'] = UNREPRESENTABLE[corpus_id]
+
+
+@given('a mapping value containing a line feed')
+def given_mapping_value_with_line_feed(context: dict[str, Any]) -> None:
+    """Store a mapping whose value spans two lines."""
     context['value'] = {'k': 'a\nb'}
-
-
-@given('a value that needs quoting and holds no control characters')
-def given_needs_quoting_no_control_chars(context: dict[str, Any]) -> None:
-    """Store a mapping value that needs quoting (leading whitespace) but has no control characters."""
-    context['value'] = {'k': ' x'}
 
 
 @given('a list item whose value is a mapping')
@@ -72,7 +69,8 @@ def given_structure_with_empty_container(context: dict[str, Any]) -> None:
 
 @given(
     parsers.parse(
-        'a key containing whitespace or a colon, the empty-string key, or a key beginning with "{marker}" or "{marker2}"'
+        'a key containing whitespace, a colon, or an uppercase letter, the empty-string key, '
+        'or a key beginning with "{marker}" or "{marker2}"'
     )
 )
 def given_unrepresentable_key(context: dict[str, Any], marker: str, marker2: str) -> None:
@@ -82,8 +80,8 @@ def given_unrepresentable_key(context: dict[str, Any], marker: str, marker2: str
 
 @given(
     'a root scalar that would lex as structure, begins with a comment marker, holds a '
-    'control character, has leading or trailing whitespace on a line, or is exactly two '
-    'quote characters'
+    'control character other than tab, has leading whitespace on its first line, or '
+    'contains a blank line'
 )
 def given_unrepresentable_root_scalar(context: dict[str, Any]) -> None:
     """Store a root scalar that would lex as list structure."""
@@ -99,22 +97,14 @@ def when_serialized(context: dict[str, Any]) -> None:
         context['error'] = exc
 
 
-@then('it is emitted quoted, and a line feed is emitted as an escape rather than as block continuation')
-def then_emitted_quoted_with_escaped_newline(context: dict[str, Any]) -> None:
-    """Assert the dumped output is quoted and the line feed is an escape, not a real newline."""
-    dumped = context['dumped']
-    assert '"' in dumped or "'" in dumped
-    assert '\\n' in dumped
-    quoted_value_line = dumped.strip().split('\n', 1)[0]
-    assert quoted_value_line.count('\n') == 0
-
-
-@then('single-quoting is used in preference to double-quoting')
-def then_single_quoting_preferred(context: dict[str, Any]) -> None:
-    """Assert the dumped output uses single quotes."""
-    dumped = context['dumped']
-    assert "'" in dumped
-    assert '"' not in dumped
+@then(
+    'the key stands alone on its line, each line of the value follows indented two spaces deeper, '
+    'and loads reads the output back identically'
+)
+def then_written_in_block_form(context: dict[str, Any]) -> None:
+    """Assert the value is in block form under its bare key and round-trips."""
+    assert context['dumped'] == 'k:\n  a\n  b\n'
+    assert syml.loads(context['dumped']) == context['value']
 
 
 @then('exactly one space separates the marker from the key')

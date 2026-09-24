@@ -3,10 +3,10 @@ Feature: A complete, catchable error taxonomy and a stable entry API
   failure kinds, read the position and offending line off the exception, and
   hand load a text or binary file handle.
 
-  Scenario: The seven exception classes resolve with the specified inheritance
+  Scenario: The six exception classes resolve with the specified inheritance
     Given the installed library
-    When "ParseError", "OutOfContextNodeError", "DuplicateKeyError", "TabIndentationError", "MalformedQuotedStringError", "UnrepresentableValueError", and "EncodingError" are imported from syml
-    Then all seven resolve and their inheritance matches section 11.3 as amended
+    When "ParseError", "OutOfContextNodeError", "DuplicateKeyError", "TabIndentationError", "UnrepresentableValueError", and "EncodingError" are imported from syml
+    Then all six resolve and their inheritance matches section 11.3 as amended
 
   Scenario: A document that used to leak a third-party exception now parses cleanly
     Given a SYML document "key:value"

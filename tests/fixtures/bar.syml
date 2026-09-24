@@ -1,0 +1,36 @@
+include:
+  - foyer
+
+given:
+  - Fumbled = 0
+  - Bar = 0
+
+when:
+  - Location = "Bar"
+  - "Wearing Cloak" >= 1
+
+
+look-in-dark:
+
+  - It is pitch dark[…], and you can't see a thing. It would be easy to trip
+    over something.
+
+  - effect: Bar += 1
+
+
+fumble-around:
+
+  - when:
+    - Bar >= 2
+
+  - [Fumble around for a light switch.]You fumble around in the dark, but to no avail.
+
+  - effect: Fumbled = 1
+
+
+leave:
+
+  - [The bright opulence of the Foyer beckons you.]You leave the darkened Bar.
+
+  - effect:
+    - Location = "Foyer"
