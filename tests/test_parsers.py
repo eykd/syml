@@ -332,6 +332,18 @@ class TestSymlParser:
         result = parser.parse('key: "a"')
         assert result.as_data() == {'key': 'a'}
 
+    def test_it_should_decode_a_single_quoted_list_item(self, parser: parsers.SymlParser) -> None:
+        """A single-quoted list item decodes its quotes (§4.1/§4.7), not just inline key values.
+
+        `value_list_item = "-" ws value` and `value = structure / data` have no
+        quoted-value alternative at a list-item position, so `- 'x'` currently
+        parses as the literal string `"'x'"` (quotes kept) instead of the
+        unquoted `'x'`. Expected to fail until the grammar gains a quoted
+        alternative for list-item values.
+        """
+        result = parser.parse("- 'x'\n")
+        assert result.as_data() == ['x']
+
 
 class TestSimpleParserFunction:
     def test_it_should_parse_a_simple_list(self) -> None:
