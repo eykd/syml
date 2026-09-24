@@ -139,10 +139,15 @@ class ContainerNode(SymlNode):
 
 @dataclass(kw_only=True)
 class ParentNode(SymlNode):
-    """A parent node that con have multiple children"""
+    """A parent node that can have multiple children"""
 
     def can_add_node(self, node: SymlNode) -> bool:
-        """Check if a child node can be added."""
+        """Check if a child node can be added.
+
+        Siblings must sit at exactly this node's level (§9.3) — a
+        candidate that is deeper falls through so the caller walks back
+        up the parent chain per §9.2 instead of being absorbed here.
+        """
         return node.level is None or (self.level is not None and node.level == self.level)
 
 
