@@ -10,7 +10,7 @@ Solutions are organized by category. Each entry links to a detailed solution doc
 | `ruff/`                | Preview-mode lint rules, pydocstyle, formatting conflicts |
 | `pytest-coverage/`     | 100% branch coverage patterns, pragma usage, fixtures     |
 | `parsing/`             | Parsimonious grammar quirks, PEG lexing/tree-building     |
-| `spec-conformance/`    | Spec-vs-implementation gaps, todo.txt/D1-D17 traceability |
+| `spec-conformance/`    | Spec-vs-implementation gaps, SYML-SPEC-REVIEW.md/D1-D17 traceability |
 | `security/`            | Input validation, resource limits, unsafe-input handling  |
 | `clean-architecture/`  | Layer boundaries, node hierarchy, dependency direction    |
 | `tooling/`             | `just` recipes, pre-commit hooks, `uv`/`br` dependency issues |

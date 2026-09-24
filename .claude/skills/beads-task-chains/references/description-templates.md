@@ -116,10 +116,10 @@ Placeholders:
 **Story**: US<N> — <story title>
 **Spec**: specs/$BRANCH/spec.md §US-<N>
 **Plan**: specs/$BRANCH/plan.md §<relevant-section>
-**Page file**: <exact path, e.g. SYML-SPECIFICATION.md, todo.txt, SYML-SPEC-REVIEW.md>
+**Page file**: <exact path, e.g. SYML-SPECIFICATION.md, SYML-SPEC-REVIEW.md>
 **Related files**: <other spec/doc pages or design-decision records involved>
 **Instructions**: <what to write/change and why>
-**Done when**: Content is accurate, internally consistent, and cross-references (e.g. `todo.txt` entries citing `SYML-SPEC-REVIEW.md` decisions) resolve correctly.
+**Done when**: Content is accurate, internally consistent, and cross-references (e.g. FR-NNN requirements citing `SYML-SPEC-REVIEW.md` decisions) resolve correctly.
 **Commit**: After verification passes, run `/sp-commit` then `git push`. After closing the bead, commit and push again to record the beads state change.
 ```
 

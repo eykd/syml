@@ -42,7 +42,7 @@ model: sonnet
    d. Store epic ID for subsequent task creation steps
 
 4. **Execute task generation workflow**:
-   - Load plan.md and extract tech stack, libraries, project structure, and **public-surface requirements** (grammar rules, node types and their `can_add_node` policies, `as_data()` / `as_source()` renderings, `Source`/`Pos` handling, exception types, and the public `syml.loads` / `syml.load` signatures). Also extract the `## Acceptance Test Strategy` section if present (user stories with acceptance scenarios and planned spec file paths), and the `## Spec Conformance` section if present (which `todo.txt` gaps this feature closes). Map each public-surface requirement to the user story it serves.
+   - Load plan.md and extract tech stack, libraries, project structure, and **public-surface requirements** (grammar rules, node types and their `can_add_node` policies, `as_data()` / `as_source()` renderings, `Source`/`Pos` handling, exception types, and the public `syml.loads` / `syml.load` signatures). Also extract the `## Acceptance Test Strategy` section if present (user stories with acceptance scenarios and planned spec file paths), and the `## Spec Conformance` section if present (which `SYML-SPEC-REVIEW.md` gaps this feature closes). Map each public-surface requirement to the user story it serves.
    - Load spec.md and extract user stories with their priorities (P1, P2, P3, etc.)
    - If data-model.md exists: Extract entities and map to user stories
    - If contracts/ exists: Map each contract to the user story it serves
@@ -309,7 +309,7 @@ Use the naming convention from `/beads-task-chains` (US tasks, ATDD sub-tasks, T
 
 5. **From Plan (Docs & Spec Conformance)**:
    - Scan plan.md for documentation and spec-conformance work
-   - Map each `todo.txt` gap this feature closes to the user story that closes it
+   - Map each `SYML-SPEC-REVIEW.md` gap this feature closes to the user story that closes it
    - Classify docs work (README, `SYML-SPECIFICATION.md`, decision records) as Type D
    - Classify tooling and config work (pyproject, pre-commit, `just` recipes) as Type E
 
@@ -323,7 +323,7 @@ Use the naming convention from `/beads-task-chains` (US tasks, ATDD sub-tasks, T
   - Type B/C/D/E stories get appropriate task chains
   - Each phase should be a complete, independently testable increment
 - **Final Phase**: Polish & Cross-Cutting Concerns
-  - Documentation update task if the feature changes public behavior or closes a `todo.txt` gap
+  - Documentation update task if the feature changes public behavior or closes a `SYML-SPEC-REVIEW.md` gap
   - This task depends on ALL user story sub-tasks completing first
 
 ## Beads Error Handling
