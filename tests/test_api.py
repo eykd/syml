@@ -43,6 +43,18 @@ class TestLoadAcceptsTextAndBinaryStreams:
         with pytest.raises(EncodingError):
             syml.load(io.BytesIO(b'key: \xff\xfe'))
 
+    def test_load_from_a_text_stream_with_invalid_bytes_raises_encoding_error(self) -> None:
+        """A text handle that raises `UnicodeDecodeError` from `read()` is wrapped into `EncodingError`.
+
+        Contract 06 §`load`: `read()` is wrapped in a `try`/`except UnicodeDecodeError`,
+        because a text handle decodes inside `read()` itself, so an unwrapped `load`
+        would let a non-`ParseError` `UnicodeDecodeError` escape (forbidden by FR-009).
+        """
+        handle = io.TextIOWrapper(io.BytesIO(b'key: \xff\xfe'), encoding='utf-8')
+
+        with pytest.raises(EncodingError):
+            syml.load(handle)
+
 
 class TestParseIsAPublicExport:
     """Contract 06 §`parse`: promoted from `syml.parsers.parse` to `syml.parse` (US5)."""
