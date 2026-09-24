@@ -7,6 +7,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor
+from parsimonious.nodes import Node
 
 from . import nodes, quoting
 from .basetypes import Pos
@@ -175,10 +176,18 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a key leaf node."""
         return nodes.KeyLeafNode(pnode=node, filename=self.filename)
 
-    def visit_comment(self, node: PNode, children: SymlNodes) -> nodes.Comment:  # noqa: ARG002
-        """Visit a comment node."""
+    def visit_comment(self, node: PNode, children: SymlNodes) -> nodes.Comment:
+        """Visit a comment node.
+
+        The trailing `text?` is optional (FR-009): a comment-only line whose
+        markers consume the whole line (e.g. '####') leaves it unmatched, so
+        parsimonious visits it to `None` rather than a zero-length node.
+        Synthesize a zero-width node at the comment's own end position
+        instead of dereferencing `.pnode` on `None`.
+        """
         _, text = children
-        return nodes.Comment(pnode=text.pnode, filename=self.filename)
+        text_pnode = text.pnode if text is not None else Node(node.expr, node.full_text, node.end, node.end)
+        return nodes.Comment(pnode=text_pnode, filename=self.filename)
 
     def visit_indent(self, node: PNode, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
         """Visit an indentation token."""
