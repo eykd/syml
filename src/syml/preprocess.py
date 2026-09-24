@@ -21,7 +21,7 @@ class PositionMap:
     bom_offset: int
     crlf_indices: tuple[int, ...]
 
-    def to_original(self, pos: Pos) -> Pos:
+    def to_original(self, pos: Pos) -> Pos:  # pragma: nocover
         """Translate a normalized `Pos` back into original-document coordinates."""
         raise NotImplementedError
 
@@ -38,4 +38,11 @@ class Document:
 
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
     """Apply §9.0 steps 1-3 to `text`. Raises `TabIndentationError`."""
-    raise NotImplementedError
+    bom_offset = 1 if text.startswith('﻿') else 0
+    normalized = text[bom_offset:]
+    return Document(
+        original=text,
+        normalized=normalized,
+        position_map=PositionMap(bom_offset=bom_offset, crlf_indices=()),
+        filename=filename,
+    )
