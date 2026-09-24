@@ -206,7 +206,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Visit a list item carrying an inline value."""
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
-        if value is not None:  # pragma: nobranch
+        if value is not None and not _is_zero_length_text(value):  # pragma: nobranch
             li.incorporate_node(value)
         return li
 
