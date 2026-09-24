@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import dataclasses
 import textwrap
 from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor
 
-from . import nodes
-from .exceptions import OutOfContextNodeError
+from . import nodes, quoting
+from .basetypes import Pos
+from .exceptions import MalformedQuotedStringError, ParseError, error_message
 from .preprocess import preprocess
+from .utils import get_line
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -62,7 +65,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             """
         )
     )
-    unwrapped_exceptions = (OutOfContextNodeError,)
+    unwrapped_exceptions = (ParseError,)
 
     def __init__(self, filename: StrPath | None = None) -> None:
         super().__init__()
@@ -100,16 +103,27 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a text leaf node."""
         return nodes.TextLeafNode(pnode=node, filename=self.filename)
 
-    def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:
+    def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
 
-        Not yet implemented (US6 owns the grammar rule and the decoders);
-        stubbed here so Contract 05's visitor-boundary conversion can be
-        tested ahead of them (`unwrapped_exceptions` must also widen to
-        `ParseError` for the conversion to reach `loads`/`load`/`parse`
-        unwrapped — that is this leaf's Green task).
+        `decode_double_quoted` is position-free (Contract 04), so the
+        position is anchored here, at the opening quote, from `node` itself.
         """
-        raise NotImplementedError
+        raw = node.text
+        try:
+            text = quoting.decode_double_quoted(raw)
+        except quoting.QuotedStringDefect as defect:
+            position = Pos.from_str_index(node.full_text, node.start)
+            raise MalformedQuotedStringError(
+                error_message('Malformed quoted string', self.filename),
+                position,
+                get_line(node.full_text, position.line),
+                escape=defect.escape,
+                code_point=defect.code_point,
+            ) from defect
+        leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
+        leaf.source = dataclasses.replace(leaf.source, text=text)
+        return leaf
 
     def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
         """Return a key leaf node."""

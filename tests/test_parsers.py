@@ -471,3 +471,23 @@ class TestVisitQuotedValueDecoderDefectConversion:
         assert excinfo.value.escape == '\\ud800'
         assert excinfo.value.code_point == 0xD800
         assert isinstance(excinfo.value.__cause__, quoting.QuotedStringDefect)
+
+    def test_a_successful_decode_returns_a_quoted_inline_text_leaf_with_the_decoded_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the decoder succeeds, the leaf carries the decoded text, not the raw quoted form."""
+        raw = '"foo"'
+        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
+
+        def fake_decode_double_quoted(_raw: str) -> str:
+            return 'foo'
+
+        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
+
+        parser = parsers.SymlParser()
+
+        leaf = parser.visit(node)
+
+        assert leaf.source.text == 'foo'
+        assert leaf.quoted is True
+        assert leaf.inline is True
