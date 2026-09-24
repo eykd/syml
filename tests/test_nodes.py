@@ -53,3 +53,29 @@ class TestAcceptanceTableExactMatchSiblings:
         deeper_item = nodes.ListItem(pnode=_pnode('- a'), level=4)
 
         assert lst.can_add_node(deeper_item) is False
+
+
+class TestTextLeafNodeContinuationBaseline:
+    """Contract 03 §TextLeafNode continuation (§5.3, D11).
+
+    Before the baseline is fixed (inline only), a candidate must have
+    `level > anchor_level`. Once a continuation is accepted, its own level
+    fixes the baseline. From then on, a candidate is accepted iff
+    `level >= baseline`; a candidate below the baseline must be declined so
+    it terminates the continuation and is re-offered up the parent chain.
+    """
+
+    def test_leaf_declines_a_continuation_candidate_below_its_fixed_baseline(self) -> None:
+        """Once baseline is fixed by the first continuation, a shallower line is declined."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=4)
+        leaf.inline = True
+        leaf.anchor_level = 2
+        leaf.baseline = None
+
+        first_continuation = nodes.TextLeafNode(pnode=_pnode('b'), level=6)
+        assert leaf.can_add_node(first_continuation) is True
+        leaf.add_node(first_continuation)
+        assert leaf.baseline == 6
+
+        below_baseline = nodes.TextLeafNode(pnode=_pnode('c'), level=2)
+        assert leaf.can_add_node(below_baseline) is False
