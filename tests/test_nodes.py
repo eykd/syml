@@ -108,3 +108,26 @@ class TestMappingDuplicateKeyDetection:
 
         assert exc_info.value.key == 'key'
         assert exc_info.value.first_position == first_kv.source.start
+
+
+class TestAutomaticContainerCreation:
+    """Contract 03 §Automatic container creation (§9.4).
+
+    Accepting a bare `KeyValue` inserts a `Mapping` intermediary at the
+    incoming node's own level: `Mapping(source=node.source, level=node.level)`.
+    The intermediary's `Source` is the triggering node's own `Source` — its
+    `filename` in particular — not one rebuilt from the accepting container's
+    `filename`.
+    """
+
+    def test_auto_created_mapping_carries_the_triggering_nodes_filename(self) -> None:
+        """The auto-created Mapping's Source.filename matches the KeyValue's, not the Root's."""
+        root = nodes.Root(pnode=_pnode(''))
+        key = nodes.KeyLeafNode(pnode=_pnode('key'), filename='doc.syml')
+        kv = nodes.KeyValue(pnode=_pnode('key: value'), key=key, level=0, filename='doc.syml')
+
+        root.incorporate_node(kv)
+
+        intermediary = root.children[0]
+        assert isinstance(intermediary, nodes.Mapping)
+        assert intermediary.source.filename == kv.source.filename
