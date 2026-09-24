@@ -1,3 +1,4 @@
+import importlib
 import re
 import textwrap
 from typing import cast
@@ -273,3 +274,31 @@ class TestFromTextCoveragePragma:
         source_lines = inspect.getsource(basetypes.Source.from_text).splitlines()
         offending = [line for line in source_lines if 'substring is None' in line and 'pragma' in line]
         assert not offending, f'pragma still present on defaulting branch: {offending}'
+
+
+class TestGetLineText:
+    """Contract 01 pass 25: `get_line_text` replaces `syml.utils.get_line_text`."""
+
+    def test_it_should_return_the_line_at_the_given_line_number(self) -> None:
+        text = 'foo\nbar\nbaz'
+        assert basetypes.get_line_text(text, 2) == 'bar'
+
+    def test_it_should_not_treat_u2028_as_a_line_terminator(self) -> None:
+        text = 'a: b c\n-   name: Alice'  # noqa: RUF001
+        assert basetypes.get_line_text(text, 1) == 'a: b c'  # noqa: RUF001
+
+    def test_it_should_return_empty_string_for_an_out_of_range_line_number(self) -> None:
+        text = 'foo\nbar'
+        assert basetypes.get_line_text(text, 99) == ''
+
+
+class TestUtilsModuleDeleted:
+    """Contract 09 §migration note 16: `syml.utils` no longer exists.
+
+    Its sole responsibility, `get_line_text`, moved to `syml.basetypes`
+    with an LF-only line lookup (Contract 01 pass 25, Contract 05).
+    """
+
+    def test_it_should_raise_module_not_found_error(self) -> None:
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module('syml.utils')

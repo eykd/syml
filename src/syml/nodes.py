@@ -10,9 +10,8 @@ if TYPE_CHECKING:  # pragma: nocover
 
     from .preprocess import PositionMap
 
-from .basetypes import Pos, Source, StrPath, map_pos
+from .basetypes import Pos, Source, StrPath, get_line_text, map_pos
 from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
-from .utils import get_line_text
 
 
 @dataclass(kw_only=True)

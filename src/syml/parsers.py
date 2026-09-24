@@ -11,10 +11,9 @@ from parsimonious.exceptions import IncompleteParseError
 from parsimonious.nodes import Node
 
 from . import nodes, quoting
-from .basetypes import Pos
+from .basetypes import Pos, get_line_text
 from .exceptions import MalformedQuotedStringError, ParseError, error_message
 from .preprocess import preprocess
-from .utils import get_line_text
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import StrPath

@@ -52,6 +52,20 @@ class Pos:
         return cls(len(text), linenum + 1, 0)
 
 
+def get_line_text(text: str, line_number: int) -> str:
+    r"""Return the 1-indexed `line_number`'s text from `text`, terminator excluded.
+
+    Splits on ``\n`` only (SYML §13.3): other Unicode line-break characters
+    (e.g. U+2028) do not terminate a line, matching `Pos.from_str_index`.
+    Returns ``''`` for an out-of-range `line_number`.
+    """
+    lines = text.split('\n')
+    index = line_number - 1
+    if 0 <= index < len(lines):
+        return lines[index]
+    return ''
+
+
 def map_pos(pos: Pos, position_map: PositionMap | None) -> Pos:
     """Translate `pos` through `position_map.to_original`, or return it unchanged when there is no map.
 
