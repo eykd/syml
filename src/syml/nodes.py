@@ -65,6 +65,10 @@ class SymlNode:
         """Incorporate the given node into the tree somewhere nearby."""
         if self.can_add_node(node):
             return self.add_node(node)
+        return self._delegate_incorporate_node(node)
+
+    def _delegate_incorporate_node(self, node: SymlNode) -> SymlNode:
+        """Hand the node to the parent, or fail if there is none."""
         if self.parent is not None:
             return self.parent.incorporate_node(node)
         return self.fail_to_incorporate_node(node)
@@ -124,9 +128,7 @@ class ContainerNode(SymlNode):
                 incorporated = self.incorporate_node(intermediary)
                 return incorporated.incorporate_node(node)
             return super().incorporate_node(node)
-        if self.parent is not None:
-            return self.parent.incorporate_node(node)
-        return self.fail_to_incorporate_node(node)
+        return self._delegate_incorporate_node(node)
 
     @staticmethod
     def _intermediary_for(node: SymlNode) -> ParentNode | None:

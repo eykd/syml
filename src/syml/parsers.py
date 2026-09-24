@@ -43,6 +43,13 @@ def _mark_inline(value: SymlNode) -> None:
         value.inline = True
 
 
+def _incorporate_inline_value(parent: SymlNode, value: SymlNode) -> None:
+    """Mark `value` inline and incorporate it into `parent`, unless it's empty text (D6, D11)."""
+    if not _is_zero_length_text(value):
+        _mark_inline(value)
+        parent.incorporate_node(value)
+
+
 class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     """Parser for SYML"""
 
@@ -208,9 +215,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         text = value.source.text
         if text[:1] in ("'", '"'):
             raise self._malformed_quoted_string(value.pnode, escape=quoting.diagnose_malformed(text), code_point=None)
-        if not _is_zero_length_text(value):
-            _mark_inline(value)
-            section.incorporate_node(value)
+        _incorporate_inline_value(section, value)
         return section
 
     def visit_quoted_key_value(self, node: Node, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
@@ -228,9 +233,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Visit a list item carrying an inline value."""
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
-        if not _is_zero_length_text(value):
-            _mark_inline(value)
-            li.incorporate_node(value)
+        _incorporate_inline_value(li, value)
         return li
 
     def visit_guard_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
