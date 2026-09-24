@@ -126,6 +126,19 @@ class TestSymlParser:
             Source.from_text(text, 'baz'): Source.from_text(text, 'boo'),
         }
 
+    def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        r"""D15: the key class is the enumerated White_Space-minus set, not ``\s``.
+
+        ``\x01`` is not matched by Python's ``\s`` but IS excluded by D15's
+        enumerated key class (``\x00-\x1f``), so ``a\x01b: v`` must NOT lex
+        as a key/value pair; it falls through to a bare data value instead.
+        """
+        text = 'a\x01b: v'
+        result = parser.parse(text)
+        assert result.as_data() != {'a\x01b': 'v'}
+
     def test_it_should_parse_a_weirdly_nested_mapping(self, parser: parsers.SymlParser) -> None:
         text = textwrap.dedent(
             """
