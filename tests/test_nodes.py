@@ -35,3 +35,21 @@ class TestTextLeafNodeAnchorLevelAndBaseline:
 
         assert leaf.anchor_level == container.level
         assert leaf.baseline == leaf.level
+
+
+class TestAcceptanceTableExactMatchSiblings:
+    """Contract 03 §Acceptance table (§9.3): siblings match by level equality.
+
+    `List` accepts only a `ListItem` whose level is exactly the list's own
+    level (`node.level == self.level`), not merely `>=` it. A deeper
+    candidate is not a new sibling; it must be declined here and re-offered
+    up the parent chain (§9.2's walk-up), never silently absorbed as if it
+    were level-aligned.
+    """
+
+    def test_list_declines_a_deeper_list_item_instead_of_accepting_it(self) -> None:
+        """A ListItem deeper than the List's own level is not an exact-level sibling."""
+        lst = nodes.List(pnode=_pnode('- a'), level=2)
+        deeper_item = nodes.ListItem(pnode=_pnode('- a'), level=4)
+
+        assert lst.can_add_node(deeper_item) is False
