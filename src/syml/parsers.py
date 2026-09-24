@@ -37,7 +37,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             r"""
             lines       = line*
             line        = indent (comment / blank / structure / value) &eol
-            structure   = list_item / key_value / section
+            structure   = list_item / key_value / (section &eol)
 
             indent      = ~"\s*"
 
