@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import syml
 from syml import nodes
 from syml.exceptions import DuplicateKeyError
 from syml.parsers import SymlParser
@@ -163,3 +164,25 @@ class TestChildlessRootYieldsEmptyString:
         root = nodes.Root(pnode=_pnode(''))
 
         assert root.as_data() == ''
+
+
+class TestValuelessKeyYieldsEmptyStringAtEveryDepth:
+    """Contract 03 §Absent values (FR-005): a childless key yields "" at any depth.
+
+    `ContainerNode.as_data` (the base `KeyValue` uses) still returns `None`
+    when childless — only `Root` overrides it. The invariant is stated in
+    `loads` terms: no result may contain `None` at any depth (US4 scenario
+    5), so a valueless key nested two levels deep, and one alongside a
+    populated sibling, must also come back as `''`.
+    """
+
+    def test_valueless_key_yields_empty_string_at_every_depth(self) -> None:
+        """A childless key at depth 0, 1, and 2 all yield '', never None."""
+        document = 'top:\n  mid:\n    deep:\n  sib:\nafter:\n'
+
+        result = syml.loads(document)
+
+        assert result == {
+            'top': {'mid': {'deep': ''}, 'sib': ''},
+            'after': '',
+        }
