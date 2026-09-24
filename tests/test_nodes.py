@@ -224,3 +224,21 @@ class TestNoLeafOfAnyAcceptedDocumentIsEverANull:
         root = parsers.parse(document)
 
         _assert_no_null_leaves(root.as_source())
+
+
+class TestQuotedValueCompleteness:
+    """Contract 04 §Completeness (§9.3, §4.1).
+
+    A quoted inline value is complete: its `TextLeafNode` has `quoted=True`
+    and `can_add_node` returns `False` for every candidate, at every level.
+    """
+
+    def test_quoted_leaf_rejects_continuation(self) -> None:
+        """A quoted inline `TextLeafNode` accepts no continuation child (US6.8)."""
+        key = nodes.KeyLeafNode(pnode=_pnode('key'))
+        container = nodes.KeyValue(pnode=_pnode('key'), key=key, level=0)
+        leaf = nodes.TextLeafNode(pnode=_pnode('"a"'), level=0, inline=True, quoted=True)
+        container.add_node(leaf)
+        continuation = nodes.TextLeafNode(pnode=_pnode('b'), level=2)
+
+        assert leaf.can_add_node(continuation) is False
