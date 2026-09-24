@@ -118,6 +118,24 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """
         return self.visit_quoted_value(node, children)
 
+    def _malformed_quoted_string(
+        self, pnode: PNode, *, escape: str | None, code_point: int | None
+    ) -> MalformedQuotedStringError:
+        """Build a `MalformedQuotedStringError` anchored at `pnode`'s position.
+
+        Shared by `visit_quoted_value` (a decoder defect on a value that matched
+        `quoted_value`) and `visit_data_key_value` (the quote-guard rule, R-10:
+        a value that looks quoted but fell through to `data` instead).
+        """
+        position = Pos.from_str_index(pnode.full_text, pnode.start)
+        return MalformedQuotedStringError(
+            error_message('Malformed quoted string', self.filename),
+            position,
+            get_line_text(pnode.full_text, position.line),
+            escape=escape,
+            code_point=code_point,
+        )
+
     def visit_quoted_value(self, node: PNode, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Decode a quoted inline value, converting a decoder defect to `MalformedQuotedStringError`.
 
@@ -128,14 +146,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         try:
             text = quoting.decode_single_quoted(raw) if raw.startswith("'") else quoting.decode_double_quoted(raw)
         except quoting.QuotedStringDefect as defect:
-            position = Pos.from_str_index(node.full_text, node.start)
-            raise MalformedQuotedStringError(
-                error_message('Malformed quoted string', self.filename),
-                position,
-                get_line_text(node.full_text, position.line),
-                escape=defect.escape,
-                code_point=defect.code_point,
-            ) from defect
+            raise self._malformed_quoted_string(node, escape=defect.escape, code_point=defect.code_point) from defect
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
         leaf.source = dataclasses.replace(leaf.source, text=text)
         return leaf
@@ -166,14 +177,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         section, _, value = children
         text = value.source.text
         if text[:1] in ("'", '"'):
-            position = Pos.from_str_index(value.pnode.full_text, value.pnode.start)
-            raise MalformedQuotedStringError(
-                error_message('Malformed quoted string', self.filename),
-                position,
-                get_line_text(value.pnode.full_text, position.line),
-                escape=quoting.diagnose_malformed(text),
-                code_point=None,
-            )
+            raise self._malformed_quoted_string(value.pnode, escape=quoting.diagnose_malformed(text), code_point=None)
         if not _is_zero_length_text(value):
             section.incorporate_node(value)
         return section
