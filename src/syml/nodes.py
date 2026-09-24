@@ -292,8 +292,7 @@ class TextLeafNode(SymlNode):
         parts = [str(self.source)]
         for child in self.children:
             indent = ' ' * max(0, cast(int, child.level) - cast(int, self.baseline))
-            first, sep, rest = child.as_data().partition('\n')
-            parts.append(f'{indent}{first}{sep}{rest}')
+            parts.append(f'{indent}{child.as_data()}')
         return '\n'.join(parts)
 
     def can_add_node(self, node: SymlNode) -> bool:
