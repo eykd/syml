@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from syml import serializer
+from syml.exceptions import UnrepresentableValueError
 
 
 class TestDumpsQuotingTable:
@@ -36,6 +37,25 @@ class TestDumpsQuotingTable:
         # deep, so it must be quoted like any other list-item value.
         value = '- ' * 150 + 'x'
         assert serializer.dumps([value]) == "- '" + value + "'\n"
+
+
+class TestDumpsUnrepresentableEmptyContainers:
+    """§11.2.2 — empty list/mapping raise UnrepresentableValueError at any depth (D1)."""
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            [],
+            {},
+            {'a': []},
+            {'a': {'b': {}}},
+        ],
+    )
+    def test_it_should_raise_unrepresentable_value_error_for_an_empty_container_at_any_depth(
+        self, value: object
+    ) -> None:
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps(value)  # type: ignore[arg-type]
 
 
 class TestDumpsTypeContract:
