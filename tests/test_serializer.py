@@ -114,3 +114,10 @@ class TestDumpsUnrepresentableRootScalars:
 
     def test_it_should_serialize_a_representable_root_scalar(self) -> None:
         assert serializer.dumps('hello') == 'hello\n'
+
+
+class TestDumpsLeadingFeffProtectiveDoubling:
+    """A leading U+FEFF gets one extra U+FEFF prepended, since loads strips one (§9.0)."""
+
+    def test_it_should_double_a_leading_feff_on_a_root_scalar(self) -> None:
+        assert serializer.dumps('﻿hello') == '﻿﻿hello\n'
