@@ -13,6 +13,7 @@ from .exceptions import (
     TabIndentationError,
     UnrepresentableValueError,
 )
+from .preprocess import encoding_error
 
 __all__ = [
     'DuplicateKeyError',
@@ -34,4 +35,12 @@ def loads(document: str, filename: StrPath | None = None) -> list[Any] | dict[st
 
 def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list[Any] | dict[str, Any] | str:
     """Load a SYML document from a text or binary file-like object."""
-    return loads(file_obj.read(), filename=filename)  # type: ignore[arg-type]
+    raw = file_obj.read()
+    if isinstance(raw, bytes):
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError as err:
+            raise encoding_error(err, filename) from err
+    else:
+        text = raw
+    return loads(text, filename=filename)
