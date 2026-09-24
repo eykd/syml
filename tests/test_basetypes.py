@@ -2,8 +2,33 @@ import re
 import textwrap
 
 import pytest
+from parsimonious.expressions import Literal
+from parsimonious.nodes import Node
 
 from syml import basetypes
+from syml.preprocess import PositionMap
+
+
+class TestSourceFromNodeOriginalTextCoordinates:
+    """Contract 08 §Original-text coordinates (FR-013, R-02).
+
+    `Source.from_node(pnode, line, position_map, filename)` must build each
+    endpoint as `position_map.to_original(pos_at(line, offset))`, so a BOM at
+    the front of the document shifts reported positions by one — not the
+    normalized-text position `Pos.from_str_index` reports today.
+    """
+
+    def test_it_should_map_endpoints_through_pos_at_and_to_original(self) -> None:
+        normalized = 'key: value'
+        pnode = Node(Literal('value'), normalized, 5, 10)
+        line = basetypes.Line(text=normalized, start=0, number=1)
+        position_map = PositionMap(bom_offset=1, crlf_indices=())
+
+        source = basetypes.Source.from_node(pnode, line, position_map, filename='doc.syml')
+
+        assert source.start == basetypes.Pos(index=6, line=1, column=6)
+        assert source.end == basetypes.Pos(index=11, line=1, column=11)
+        assert source.text == 'value'
 
 
 class TestSource:
