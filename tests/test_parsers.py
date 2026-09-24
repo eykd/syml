@@ -138,6 +138,22 @@ class TestSymlParser:
         result = parser.parse(text)
         assert result.as_data() == {'key': {'nested': 'content'}}
 
+    def test_it_should_lex_ambiguous_colon_and_dash_forms_as_data_scalars(self, parser: parsers.SymlParser) -> None:
+        """§7.6 lexing-outcomes table: colon/dash forms that fall through to ``data``.
+
+        ``key:value`` and ``key:v`` (no space after the colon) do not lex as
+        ``key_value`` -- the colon-adjacent value requires a leading space or
+        tab per §4.1, so these fall through to a bare ``data`` scalar
+        (US3 scenario 3 and scenario 5's sibling). ``-item`` and ``-42`` are
+        not list markers -- ``list_item`` requires ``-`` to be followed by
+        whitespace or end-of-line, so a bare dash-prefixed word or number
+        also falls through to a bare ``data`` scalar (US3 scenario 4).
+        """
+        assert parser.parse('key:value').as_data() == 'key:value'
+        assert parser.parse('key:v').as_data() == 'key:v'
+        assert parser.parse('-item').as_data() == '-item'
+        assert parser.parse('-42').as_data() == '-42'
+
     def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
         self, parser: parsers.SymlParser
     ) -> None:
