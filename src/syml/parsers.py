@@ -18,6 +18,17 @@ if TYPE_CHECKING:  # pragma: nocover
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
 
 
+def _is_zero_length_text(value: SymlNode) -> bool:
+    """Return True if `value` is a text leaf with no characters.
+
+    A trailing colon with nothing after it (e.g. ``key: `` at end of line)
+    lexes as a `key_value` whose inline text child is empty. Per D6 (§9.3)
+    that empty value normalizes away, leaving the `KeyValue` open to accept
+    a value from a following nested block instead.
+    """
+    return isinstance(value, nodes.TextLeafNode) and value.source.text == ''
+
+
 class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     """Parser for SYML"""
 
@@ -105,7 +116,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     def visit_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
         """Visit a mapping value."""
         section, _, value = children
-        if not (isinstance(value, nodes.TextLeafNode) and value.source.text == ''):
+        if not _is_zero_length_text(value):
             section.incorporate_node(value)
         return section
 
