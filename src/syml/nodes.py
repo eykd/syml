@@ -34,18 +34,6 @@ class SymlNode:
             # anything inherited from the line it's on.
             self.level = self.source.start.column
 
-    def set_level(self, level: int) -> None:
-        """Set this node's level.
-
-        Only ever called on freshly-constructed, still-childless nodes
-        (an auto-created `Mapping`/`List` intermediary, or the R-11
-        dead-branch callers above), so the recursive step never actually
-        runs — kept for syml-x0m.5.4.16 to remove.
-        """
-        self.level = level
-        for child in self.children:  # pragma: nocover
-            child.set_level(level)
-
     def as_data(self) -> Any:  # noqa: ANN401  # pragma: nocover
         """Return this node as primitive data types."""
         raise NotImplementedError
@@ -68,11 +56,6 @@ class SymlNode:
         """Add a child node."""
         self.children.append(node)
         node.parent = self
-        if node.level is None:  # pragma: nocover
-            # R-11: every node's level is set at construction from its
-            # own pnode.start, so this branch is unreachable — kept for
-            # syml-x0m.5.4.16 to remove alongside `set_level` itself.
-            node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
     def incorporate_node(self, node: SymlNode) -> SymlNode:
@@ -132,7 +115,7 @@ class ContainerNode(SymlNode):
                 intermediary = List(pnode=node.pnode, level=self.level, filename=self.filename)
 
             if intermediary is not None:
-                intermediary.set_level(node.level)  # type: ignore[arg-type]
+                intermediary.level = node.level
                 intermediary = self.incorporate_node(intermediary)
                 return intermediary.incorporate_node(node)
             return super().incorporate_node(node)
@@ -159,11 +142,6 @@ class ParentNode(SymlNode):
         """Add a child node."""
         self.children.append(node)
         node.parent = self
-        if node.level is None:  # pragma: nocover
-            # R-11: every node's level is set at construction from its
-            # own pnode.start, so this branch is unreachable — kept for
-            # syml-x0m.5.4.16 to remove alongside `set_level` itself.
-            node.set_level(self.level)  # type: ignore[arg-type]
         return node.get_tip()
 
 
