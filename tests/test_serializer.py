@@ -121,3 +121,25 @@ class TestDumpsLeadingFeffProtectiveDoubling:
 
     def test_it_should_double_a_leading_feff_on_a_root_scalar(self) -> None:
         assert serializer.dumps('\ufeffhello') == '\ufeff\ufeffhello\n'
+
+
+class _RecordingTextFile:
+    """A minimal `IO[str]`-shaped stub that records every `write()` call."""
+
+    def __init__(self) -> None:
+        """Initialize with an empty call log."""
+        self.write_calls: list[str] = []
+
+    def write(self, s: str) -> int:
+        """Record the written string and return its length, like a real file."""
+        self.write_calls.append(s)
+        return len(s)
+
+
+class TestDumpSingleWriteSemantics:
+    """dump() calls file_obj.write() exactly once, with the whole dumps() result (Contract 07)."""
+
+    def test_it_should_write_the_whole_serialized_result_in_a_single_write_call(self) -> None:
+        file_obj = _RecordingTextFile()
+        serializer.dump({'a': '1', 'b': '2'}, file_obj)  # type: ignore[arg-type]
+        assert file_obj.write_calls == [serializer.dumps({'a': '1', 'b': '2'})]
