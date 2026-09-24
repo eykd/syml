@@ -150,12 +150,14 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         except quoting.QuotedStringDefect as defect:
             raise self._malformed_quoted_string(node, escape=defect.escape, code_point=defect.code_point) from defect
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
+        source = leaf.source
         if self.position_map is not None:
-            start = self.position_map.to_original(Pos.from_str_index(node.full_text, node.start))
-            end = self.position_map.to_original(Pos.from_str_index(node.full_text, node.end))
-            leaf.source = dataclasses.replace(leaf.source, start=start, end=end, text=text)
-        else:
-            leaf.source = dataclasses.replace(leaf.source, text=text)
+            source = dataclasses.replace(
+                source,
+                start=self.position_map.to_original(source.start),
+                end=self.position_map.to_original(source.end),
+            )
+        leaf.source = dataclasses.replace(source, text=text)
         return leaf
 
     def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
