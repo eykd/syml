@@ -269,6 +269,22 @@ Instead:
 - Use `git merge <branch>` to merge changes before deleting""",
     ),
     GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(r'git\s+commit\b.*\s-[a-zA-Z]*n[a-zA-Z]*(?=\s|$)'),
+        message="""BLOCKED: Hook bypass flags detected.
+
+Prohibited flags: --no-verify, --no-gpg-sign
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use these flags when explicitly requested by the user.""",
+    ),
+    GuardRule(
         name='catastrophic-rm',
         category='catastrophic-file-deletion',
         pattern=re.compile(

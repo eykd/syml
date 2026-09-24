@@ -41,6 +41,10 @@ class TestAllow:
             'gh repo archive',
             'gitcommit --no-verify',
             'echo "dbdb is a word"',
+            'git push -n',
+            'git commit -m "mention -n in prose"',
+            'git commit -am wip',
+            'git commit -m x',
         ],
     )
     def test_it_should_allow_safe_commands(self, command: str) -> None:
@@ -54,6 +58,9 @@ class TestBlockedRules:
             ('git commit --no-verify -m "x"', 'hook-bypass'),
             ('git commit --no-gpg-sign -m "x"', 'hook-bypass'),
             ('git push --no-verify', 'hook-bypass'),
+            ('git commit -n -m wip', 'hook-bypass'),
+            ('git commit -nm wip', 'hook-bypass'),
+            ('git commit -anm wip', 'hook-bypass'),
             ('git push --force origin main', 'force-push'),
             ('git push -f ', 'force-push'),
             ('git push -f', 'force-push'),
