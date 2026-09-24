@@ -156,8 +156,24 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         )
 
     def visit_data_key_value(self, node: PNode, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
-        """Visit a mapping value whose data is unquoted text."""
+        """Visit a mapping value whose data is unquoted text.
+
+        The quote-guard rule (§4.1, R-10): `data` beginning with `'` or `"` means
+        `quoted_value` failed to match and the line fell through here instead of
+        raising. Diagnose the fallthrough and raise rather than keep the leading
+        quote as text (Contract 04 §The quote-guard rule).
+        """
         section, _, value = children
+        text = value.source.text
+        if text[:1] in ("'", '"'):
+            position = Pos.from_str_index(value.pnode.full_text, value.pnode.start)
+            raise MalformedQuotedStringError(
+                error_message('Malformed quoted string', self.filename),
+                position,
+                get_line_text(value.pnode.full_text, position.line),
+                escape=quoting.diagnose_malformed(text),
+                code_point=None,
+            )
         if not _is_zero_length_text(value):
             section.incorporate_node(value)
         return section
