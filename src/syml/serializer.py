@@ -149,7 +149,7 @@ def _render_mapping_lines(mapping: dict[object, object], indent: int) -> list[st
             raise UnrepresentableValueError(message, key_str)
         value_lines = _render_value_lines(value, indent + 2)
         if isinstance(value, str):
-            lines.append(f'{pad}{key_str}: {value_lines[0]}')
+            lines.append(f'{pad}{key_str}: {_quote_mapping_value(value_lines[0])}')
         else:
             lines.append(f'{pad}{key_str}:')
             lines.extend(value_lines)
@@ -198,11 +198,44 @@ def _relexes_as_literal(rendered: str) -> bool:
     Re-lexes `'- ' + rendered` (§11.2.1's list-item-mapping re-lex rule, step
     1). If the value comes back reparsed as `structure` (a nested `list_item`
     or `key_value`) instead of staying literal text, `rendered` is not a safe
-    quoted rendering and must fall back to the escaped double-quoted form.
+    quoted rendering and must fall back to the escaped double-quoted form. A
+    candidate whose re-lex doesn't even parse (e.g. a stray unescaped quote
+    inside a single-quoted rendering breaks the `eol` lookahead) is likewise
+    not safe.
     """
-    line_node = _GRAMMAR['line'].match('- ' + rendered)
+    try:
+        line_node = _GRAMMAR['line'].match('- ' + rendered)
+    except parsimonious.exceptions.ParseError:
+        return False
     value_node = _find_node(line_node, 'value')
     return value_node is not None and value_node.children[0].expr_name != 'structure'
+
+
+def _mapping_value_needs_quoting(value: str) -> bool:
+    """§11.2.1 rules B/C/E/F for a mapping's inline value.
+
+    Rule D does not apply: a mapping's inline value is exempt, since
+    `key_value`'s inline alternative never attempts `structure`.
+    """
+    if not value:
+        return False
+    if value in ("''", '""'):
+        return True
+    if value != value.strip(' \t'):
+        return True
+    if '\n' in value or '\r' in value or _CONTROL_CHAR_PATTERN.search(value):
+        return True
+    return value[0] in ("'", '"')
+
+
+def _quote_mapping_value(value: str) -> str:
+    """Apply §11.2.1 rules B/C/E/F to a mapping's inline value."""
+    if not _mapping_value_needs_quoting(value):
+        return value
+    if '\n' in value or '\r' in value or _CONTROL_CHAR_PATTERN.search(value):
+        escaped = ''.join(_RELEX_ESCAPES.get(char, char) for char in value)
+        return f'"{escaped}"'
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _quote_list_item_value(value: str) -> str:

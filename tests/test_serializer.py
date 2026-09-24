@@ -8,16 +8,7 @@ from serialization_corpus import CORPUS
 from syml import loads, serializer
 from syml.exceptions import UnrepresentableValueError
 
-_PENDING_CORPUS_ROUND_TRIP_IDS = frozenset({
-    'stranded_single_quote',
-    'literal_single_quotes',
-    'stranded_double_quote',
-    'leading_trailing_space',
-    'mixed_quote_backslash',
-    'contains_newline',
-    'literal_double_quotes',
-    'contains_cr',
-})
+_PENDING_CORPUS_ROUND_TRIP_IDS: frozenset[str] = frozenset()
 
 
 class TestDumpsLoadsRoundTripsOverCorpus:
@@ -92,6 +83,15 @@ class TestDumpsQuotingTable:
         # single-quoted rendering fails to re-lex crashes `dumps` instead of
         # falling back to the escaped double-quoted form.
         serializer.dumps(["k: 'v' x"])
+
+    def test_it_should_round_trip_a_mapping_value_that_is_the_empty_string(
+        self,
+    ) -> None:
+        # Rule A: the empty string is written via the position's empty-value
+        # convention (nothing after `key:`), never `''` or `""`, so a mapping
+        # value that is already empty needs no quoting.
+        value = {'k': ''}
+        assert loads(serializer.dumps(value)) == value
 
 
 class TestDumpsUnrepresentableEmptyContainers:
