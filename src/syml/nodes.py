@@ -145,12 +145,6 @@ class ParentNode(SymlNode):
         """Check if a child node can be added."""
         return node.level is None or (self.level is not None and node.level >= self.level)
 
-    def add_node(self, node: SymlNode) -> SymlNode:
-        """Add a child node."""
-        self.children.append(node)
-        node.parent = self
-        return node.get_tip()
-
 
 @dataclass(kw_only=True)
 class Root(ContainerNode):
@@ -224,9 +218,9 @@ class TextLeafNode(SymlNode):
 
     inline: bool = field(default=False)
     quoted: bool = field(default=False)
-    # anchor_level/baseline are stub fields here (contract 03): the accepting
-    # node is meant to set them on attach, but that assignment is not yet
-    # implemented — see syml-x0m.5.2.3.
+    # anchor_level/baseline default to these sentinel values until the
+    # accepting ContainerNode.add_node sets them on attach (contract 03):
+    # anchor_level = self.level, baseline = None if node.inline else node.level.
     anchor_level: int = field(default=-1)
     baseline: int | None = field(default=0)
 
