@@ -24,7 +24,7 @@ class QuotedStringDefect(ValueError):  # noqa: N818 -- private signal, never rea
 
 def decode_single_quoted(raw: str) -> str:
     """Decode a '...' literal (Contract 04). `raw` includes the surrounding quotes."""
-    return raw[1:-1]
+    return raw[1:-1].replace("''", "'")
 
 
 def decode_double_quoted(raw: str) -> str:
