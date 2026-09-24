@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import textwrap
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from parsimonious import Grammar, NodeVisitor
 
@@ -31,6 +31,17 @@ def _is_zero_length_text(value: SymlNode) -> bool:
     a value from a following nested block instead.
     """
     return isinstance(value, nodes.TextLeafNode) and value.source.text == ''
+
+
+def _mark_inline(value: SymlNode) -> None:
+    """Flag `value` as an inline value (D11) when it is a plain text leaf.
+
+    Marking `TextLeafNode.inline` keeps its continuation baseline open (None)
+    until the first accepted continuation line fixes it, instead of fixing
+    the baseline at the inline text's own column (see `ContainerNode.add_node`).
+    """
+    if isinstance(value, nodes.TextLeafNode):
+        value.inline = True
 
 
 class SymlParser(NodeVisitor):  # type: ignore[type-arg]
@@ -188,7 +199,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         if text[:1] in ("'", '"'):
             raise self._malformed_quoted_string(value.pnode, escape=quoting.diagnose_malformed(text), code_point=None)
         if not _is_zero_length_text(value):
-            cast('nodes.TextLeafNode', value).inline = True
+            _mark_inline(value)
             section.incorporate_node(value)
         return section
 
@@ -208,8 +219,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
         if value is not None and not _is_zero_length_text(value):  # pragma: nobranch
-            if isinstance(value, nodes.TextLeafNode):
-                value.inline = True
+            _mark_inline(value)
             li.incorporate_node(value)
         return li
 
