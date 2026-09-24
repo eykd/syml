@@ -38,7 +38,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
             key_value   = section ws data
             section     = key ":"
-            key         = ~"[^\s:]+"
+            key         = ~"[^\s:\x00-\x1f\x7f-\x9f]+"
 
             eol         = "\n" / ~"$"
             ws          = ~"[ \t]+"
