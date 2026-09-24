@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: nocover
-    from .basetypes import Pos
+    from .basetypes import Pos, StrPath
+
+
+def error_message(description: str, filename: StrPath | None) -> str:
+    """`description` alone when filename is None, else f'{filename}: {description}'."""
+    if filename is None:
+        return description
+    return f'{filename}: {description}'
 
 
 class ParseError(ValueError):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from syml.basetypes import Pos
-from syml.exceptions import ParseError
+from syml.exceptions import ParseError, error_message
 from syml.preprocess import encoding_error
 
 
@@ -52,3 +52,15 @@ class TestEncodingErrorPositionDerivation:
         assert result.position == Pos(index=10, line=2, column=3)
         assert result.line_text == 'x: '
         assert result.message == 'Invalid encoding'
+
+
+class TestErrorMessage:
+    """Contract 05 §Surface: `error_message` carries the filename (red-team pass 14)."""
+
+    def test_error_message_omits_filename_when_none(self) -> None:
+        """`description` alone when `filename` is `None`."""
+        assert error_message('Invalid encoding', None) == 'Invalid encoding'
+
+    def test_error_message_prefixes_filename_when_given(self) -> None:
+        """`f'{filename}: {description}'` when `filename` is given."""
+        assert error_message('Invalid encoding', 'doc.syml') == 'doc.syml: Invalid encoding'

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .basetypes import Pos
-from .exceptions import EncodingError, TabIndentationError
+from .exceptions import EncodingError, TabIndentationError, error_message
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import StrPath
@@ -44,6 +44,7 @@ class Document:
 
 
 _LINE_ENDING = re.compile(r'\r\n|\r')
+_LINE_ENDING_OR_LF = re.compile(r'\r\n|\r|\n')
 _BOM = '﻿'
 
 
@@ -120,7 +121,18 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     :param filename: The filename to include in the message, if any.
     :returns: An `EncodingError` positioned at the first invalid byte.
     """
-    raise NotImplementedError
+    prefix = err.object[: err.start].decode(err.encoding, errors='replace')
+    index = len(prefix)
+    breaks = list(_LINE_ENDING_OR_LF.finditer(prefix))
+    line = 1 + len(breaks)
+    last_break_end = breaks[-1].end() if breaks else 0
+    column = index - last_break_end
+    line_text = prefix[last_break_end:]
+    return EncodingError(
+        error_message('Invalid encoding', filename),
+        Pos(index=index, line=line, column=column),
+        line_text,
+    )
 
 
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
