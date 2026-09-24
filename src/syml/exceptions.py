@@ -11,6 +11,13 @@ if TYPE_CHECKING:  # pragma: nocover
 class ParseError(ValueError):
     """An error encountered while parsing"""
 
+    # Contract 05 §Surface: the `message`/`position`/`line_text` attribute
+    # contract (R-03). Declared here as a stub so mypy can typecheck callers;
+    # `__init__` does not yet populate them — that is Green's job.
+    message: str
+    position: Pos
+    line_text: str
+
 
 class OutOfContextNodeError(ParseError):
     """A node encountered in an illegal context"""
