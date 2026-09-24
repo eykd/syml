@@ -13,6 +13,7 @@ from .exceptions import (
     TabIndentationError,
     UnrepresentableValueError,
 )
+from .nodes import Root
 from .preprocess import encoding_error
 
 __all__ = [
@@ -21,10 +22,12 @@ __all__ = [
     'MalformedQuotedStringError',
     'OutOfContextNodeError',
     'ParseError',
+    'Root',
     'TabIndentationError',
     'UnrepresentableValueError',
     'load',
     'loads',
+    'parse',
 ]
 
 
@@ -44,3 +47,8 @@ def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list
     else:
         text = raw
     return loads(text, filename=filename)
+
+
+def parse(document: str, filename: StrPath | None = None) -> Root:
+    """Parse a SYML document into its `Root` node (Contract 06 §`parse`)."""
+    raise NotImplementedError

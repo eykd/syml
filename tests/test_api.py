@@ -42,3 +42,14 @@ class TestLoadAcceptsTextAndBinaryStreams:
         """`load` on a `BytesIO` carrying invalid UTF-8 bytes raises `EncodingError`, not `UnicodeDecodeError`."""
         with pytest.raises(EncodingError):
             syml.load(io.BytesIO(b'key: \xff\xfe'))
+
+
+class TestParseIsAPublicExport:
+    """Contract 06 §`parse`: promoted from `syml.parsers.parse` to `syml.parse` (US5)."""
+
+    def test_parse_returns_a_root_node_whose_as_data_matches_loads(self) -> None:
+        """`syml.parse` returns a `Root` node; `.as_data()` equals `syml.loads` on the same document."""
+        root = syml.parse('key: value')
+
+        assert isinstance(root, syml.Root)
+        assert root.as_data() == syml.loads('key: value')
