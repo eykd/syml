@@ -89,3 +89,25 @@ class TestDumpsUnrepresentableKeys:
     def test_it_should_raise_unrepresentable_value_error_for_a_key_with_no_encoding(self, key: str) -> None:
         with pytest.raises(UnrepresentableValueError):
             serializer.dumps({key: 'v'})
+
+
+class TestDumpsUnrepresentableRootScalars:
+    """§11.2.4 — root scalars with no encoding raise UnrepresentableValueError (D17)."""
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            '- x',  # (a) would lex as list_item on some line
+            'k: v',  # (a) would lex as key_value on some line
+            '#comment',  # (b) begins with '#'
+            '//comment',  # (b) begins with '//'
+            'a\nb',  # (c) contains a control character (\n)
+            ' leading',  # (d) leading whitespace
+            'trailing ',  # (d) trailing whitespace
+            "''",  # (e) exactly two single quotes
+            '""',  # (e) exactly two double quotes
+        ],
+    )
+    def test_it_should_raise_unrepresentable_value_error_for_a_root_scalar_with_no_encoding(self, value: str) -> None:
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps(value)
