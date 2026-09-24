@@ -110,9 +110,9 @@ class ContainerNode(SymlNode):
         if self.can_add_node(node):
             intermediary: SymlNode | None = None
             if isinstance(node, KeyValue):
-                intermediary = Mapping(pnode=node.pnode, level=self.level, filename=self.filename)
+                intermediary = Mapping(pnode=node.pnode, level=self.level, filename=node.filename)
             elif isinstance(node, ListItem):
-                intermediary = List(pnode=node.pnode, level=self.level, filename=self.filename)
+                intermediary = List(pnode=node.pnode, level=self.level, filename=node.filename)
 
             if intermediary is not None:
                 intermediary.level = node.level
