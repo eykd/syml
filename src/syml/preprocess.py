@@ -41,8 +41,6 @@ class Document:
 
 _LINE_ENDING = re.compile(r'\r\n|\r')
 
-_LEADING_WHITESPACE = re.compile(r'[ \t]*')
-
 
 def is_blank(text: str) -> bool:
     """Return whether `text` is entirely U+0020/U+0009, in any mixture (§4.4, D14).
@@ -61,8 +59,7 @@ def _scan_for_tab_indentation(normalized: str) -> None:
     for line in normalized.split('\n'):
         if is_blank(line):
             continue
-        run = _LEADING_WHITESPACE.match(line)
-        run_text = run.group() if run else ''
+        run_text = line[: len(line) - len(line.lstrip(' \t'))]
         if '\t' in run_text:
             raise TabIndentationError(
                 "A tab character was found in a line's leading whitespace",
