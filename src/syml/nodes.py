@@ -307,11 +307,3 @@ class KeyLeafNode(SymlNode):
 
 class Comment(TextLeafNode):
     """A comment node"""
-
-    def as_data(self) -> str:  # pragma: nocover
-        """Return an empty string."""
-        return ''
-
-    def can_add_node(self, node: SymlNode) -> bool:  # pragma: nocover
-        """Check if a child node can be added."""
-        return isinstance(node, Comment)
