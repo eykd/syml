@@ -102,7 +102,8 @@ class ContainerNode(SymlNode):
     def as_data(self) -> Any:  # noqa: ANN401
         """Return the container as primitive data types.
 
-        A childless container yields `''` rather than `None`, at every
+        A childless container — including a `Root` for an empty or
+        comment-only document — yields `''` rather than `None`, at every
         depth (Contract 03 §Absent values, FR-005).
         """
         if self.children:
@@ -167,16 +168,6 @@ class Root(ContainerNode):
     def can_add_node(self, node: SymlNode) -> bool:
         """Check if a child node may be added."""
         return not self.children and (node.level is None or (self.level is not None and node.level >= self.level))
-
-    def as_data(self) -> Any:  # noqa: ANN401
-        """Return the root as primitive data types.
-
-        A childless `Root` (empty or comment-only document) yields `''`
-        rather than `None` (Contract 03 §Absent values, FR-005).
-        """
-        if self.children:
-            return self.children[0].as_data()
-        return ''
 
 
 class List(ParentNode):
