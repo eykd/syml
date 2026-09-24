@@ -19,6 +19,24 @@ class TestDumpsQuotingTable:
         # be double-quoted with the ':' escaped as :.
         assert serializer.dumps(['a: b']) == '- "a\\u003a b"\n'
 
+    def test_it_should_single_quote_a_list_item_that_stays_literal_after_quoting(
+        self,
+    ) -> None:
+        # Rule D: 'k:' at a list-item position would match key_value, so it
+        # must be quoted. Unlike 'a: b', the single-quoted rendering does not
+        # re-lex as a mapping (it falls back to a literal `data` value), so
+        # the single-quoted form is kept, per the re-lex rule's table.
+        assert serializer.dumps(['k:']) == "- 'k:'\n"
+
+    def test_it_should_treat_a_deeply_nested_list_item_string_as_matching_structure(
+        self,
+    ) -> None:
+        # Rule D's probe treats a RecursionError from the `structure` grammar
+        # as "matches" (plan.md pass 4): only a `- `-led string recurses this
+        # deep, so it must be quoted like any other list-item value.
+        value = '- ' * 150 + 'x'
+        assert serializer.dumps([value]) == "- '" + value + "'\n"
+
 
 class TestDumpsTypeContract:
     def test_it_should_serialize_str_list_and_dict_recursively(self) -> None:

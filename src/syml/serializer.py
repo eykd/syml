@@ -4,8 +4,23 @@ from __future__ import annotations
 
 from typing import IO, TYPE_CHECKING
 
+import parsimonious
+
+from .parsers import SymlParser
+
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import SymlInput
+
+_GRAMMAR = SymlParser.grammar
+
+_RELEX_ESCAPES = {
+    '\\': '\\\\',
+    '"': '\\"',
+    ':': '\\u003a',
+    '\n': '\\n',
+    '\t': '\\t',
+    '\r': '\\r',
+}
 
 
 def dumps(data: SymlInput) -> str:
@@ -89,8 +104,54 @@ def _render_list_lines(items: list[object], indent: int) -> list[str]:
     for item in items:
         item_lines = _render_value_lines(item, indent + 2)
         if isinstance(item, str):
-            lines.append(f'{pad}- {item_lines[0]}')
+            lines.append(f'{pad}- {_quote_list_item_value(item_lines[0])}')
         else:
             lines.append(f'{pad}- {item_lines[0].lstrip()}')
             lines.extend(item_lines[1:])
     return lines
+
+
+def _structure_matches(text: str) -> bool:
+    """Rule D probe (§11.2.1): does any prefix of `text` lex as `structure`?"""
+    try:
+        _GRAMMAR['structure'].match(text)
+    except RecursionError:
+        return True  # only a `- `-led string recurses this deep (plan.md pass 4)
+    except parsimonious.exceptions.ParseError:
+        return False  # nothing matched at offset 0
+    return True
+
+
+def _find_node(node: parsimonious.nodes.Node, expr_name: str) -> parsimonious.nodes.Node | None:
+    """Return the first descendant of `node` (pre-order, `node` included) named `expr_name`."""
+    if node.expr_name == expr_name:
+        return node
+    for child in node.children:
+        found = _find_node(child, expr_name)
+        if found is not None:
+            return found
+    return None
+
+
+def _relexes_as_literal(rendered: str) -> bool:
+    """Does a list item holding `rendered` keep it as one literal inline value?
+
+    Re-lexes `'- ' + rendered` (§11.2.1's list-item-mapping re-lex rule, step
+    1). If the value comes back reparsed as `structure` (a nested `list_item`
+    or `key_value`) instead of staying literal text, `rendered` is not a safe
+    quoted rendering and must fall back to the escaped double-quoted form.
+    """
+    line_node = _GRAMMAR['line'].match('- ' + rendered)
+    value_node = _find_node(line_node, 'value')
+    return value_node is not None and value_node.children[0].expr_name != 'structure'
+
+
+def _quote_list_item_value(value: str) -> str:
+    """Apply §11.2.1 rule D, and its list-item-mapping re-lex exception, to a list item's value."""
+    if not _structure_matches(value):
+        return value
+    single_quoted = "'" + value.replace("'", "''") + "'"
+    if _relexes_as_literal(single_quoted):
+        return single_quoted
+    escaped = ''.join(_RELEX_ESCAPES.get(char, char) for char in value)
+    return f'"{escaped}"'
