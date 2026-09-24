@@ -73,7 +73,7 @@ class SymlNode:
         """Report a failure to incorporate a node."""
         pnode = node.pnode
         pos = Pos.from_str_index(pnode.full_text, pnode.start)
-        line = get_line(pnode.full_text, pos.line)
+        line = get_line(pnode.full_text, pos.line).rstrip('\r\n')
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
 
 
@@ -217,7 +217,7 @@ class Mapping(ParentNode):
             raise DuplicateKeyError(
                 'Duplicate key',
                 node.source.start,
-                node.source.text,
+                get_line(node.pnode.full_text, node.source.start.line).rstrip('\r\n'),
                 key=node.key.as_data(),
                 first_position=first.source.start,
             )
