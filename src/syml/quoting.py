@@ -8,7 +8,8 @@ every escape it receives is syntactically valid per the grammar.
 ``''`` -> one apostrophe escape (D2); backslashes stay literal.
 :func:`diagnose_malformed` reports the first invalid/incomplete escape in a
 candidate quoted literal that failed to match `quoted_value` (Contract 04
-§What the quote-guard reports); it is a stub pending its Green leaf.
+§What the quote-guard reports), or `None` when the value is merely
+unterminated.
 """
 
 from __future__ import annotations
