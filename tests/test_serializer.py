@@ -34,6 +34,34 @@ class TestDumpsLoadsRoundTripsOverCorpus:
         assert loads(serializer.dumps(value)) == value
 
 
+class TestDumpsLoadsRoundTripsKeyValueShapedStringsAtBothPositions:
+    """Every key:value-shaped corpus string round-trips both as a mapping value and as a list item."""
+
+    @pytest.mark.parametrize(
+        ('list_item_id', 'mapping_value_id'),
+        [
+            ('looks_like_key_value', 'looks_like_key_value_as_mapping_value'),
+            ('looks_like_key_value_no_space', 'looks_like_key_value_no_space_as_mapping_value'),
+            ('stranded_double_quote', 'stranded_double_quote_as_mapping_value'),
+            ('stranded_single_quote', 'stranded_single_quote_as_mapping_value'),
+            ('colon_escape_list_item', 'colon_escape_list_item_as_mapping_value'),
+            ('literal_backslash_u003a', 'literal_backslash_u003a_as_mapping_value'),
+            ('mixed_quote_backslash', 'mixed_quote_backslash_as_mapping_value'),
+        ],
+    )
+    def test_it_should_round_trip_the_same_key_value_shaped_string_as_a_mapping_value(
+        self, list_item_id: str, mapping_value_id: str
+    ) -> None:
+        assert list_item_id in CORPUS, f'{list_item_id} missing from CORPUS'
+        assert mapping_value_id in CORPUS, f'{mapping_value_id} missing from CORPUS'
+        list_item_value = CORPUS[list_item_id]
+        mapping_value = CORPUS[mapping_value_id]
+        assert isinstance(list_item_value, list)
+        assert isinstance(mapping_value, dict)
+        assert list(mapping_value.values()) == list_item_value
+        assert loads(serializer.dumps(mapping_value)) == mapping_value
+
+
 class TestDumpsQuotingTable:
     """§11.2.1 quoting table rules A-G, including the list-item re-lex rule."""
 
