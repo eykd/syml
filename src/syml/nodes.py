@@ -143,7 +143,7 @@ class ParentNode(SymlNode):
 
     def can_add_node(self, node: SymlNode) -> bool:
         """Check if a child node can be added."""
-        return node.level is None or (self.level is not None and node.level >= self.level)
+        return node.level is None or (self.level is not None and node.level == self.level)
 
 
 @dataclass(kw_only=True)
