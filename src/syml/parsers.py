@@ -9,6 +9,7 @@ from parsimonious import Grammar, NodeVisitor
 
 from . import nodes
 from .exceptions import OutOfContextNodeError
+from .preprocess import preprocess
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -139,4 +140,5 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
-    return SymlParser(filename=filename).parse(source_syml)
+    doc = preprocess(source_syml, filename)
+    return SymlParser(filename=filename).parse(doc.normalized)
