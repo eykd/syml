@@ -241,8 +241,20 @@ class TextLeafNode(SymlNode):
         return '\n'.join([str(self.source)] + [c.as_data() for c in self.children])
 
     def can_add_node(self, node: SymlNode) -> bool:
-        """Check if a child node can be added."""
-        return isinstance(node, TextLeafNode)
+        """Check if a child node can be added (§5.3, D11)."""
+        if not isinstance(node, TextLeafNode):
+            return False
+        if self.baseline is None:
+            return node.level is not None and node.level > self.anchor_level
+        return node.level is not None and node.level >= self.baseline
+
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a continuation child, fixing the baseline on first acceptance (D11)."""
+        if self.baseline is None:
+            self.baseline = node.level
+        self.children.append(node)
+        node.parent = self
+        return self
 
 
 class KeyLeafNode(SymlNode):
