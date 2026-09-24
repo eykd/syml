@@ -32,7 +32,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             blank       = &eol
             comment     = ~"(#|//+)+" text?
 
-            list_item   = "-" ws value
+            list_item        = value_list_item / guard_list_item
+            value_list_item  = "-" ws value
+            guard_list_item  = "-" &eol
 
             key_value   = section ws data
             section     = key ":"
@@ -110,13 +112,22 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         key, _ = children
         return nodes.KeyValue(pnode=node, key=key, filename=self.filename)  # type: ignore[arg-type]
 
-    def visit_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
+    def visit_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
         """Visit a list item."""
+        (li,) = children
+        return li  # type: ignore[return-value]
+
+    def visit_value_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:
+        """Visit a list item carrying an inline value."""
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
         if value is not None:  # pragma: nobranch
             li.incorporate_node(value)
         return li
+
+    def visit_guard_list_item(self, node: PNode, children: SymlNodes) -> nodes.ListItem:  # noqa: ARG002
+        """Visit a bare list item whose value comes from a nested block."""
+        return nodes.ListItem(pnode=node, filename=self.filename)
 
     def visit_lines(self, node: PNode, children: OptionalSymlNodes) -> nodes.Root:
         """Visit the lines within a SYML document."""
