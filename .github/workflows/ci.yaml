@@ -16,22 +16,30 @@ jobs:
     - uses: actions/checkout@v3
       with:
         fetch-depth: 0
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up just
+      uses: extractions/setup-just@v2
     - name: Install dependencies
       run: |
-        python -m pip install poetry
-        poetry install --all-extras --with=test
+        uv sync --all-groups
     - name: Lint with ruff
       run: |
-        poetry run python -m ruff check
+        uv run python -m ruff check
     - name: Check types
       run: |
-        poetry run python -m mypy
+        uv run python -m mypy
     - name: Test with pytest
       run: |
-        poetry run python -m pytest -vv --disable-warnings --cov-fail-under=100
+        uv run python -m pytest -vv --disable-warnings --cov-fail-under=100
+      env:
+        PYTHONDONTWRITEBYTECODE: 1
+    # Feature branches are expected to fail this until their step bindings land;
+    # master only ever receives hardened branches, so it stays green there.
+    - name: Acceptance tests (pytest-bdd)
+      run: |
+        just acceptance
       env:
         PYTHONDONTWRITEBYTECODE: 1

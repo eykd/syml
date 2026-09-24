@@ -1,0 +1,260 @@
+# Contract 04 — Quoted strings (§4.7) and the quote-guard rule (§4.1)
+
+**Requirements**: FR-008 | **User story**: US6
+**Spec**: §4.1 (quote-guard), §4.7, §7.5, §7.6, §8.5, §9.3
+**Decisions**: D2, D3, D4 | **Audit gaps**: 1, 2 | **`todo.txt`**: A1 (its OPEN QUESTION is decided — do not re-litigate)
+
+> No fenced example below carries a literal trailing space; `␠` marks one.
+
+## Surface
+
+```python
+# src/syml/quoting.py  (new module)
+
+def decode_single_quoted(raw: str) -> str:
+    """Decode a '...' literal. `raw` is the full grammar match — the opening
+    and closing `'` included, per `single_quoted`'s own span (Contract 02).
+    '' is an embedded apostrophe. No escape processing."""
+
+def decode_double_quoted(raw: str) -> str:
+    """Decode a "..." literal per the §4.7 escape table. `raw` is the full
+    grammar match — the opening and closing `"` included, per
+    `double_quoted`'s own span (Contract 02).
+
+    Only ever receives text the grammar matched, so every escape is
+    syntactically valid; raises the module-private QuotedStringDefect (with
+    .escape and .code_point) only for a code point above U+10FFFF or a
+    surrogate. It is position-free, so it cannot build a
+    MalformedQuotedStringError itself; its one caller, visit_quoted_value,
+    converts it, anchored at the opening quote (Contract 05). A parent
+    visit_* cannot: Parsimonious wraps a child's exception before the
+    parent's method runs.
+    """
+
+class QuotedStringDefect(ValueError):  # noqa: N818 -- private signal, never reaches a caller (pass 23)
+    """Raised by decode_double_quoted; converted by visit_quoted_value."""
+    escape: str
+    code_point: int
+
+def diagnose_malformed(text: str) -> str | None:
+    """The .escape for a quote-guard fallthrough: the first invalid or
+    incomplete escape, or None if the value is merely unterminated.
+    .code_point is always None on this path. See below."""
+```
+
+## Where quoting is recognized (D2)
+
+**Only at an inline position**: immediately after `key:` (`key_value`'s first
+alternative) or after a list marker (`list_item`'s inline `value`). Nowhere
+else. A root scalar's lines, a block value's lines including its first, and any
+continuation line never attempt to quote-decode; a leading `'` or `"` there is
+ordinary text (§4.7, §7.6).
+
+| Input | Result | Why |
+| --- | --- | --- |
+| `"unterminated` (root scalar) | `"\"unterminated"` | not an inline position — US6.9 |
+| `key: He said\n  'yes'` | `{"key": "He said\n'yes'"}` | continuation line — US6.10 |
+| `key: 'a'` | `{"key": "a"}` | inline |
+| `- 'a'` | `["a"]` | inline |
+| `- 'a: b'` | `[{"'a": "b'"}]` | **not** a quoted value: `value` tries `structure` first and `key` admits `'` (§4.1 as printed) |
+| `- 'a: b` | `[{"'a": "b"}]` — no error | the same interception; the list item's `data` is `b`, so the quote-guard has nothing to fire on |
+
+**Quote-led list items that look like `key: …` (§4.1 as printed; flagged, not
+changed).** A list item's inline `value` tries `structure` before
+`quoted_value`, and `key`'s class does not exclude `'` or `"`. Any list item
+whose text after `- ` is key characters, `:`, then a space or end of line is
+therefore a mapping, terminated quotes and all. The quote-guard in
+`visit_list_item` / `visit_key_value` cannot reach these lines from any
+visitor, because the quote is inside a `key`, not at the start of a `data`.
+The mapping-value position is unaffected (`k: 'a: b'` is a quoted value).
+`dumps` avoids emitting such lines (Contract 07); whether the grammar should
+change is plan.md open item 4. The rows above are pinned as tests so a later
+spec change is a visible diff.
+
+## Single-quoted (`'...'`)
+
+Literal: no escape processing, backslashes survive, `''` is one apostrophe,
+interior whitespace preserved, no literal newline (single-line by grammar).
+
+| Input | Value |
+| --- | --- |
+| `literal: 'hello\nworld'` (literal backslash-n) | `hello\nworld` — twelve characters, backslash and `n` intact (US6.2) |
+| `with_quote: 'it''s fine'` | `it's fine` (US6.3) |
+| `padded: '  spaces  '` | `  spaces  ` |
+
+## Double-quoted (`"..."`)
+
+| Escape | Result |
+| --- | --- |
+| `\\` | `\` |
+| `\/` | `/` |
+| `\"` | `"` |
+| `\n` | LF |
+| `\t` | TAB |
+| `\r` | CR |
+| `\uXXXX` | code point, 4 hex digits |
+| `\UXXXXXXXX` | code point, 8 hex digits |
+
+| Input | Value |
+| --- | --- |
+| `escaped: "hello\nworld"` | contains a real LF (US6.4) |
+| `with_quote: "she said \"hi\""` | `she said "hi"` |
+| `unicode: "smiley: ☺"` | `smiley: ☺` |
+| `padded: "  hello  "` | `  hello  ` (US6.1) |
+
+## Malformed (§4.7, §8.5, §11.3) — all `MalformedQuotedStringError`
+
+At an inline position only:
+
+| Condition | Input | `escape` | `code_point` |
+| --- | --- | --- | --- |
+| unterminated | `key: "unterminated` | `None` | `None` |
+| trailing content after close | `key: "a" trailing` | `None` | `None` |
+| trailing content after close (tab, not ASCII space) | `key: "a"\tx` | `None` | `None` |
+| invalid / incomplete escape | `k: "a\xb"` | `"\\x"` | `None` |
+| `\U` above U+10FFFF | `k: "\U00110000"` | `"\\U00110000"` | `0x110000` |
+| escape decodes to a surrogate | `k: "\ud800"` | `"\\ud800"` | `0xD800` |
+
+US6 scenarios 5, 6, 7.
+
+**Surrogates (D3)**: every `\u` escape decodes independently. A surrogate code
+point is an error whether or not it is half of what would be a valid UTF-16
+pair. v1.1 does **not** combine pairs. Use `\U0001XXXX` or the literal
+character. (Surrogate-pair combining is a v1.2 candidate — out of scope.)
+
+## The quote-guard rule (§4.1, R-10)
+
+Normative, **not expressible in PEG**. Implemented as a **visitor post-check**,
+not a grammar rule:
+
+> whenever the `data` matched by `key_value`'s second alternative, or by
+> `list_item`'s inline `value`, begins with `'` or `"`, that is a
+> `MalformedQuotedStringError` — not a valid scalar value.
+
+This is how an unterminated inline quote becomes an error at all: `quoted_value`
+simply fails to match and the line falls through to `data`, which would
+otherwise swallow the opening quote as literal text.
+
+Position: the opening quote character. The check is line-local and consults
+nothing outside the current line, so the grammar stays context-free at the
+lexing level (constitution V).
+
+**Trailing content** (`key: "a" trailing`) is the PEG stranding case instead:
+`key_value`'s first alternative matches `key: "a"` and then `~" *"` cannot reach
+end-of-line, so `GRAMMAR['line'].match(line.text)` returns a prefix shorter
+than `line.text` (`pnode.end < len(line.text)`) rather than raising. Contract 05
+/ R-09's entry point detects that gap directly — it never calls `parse()` and
+never catches `IncompleteParseError` — and anchors `MalformedQuotedStringError`
+at the stranded prefix's one `quoted_value`.
+
+A negative lookahead in the grammar (`data = !~"['\"]" text`) was rejected: it
+makes the line fall through to a different alternative rather than raising,
+reintroducing exactly the silent fallthrough D2 removed.
+
+### What the quote-guard reports: diagnosing the fallthrough
+
+§4.1's `escape_seq` (the last three alternatives of Contract 02's `double_quoted`
+body atom since pass 26) only admits the eight valid escapes, so a double-
+quoted value containing an **invalid or incomplete** escape (`k: "a\xb"`,
+`k: "a\u12"`) never matches `double_quoted` at all: `quoted_value` fails, the
+line falls through to `key_colon ws data`, and the value reaches the
+quote-guard, **not** `decode_double_quoted` (verified 2026-09-23 against the
+transcribed grammar). The guard is therefore the only place that can populate
+`.escape` for those rows, and "begins with a quote" alone cannot tell an
+invalid escape from an unterminated string.
+
+The guard diagnoses the text with a left-to-right scan from the opening quote
+(`quoting.diagnose_malformed(text) -> str | None`, a pure function beside
+the decoders):
+
+1. **Double-quoted**: on each `\`, check the following characters against the
+   §4.7 table. A valid escape is skipped whole, so `\"` never reads as a
+   closing quote. The **first** invalid or incomplete escape wins: `escape` is the
+   backslash plus the characters examined before the failure (`"\\x"` for
+   `\x`, `"\\u12"` for `\u12"`, `"\\"` for a backslash at end of line);
+   `code_point` is `None`. The scan never meets an unescaped `"` before a
+   defect: one there would mean `double_quoted` matched and the line never
+   reached the guard (pass 23 corrects this step, which used to say an
+   unescaped `"` ends the scan, i.e. the unreachable branch below).
+2. If the scan reaches end of line without a defect or a closing quote, the
+   value is **unterminated**: `escape=None`, `code_point=None`.
+3. **Single-quoted** values have no escapes; the only reachable diagnosis is
+   unterminated. The scan reads `''` as an embedded apostrophe exactly as the
+   grammar does, so `k: 'a''` is unterminated (the grammar's greedy
+   `("''" / [^'\n])*` consumes `a''` and then finds no closing quote).
+
+A value that the scan finds well-formed **and** terminated is unreachable on
+this path — it would have matched `quoted_value` — so the scan must be written
+without that branch rather than with a pragma (constitution III). Out-of-range
+code points (`\U00110000`) and surrogates (`\ud800`) **do** match the grammar
+and are reported through `decode_double_quoted` (its `QuotedStringDefect`,
+converted by `visit_quoted_value` per Contract 05) as specified above; the two paths
+partition the malformed cases between them.
+
+Alternative considered and **not applied**: widen `escape_seq` to
+`'\\' ~"."` so every backslash sequence matches and the decoder validates
+all escapes in one place. It is simpler, but it changes §4.1's grammar as
+printed, which this feature transcribes. Recorded as an open item for the
+principal (plan.md § Edge Cases & Error Handling), not adopted.
+
+## Completeness (§9.3, §4.1)
+
+A quoted inline value is **complete**: its `TextLeafNode` has `quoted=True` and
+`can_add_node` returns `False` for every candidate, at every level. The
+candidate is re-offered up the tree by §9.2 and, the owning node being closed,
+raises `OutOfContextNodeError`.
+
+| Input | Result |
+| --- | --- |
+| `key: "a"\n  b` | `OutOfContextNodeError` (US6.8) |
+
+## Whitespace around quotes
+
+`ws?` before a quoted value — `key:"value"` is valid (§7.5, `todo.txt` S1).
+
+**No-space asymmetry (§4.1 as printed; flagged, not changed).** The quote-guard
+covers only `key_value`'s **second** alternative, which requires `ws`. With no
+space after the colon, a malformed quoted value matches neither `key_value`
+alternative nor `section`, so the whole line falls through to root-level `data`
+and never reaches the guard:
+
+| Input | Result under §4.1 as printed |
+| --- | --- |
+| `k:"ab"` | `{"k": "ab"}` |
+| `k:"abc` (unterminated) | scalar `"k:\"abc"` — **no error** |
+| `k:"a\xb"` (bad escape) | scalar `"k:\"a\\xb\""` — **no error** |
+| `- k:"abc` | `["k:\"abc"]` — **no error** |
+
+This is the silent fallthrough D2 set out to remove, surviving at the one
+position `ws?` admits. The implementation follows the grammar as printed and
+pins these rows as tests, so any later spec change is a visible, deliberate
+diff. Whether §4.1's guard should also cover `key_colon` immediately followed
+by a quote is an open item for the principal (plan.md § Edge Cases & Error
+Handling); it would be a spec edit, not a transcription fix.
+`~" *"` after the closing quote — trailing spaces are allowed and consumed;
+anything else is trailing content.
+
+## Serialization inverse
+
+`dumps` must produce values this contract decodes back identically — see
+Contract 07 (§11.2.1 rules B, C, E, F, and the single-quote preference).
+
+## Test obligations
+
+- Every table row above.
+- Guard-path diagnosis: `k: "a\xb"` → `escape="\\x"`; `k: "a\u12"` →
+  `escape="\\u12"`; `k: "abc\` → `escape="\\"`; `k: "a\xb` (invalid escape
+  **and** unterminated) → `escape="\\x"` (first defect wins); `k: "abc` and
+  `k: 'abc` → `escape=None`. Each at an inline `key:` position and after `- `.
+  Two more exercise the valid-escape skip, which none of the above reaches
+  (pass 23: without them the skip line is uncovered and `\"` handling is
+  untested): `k: "a\"b` → `escape=None` (unterminated; the `\"` is not a
+  close), and `k: "a\nb\x"` → `escape="\\x"` (a valid escape, then the
+  defect).
+- Round-trip: `loads(dumps({'k': s}))['k'] == s` over a corpus of strings
+  containing quotes, backslashes, control characters, and astral-plane
+  characters — `dumps`/`loads` are the only exported surface (Contract 07);
+  there is no standalone single-value quoting helper.
+- Bare-line non-decoding: for each malformed inline case, the same text at a
+  root-scalar / block / continuation position parses to literal text.
+- US6's ten acceptance scenarios.

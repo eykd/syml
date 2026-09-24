@@ -1,0 +1,60 @@
+name: Release
+
+# Publishes to PyPI via trusted publishing (OIDC) when an unprefixed version
+# tag (e.g. `1.0.0`) is pushed. The build job re-runs every CI gate so a tag
+# never publishes from a red tree; the publish job needs the `pypi` GitHub
+# environment, which is the trusted publisher registered on pypi.org.
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Set up just
+        uses: extractions/setup-just@v2
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: Lint with ruff
+        run: uv run python -m ruff check
+      - name: Check types
+        run: uv run python -m mypy
+      - name: Test with pytest
+        run: uv run python -m pytest -vv --disable-warnings --cov-fail-under=100
+        env:
+          PYTHONDONTWRITEBYTECODE: 1
+      - name: Acceptance tests (pytest-bdd)
+        run: just acceptance
+        env:
+          PYTHONDONTWRITEBYTECODE: 1
+      - name: Build sdist and wheel
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

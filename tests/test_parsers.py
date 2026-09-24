@@ -2,10 +2,13 @@ import textwrap
 from io import StringIO
 
 import pytest
+from parsimonious import Grammar
+from parsimonious.expressions import Literal
+from parsimonious.nodes import Node
 
 import syml
-from syml import exceptions, parsers
-from syml.basetypes import Source
+from syml import exceptions, parsers, quoting
+from syml.basetypes import Pos, Source
 
 
 class TestSymlParser:
@@ -47,6 +50,19 @@ class TestSymlParser:
         assert result.as_source() == [
             Source.from_text(text, 'foo'),
         ]
+
+    def test_it_should_parse_a_bare_list_marker_taking_its_item_from_the_next_line(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        """A bare "-" with no trailing space still opens a list item (§4.1 guard atoms).
+
+        Per Contract 02's grammar delta, ``list_item = ("-" ws value) / ("-" &eol)``:
+        a hyphen followed immediately by end-of-line is a valid, valueless list
+        item whose value comes from the next (nested) line, not scalar text.
+        """
+        text = '-\n  block item'
+        result = parser.parse(text)
+        assert result.as_data() == ['block item']
 
     def test_it_should_parse_a_list_with_multiline_values(self, parser: parsers.SymlParser) -> None:
         text = textwrap.dedent(
@@ -112,6 +128,73 @@ class TestSymlParser:
             Source.from_text(text, 'foo'): Source.from_text(text, 'bar'),
             Source.from_text(text, 'baz'): Source.from_text(text, 'boo'),
         }
+
+    def test_it_should_drop_a_zero_length_inline_value_after_a_key_colon(self, parser: parsers.SymlParser) -> None:
+        """D6, §9.3: ``key:␠`` lexes with an empty inline ``text`` child.
+
+        A zero-length *unquoted* inline value is normalized to "no inline
+        value at all", identical to ``key:`` with nothing after it -- the
+        node stays open and accepts the following nested block instead of
+        treating the empty text as the value.
+        """
+        text = 'key: \n  nested: content'
+        result = parser.parse(text)
+        assert result.as_data() == {'key': {'nested': 'content'}}
+
+    def test_it_should_drop_a_zero_length_inline_value_after_a_list_item_dash(self) -> None:
+        """D6, §9.3: ``-␠`` lexes with an empty inline ``text`` child.
+
+        A zero-length *unquoted* inline value is normalized to "no inline
+        value at all", identical to ``-`` with nothing after it -- the list
+        item node stays open and accepts the following nested block instead
+        of treating the empty text as the value.
+        """
+        text = '- \n  x'
+        result = syml.loads(text)
+        assert result == ['x']
+
+    def test_it_should_lex_ambiguous_colon_and_dash_forms_as_data_scalars(self, parser: parsers.SymlParser) -> None:
+        """§7.6 lexing-outcomes table: colon/dash forms that fall through to ``data``.
+
+        ``key:value`` and ``key:v`` (no space after the colon) do not lex as
+        ``key_value`` -- the colon-adjacent value requires a leading space or
+        tab per §4.1, so these fall through to a bare ``data`` scalar
+        (US3 scenario 3 and scenario 5's sibling). ``-item`` and ``-42`` are
+        not list markers -- ``list_item`` requires ``-`` to be followed by
+        whitespace or end-of-line, so a bare dash-prefixed word or number
+        also falls through to a bare ``data`` scalar (US3 scenario 4).
+        """
+        assert parser.parse('key:value').as_data() == 'key:value'
+        assert parser.parse('key:v').as_data() == 'key:v'
+        assert parser.parse('-item').as_data() == '-item'
+        assert parser.parse('-42').as_data() == '-42'
+
+    def test_it_should_not_treat_a_tab_after_the_colon_as_separator_whitespace(self) -> None:
+        r"""§4.1 grammar ``ws = ~" +"``: only a space satisfies the required separator.
+
+        A tab immediately after the colon never satisfies ``ws``, and there is
+        no key_value guard without a space, so the whole line falls through to
+        a bare ``data`` scalar unchanged. Currently ``src/syml/parsers.py``
+        defines ``ws = ~"[ \\t]+"`` (tab accepted), which contradicts the spec
+        and incorrectly lexes this as a key/value mapping.
+        """
+        assert syml.loads('key:\tv') == 'key:\tv'
+
+    def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        r"""D15: the key class is ``\s`` plus an enumerated control-character exclusion.
+
+        Per §4.5, ``\s`` in the key grammar denotes exactly the Unicode
+        ``White_Space`` set. ``\x01`` is not part of that set, so it is not
+        matched by Python's ``\s`` either -- it is excluded only by the
+        additional enumerated ranges (``\x00-\x1f\x7f-\x9f``) that the key
+        class carries alongside ``\s``. So ``a\x01b: v`` must NOT lex as a
+        key/value pair; it falls through to a bare data value instead.
+        """
+        text = 'a\x01b: v'
+        result = parser.parse(text)
+        assert result.as_data() != {'a\x01b': 'v'}
 
     def test_it_should_parse_a_weirdly_nested_mapping(self, parser: parsers.SymlParser) -> None:
         text = textwrap.dedent(
@@ -222,6 +305,45 @@ class TestSymlParser:
         with pytest.raises(exceptions.OutOfContextNodeError):
             parser.parse(bad_yaml)
 
+    def test_it_should_compute_level_from_a_nodes_own_column_not_the_lines_indent(
+        self, parser: parsers.SymlParser
+    ) -> None:
+        """A list-item line's inline mapping key is leveled by its own column (R-11).
+
+        ``-   name: Alice`` puts ``name`` at column 4. A continuation line
+        indented only to column 2 is therefore *less* indented than ``name``'s
+        own level, so it cannot incorporate as a sibling under the same
+        mapping and the parse must fail with ``OutOfContextNodeError`` — not
+        succeed by inheriting the list item's column 0 for ``name``.
+        """
+        text = '-   name: Alice\n  role: admin'
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            parser.parse(text)
+
+    def test_it_should_decode_a_double_quoted_inline_key_value(self, parser: parsers.SymlParser) -> None:
+        """`key: "a"` is an inline position, so the double quotes decode too (US6, §4.7).
+
+        Mirrors `TestWhereQuotingIsRecognized.test_it_should_decode_a_single_quoted_inline_key_value`
+        in tests/test_quoting.py, but for double quotes. The grammar's `quoted_value` rule
+        currently only defines `single_quoted`, so this is expected to fail with
+        `MalformedQuotedStringError` from the `data_key_value` quote-guard (R-10) until
+        a `double_quoted` grammar production is added.
+        """
+        result = parser.parse('key: "a"')
+        assert result.as_data() == {'key': 'a'}
+
+    def test_it_should_decode_a_single_quoted_list_item(self, parser: parsers.SymlParser) -> None:
+        """A single-quoted list item decodes its quotes (§4.1/§4.7), not just inline key values.
+
+        `value_list_item = "-" ws value` and `value = structure / data` have no
+        quoted-value alternative at a list-item position, so `- 'x'` currently
+        parses as the literal string `"'x'"` (quotes kept) instead of the
+        unquoted `'x'`. Expected to fail until the grammar gains a quoted
+        alternative for list-item values.
+        """
+        result = parser.parse("- 'x'\n")
+        assert result.as_data() == ['x']
+
 
 class TestSimpleParserFunction:
     def test_it_should_parse_a_simple_list(self) -> None:
@@ -238,6 +360,105 @@ class TestSimpleParserFunction:
             'true',
             'false',
         ]
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('key:\n  first\n    indented\n  back', {'key': 'first\n  indented\nback'}),
+            ('hello\n  world\nagain', 'hello\n  world\nagain'),
+        ],
+    )
+    def test_it_should_preserve_indentation_deeper_than_the_continuation_baseline(
+        self, text: str, expected: object
+    ) -> None:
+        """A continuation line indented deeper than the value's baseline keeps its extra spaces (§5.3, D11, todo.txt A9)."""
+        assert syml.loads(text) == expected
+
+    def test_it_should_join_a_continuation_line_under_an_inline_key_value(self) -> None:
+        """An inline key/value value must set inline=True so its baseline stays open (D11).
+
+        'Big Warning: do not touch' fails the key_value grammar (space before
+        the colon) and falls through to plain text, so it should join as a
+        continuation of 'Note' rather than raising OutOfContextNodeError.
+        """
+        text = 'a: Note\n  Big Warning: do not touch'
+        assert syml.loads(text) == {'a': 'Note\nBig Warning: do not touch'}
+
+    def test_it_should_report_out_of_context_position_in_original_text_coordinates_on_bom_crlf_documents(
+        self,
+    ) -> None:
+        """Contract 05: `OutOfContextNodeError.position` must anchor to original-text coordinates.
+
+        `SymlNode.fail_to_incorporate_node` builds its `Pos` from
+        `pnode.full_text` (the NORMALIZED text) and never threads it through
+        `PositionMap.to_original`, unlike leaf `Source`s (Contract 08). On a
+        BOM- and CRLF-prefixed document the CRLF collapses shift every
+        normalized-text index leftward relative to the original document, so
+        the reported position diverges from where the offending line
+        actually sits in the caller's original text.
+        """
+        text = '﻿  - foo:\r\n      - bar\r\n - baz\r\n- blah\r\n'
+        expected_position = Pos.from_str_index(text, text.index('- baz'))
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            syml.loads(text)
+        assert exc_info.value.position == expected_position
+
+    def test_it_should_report_container_node_source_in_original_text_coordinates_on_bom_crlf_documents(
+        self,
+    ) -> None:
+        """Contract 08: a container node's own `Source` must also anchor to original-text coordinates.
+
+        `SymlNode.__post_init__` builds every node's `source` from its raw
+        `pnode` via `Source.from_node`, which uses normalized-text
+        coordinates. Leaf nodes (`TextLeafNode`, `KeyLeafNode`) get
+        re-anchored afterward through `PositionMap.to_original_source`, but a
+        container node (e.g. `KeyValue`, `Mapping`, `ListItem`) never is, so
+        its `source.start` stays in normalized-text coordinates even though
+        leaf `Source`s alongside it are in original-text coordinates.
+        """
+        text = '﻿key:\r\n  value\r\n'
+        expected_start = Pos.from_str_index(text, text.index('key:'))
+        root = parsers.parse(text)
+        mapping = root.children[0]
+        key_value = mapping.children[0]
+        assert key_value.source.start == expected_start
+
+    def test_it_should_report_line_number_and_line_text_using_lf_only_splitting(self) -> None:
+        r"""`ParseError.line_text` and `.position.line` must use LF-only line splitting (§13.3).
+
+        A U+2028 LINE SEPARATOR inside a value on line 1 must not start a new
+        line: it is not a line terminator under SYML's LF-only rule. The
+        second (and only other) LF-delimited line is ``-   name: Alice``,
+        which then collides with the top-level key/value on line 1 and
+        raises `OutOfContextNodeError` anchored at line 2.
+
+        `utils.get_line_text` (via `utils.split_lines`) currently calls
+        `str.splitlines()`, which *does* treat U+2028 as a line terminator
+        (Contract 01 pass 25, Contract 08 gap 16). That silently
+        renumbers every line after the U+2028 by one, so `line_text` reports
+        the wrong line's contents even though `position.line` (computed by
+        `Pos.from_str_index`, which already splits on ``\\n`` only) is correct.
+        """
+        text = 'a: b c\n-   name: Alice\n  role: admin'  # noqa: RUF001
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            parsers.parse(text)
+        assert exc_info.value.position.line == 2
+        assert exc_info.value.line_text == '-   name: Alice'
+
+    def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
+        """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
+
+        Contract 02's entry-point pseudocode opens with
+        ``doc = preprocess(text, filename)`` ahead of the per-line lexing
+        loop, so every document passes through the tab-indentation scan
+        (§9.0.3, D14) on the way in. Today `parsers.parse` hands the raw
+        text straight to the whole-document grammar and never calls
+        `preprocess`, so a tab in a line's leading whitespace is silently
+        accepted instead of raising `TabIndentationError`.
+        """
+        text = 'a:\n\tx: 1\n'
+        with pytest.raises(exceptions.TabIndentationError):
+            parsers.parse(text)
 
     def test_it_should_parse_whats_in_the_readme_text_only(self) -> None:
         text = textwrap.dedent(
@@ -312,3 +533,162 @@ class TestSimpleParserFunction:
                 'FALSE',
             ],
         }
+
+
+class TestFindFirst:
+    """Contract 05 §The third-party boundary (FR-009, R-09): the `find_first` helper.
+
+    `raise_trailing_content` uses `find_first` to locate the `quoted_value`
+    node that anchors a stranded-content error at the opening quote, since
+    parsimonious's `Node` has no such lookup itself.
+    """
+
+    def test_find_first_returns_the_first_matching_node_in_depth_first_order(self) -> None:
+        """It must return the nested, document-first match — not the root, and not by luck."""
+        grammar = Grammar(
+            r"""
+            root         = wrapper other
+            wrapper      = quoted_value / other_char
+            other_char   = ~"Z"
+            quoted_value = ~"Q\\d"
+            other        = quoted_value / other_char
+            """
+        )
+        tree = grammar['root'].parse('Q1Q2')
+        expected = tree.children[0].children[0]
+        assert expected.expr_name == 'quoted_value'
+
+        result = parsers.find_first(tree, 'quoted_value')
+
+        assert result is expected
+
+
+class TestVisitQuotedValueDecoderDefectConversion:
+    """Contract 05 §Decoder failures cross the visitor as `ParseError`s.
+
+    `decode_double_quoted` is position-free and raises the module-private
+    `quoting.QuotedStringDefect`; `visit_quoted_value` is the only place that
+    catches it and re-raises `MalformedQuotedStringError`, and that
+    conversion must reach `parser.visit()` **unwrapped** — not
+    `parsimonious.exceptions.VisitationError` — because Parsimonious wraps
+    exceptions raised while visiting a node before the parent's own
+    `visit_*` runs (§ Why not in `visit_key_value` / `visit_list_item`).
+    """
+
+    def test_a_decoder_defect_crosses_the_visitor_as_a_malformed_quoted_string_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A surrogate escape's `QuotedStringDefect` must surface as `MalformedQuotedStringError`.
+
+        Patches the *module attribute* `quoting.decode_double_quoted`, not
+        the name imported into `parsers` — Green must call it via
+        `quoting.decode_double_quoted(...)` (`from . import quoting`) for
+        this patch to take effect (a `from .quoting import
+        decode_double_quoted` binding would not be patched by this).
+        """
+        raw = '"\\ud800"'
+        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
+
+        def fake_decode_double_quoted(_raw: str) -> str:
+            raise quoting.QuotedStringDefect(escape='\\ud800', code_point=0xD800)
+
+        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
+
+        parser = parsers.SymlParser()
+
+        with pytest.raises(exceptions.MalformedQuotedStringError) as excinfo:
+            parser.visit(node)
+
+        assert excinfo.value.escape == '\\ud800'
+        assert excinfo.value.code_point == 0xD800
+        assert isinstance(excinfo.value.__cause__, quoting.QuotedStringDefect)
+
+    def test_a_successful_decode_returns_a_quoted_inline_text_leaf_with_the_decoded_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the decoder succeeds, the leaf carries the decoded text, not the raw quoted form."""
+        raw = '"foo"'
+        node = Node(Literal(raw, name='quoted_value'), raw, 0, len(raw))
+
+        def fake_decode_double_quoted(_raw: str) -> str:
+            return 'foo'
+
+        monkeypatch.setattr(quoting, 'decode_double_quoted', fake_decode_double_quoted)
+
+        parser = parsers.SymlParser()
+
+        leaf = parser.visit(node)
+
+        assert leaf.source.text == 'foo'
+        assert leaf.quoted is True
+        assert leaf.inline is True
+
+
+class TestVisitCommentWithNoTrailingText:
+    """FR-009: no third-party exception may escape `loads` (Contract 05).
+
+    A comment-only line whose markers consume the whole line (e.g. `'####'`)
+    leaves the grammar's optional trailing `text?` unmatched. Parsimonious
+    visits that unmatched optional to `None`, not a zero-length node, so
+    `visit_comment`'s `text.pnode` access raises `AttributeError`, which
+    Parsimonious re-wraps as `parsimonious.exceptions.VisitationError` --
+    a third-party exception type that must never escape `syml.loads`.
+    """
+
+    def test_a_comment_only_document_does_not_leak_a_parsimonious_exception(self) -> None:
+        """Parsing `'####'` must not raise `parsimonious.exceptions.VisitationError`."""
+        try:
+            result = syml.loads('####')
+        except exceptions.ParseError:
+            pass
+        else:
+            assert isinstance(result, str)
+
+
+class TestTrailingContentAfterClosedInlineQuote:
+    """§4.7: an inline quoted value followed by trailing content on the same line is malformed.
+
+    `key: "a" trailing` currently escapes the grammar's `lines = line*` rule
+    unmatched (the `line` rule fails to consume the trailing text), so
+    `parsimonious.exceptions.IncompleteParseError` -- a third-party exception
+    (FR-009) -- leaks straight through `parse()` instead of being converted to
+    `exceptions.MalformedQuotedStringError` (§8.5's documented example row).
+    """
+
+    def test_trailing_content_after_a_closed_inline_quote_raises_malformed_quoted_string_error(
+        self,
+    ) -> None:
+        """Trailing content after a closed quote must raise `MalformedQuotedStringError`, not leak."""
+        with pytest.raises(exceptions.MalformedQuotedStringError):
+            syml.loads('key: "a" trailing')
+
+
+class TestUnwrappedRecursionError:
+    """Contract 05 §Other Parsimonious exceptions, rule 1.
+
+    `unwrapped_exceptions = (ParseError, RecursionError)` so a recursion
+    overflow raised from inside a `visit_*` method surfaces as the host
+    `RecursionError`, never `parsimonious.exceptions.VisitationError`. A
+    deeply nested inline structure overflows the interpreter's own recursion
+    limit inside `Grammar.parse` before `NodeVisitor.visit` ever runs, so it
+    can't discriminate what `unwrapped_exceptions` governs; this class also
+    forces the overflow to happen *inside* a `visit_*` method directly.
+    """
+
+    def test_a_single_deep_inline_list_line_raises_the_host_recursion_error(self) -> None:
+        """`'- ' * 200 + 'x'` must raise `RecursionError`, never `VisitationError`."""
+        with pytest.raises(RecursionError):
+            syml.loads('- ' * 200 + 'x')
+
+    def test_a_recursion_error_raised_inside_a_visit_method_crosses_the_visitor_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `RecursionError` raised from a `visit_*` method must not become `VisitationError`."""
+
+        def fake_visit_text(_self: parsers.SymlParser, _node: Node, _children: object) -> None:
+            raise RecursionError
+
+        monkeypatch.setattr(parsers.SymlParser, 'visit_text', fake_visit_text)
+
+        with pytest.raises(RecursionError):
+            parsers.SymlParser().parse('key: value')

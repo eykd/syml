@@ -1,0 +1,681 @@
+"""Deterministic guard rules for the Claude Code ``PreToolUse`` Bash hook.
+
+Ported from ``.claude/hooks/guard-rules.ts`` in the turtlebased-ts repository.
+The pipeline mirrors the TypeScript original exactly:
+
+1. :func:`normalize_command` collapses line continuations and strips command
+   wrappers (``sudo``, ``env FOO=bar``, ``nohup``, ...).
+2. :data:`PRE_STRIP_RULES` and :data:`PLATFORM_RULES` run against the raw
+   (normalized) command, so a hook-bypass flag hidden inside quotes still
+   blocks.
+3. ``bash -c`` / ``eval`` payloads are unwrapped once and evaluated
+   recursively.
+4. :func:`strip_quoted_content` removes heredocs and quoted strings, the result
+   is split on shell separators, and :data:`POST_STRIP_RULES` runs against each
+   sub-command independently.
+5. In parallel, :func:`dequote_subcommands` removes heredocs, then uses
+   ``shlex`` to de-quote (rather than content-strip) each sub-command, so a
+   dangerous token hidden behind shell quoting (``git reset "--hard"``,
+   ``--ha""rd``) still matches. Commit-message payloads (``-m``/``--message``
+   and short clusters like ``-am``) are dropped before matching, so a message
+   that merely mentions a dangerous phrase stays allowed. :data:`POST_STRIP_RULES`
+   also runs against these de-quoted sub-commands; a command is blocked if
+   either rendering matches. Unbalanced quotes fail closed onto a
+   quote-character-stripped rendering instead of skipping the check.
+
+The Cloudflare/wrangler rules of the original are deliberately dropped: this
+repository has no Cloudflare surface.
+"""
+
+import re
+import shlex
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """A blocked command: the rule that fired and the message to show the agent."""
+
+    rule_id: str
+    message: str
+
+
+@dataclass(frozen=True)
+class GuardRule:
+    """A named destructive-command pattern with optional safe-pattern escapes."""
+
+    name: str
+    category: str
+    pattern: re.Pattern[str]
+    message: str
+    safe_patterns: tuple[re.Pattern[str], ...] = ()
+
+
+PRE_STRIP_RULES: tuple[GuardRule, ...] = (
+    GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(r'git\s+.*(--no-verify|--no-gpg-sign)'),
+        message="""BLOCKED: Hook bypass flags detected.
+
+Prohibited flags: --no-verify, --no-gpg-sign
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use these flags when explicitly requested by the user.""",
+    ),
+    GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(r'git\b.*\s(?:-c\s*|--config-env=)core\.hooksPath='),
+        message="""BLOCKED: git -c core.hooksPath override detected.
+
+Overriding core.hooksPath disables every pre-commit hook (ruff, mypy,
+coverage, commit-msg) just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(
+            r'GIT_CONFIG_PARAMETERS=|GIT_CONFIG_KEY_\d+=[\'"]*core\.hooksPath\b',
+            re.IGNORECASE,
+        ),
+        message="""BLOCKED: GIT_CONFIG_* environment override of core.hooksPath detected.
+
+Git reads config from GIT_CONFIG_PARAMETERS / GIT_CONFIG_KEY_<n> environment
+variables, so setting core.hooksPath this way disables every pre-commit hook
+(ruff, mypy, coverage, commit-msg) just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(
+            r'git\s+config\b(?!(?:.*\b(?:--get(?:-all)?|--list|--unset|unset|get)\b))'
+            r'[^|;&]*\bcore\.hookspath\b\s+\S',
+            re.IGNORECASE,
+        ),
+        message="""BLOCKED: git config core.hooksPath write detected.
+
+Setting core.hooksPath (locally, per-worktree, or globally) disables every
+pre-commit hook (ruff, mypy, coverage, commit-msg) for all later commits,
+just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
+        name='force-push',
+        category='destructive-git',
+        pattern=re.compile(
+            r'git\s+push[^;&|]*(--force([^-]|$)|\s-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)' r'|--force-with-lease|\s\+\S+)'
+        ),
+        message="""BLOCKED: Force push detected.
+
+Force pushing rewrites remote history and can destroy teammates' work.
+
+Instead:
+- Use normal `git push` to push changes safely
+- If rejected, pull and merge first: `git pull --rebase` then `git push`
+- Force-pushes are performed by a human directly, never by the agent""",
+    ),
+)
+
+PLATFORM_RULES: tuple[GuardRule, ...] = (
+    GuardRule(
+        name='gh-repo-delete',
+        category='platform-ops',
+        pattern=re.compile(r'gh\s+repo\s+delete'),
+        message="""BLOCKED: gh repo delete detected.
+
+This command destroys the entire GitHub repository with no recovery path.
+
+Instead:
+- Use the GitHub web UI if you truly need to delete a repository
+- Use `gh repo archive` to archive instead of deleting
+- Confirm with the user before taking any repository-level destructive action""",
+    ),
+)
+
+POST_STRIP_RULES: tuple[GuardRule, ...] = (
+    GuardRule(
+        name='reset-hard',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+reset\b.*--hard\b'),
+        message="""BLOCKED: git reset --hard detected.
+
+This command discards all uncommitted changes with no recovery path.
+
+Instead:
+- Use `git stash` to save changes temporarily
+- Use `git reset --soft HEAD~1` to undo a commit but keep changes
+- Use `git checkout -- <file>` to discard changes in a specific file""",
+    ),
+    GuardRule(
+        name='checkout-dot',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+checkout\s+(--\s+)?\.(\s|$)'),
+        message="""BLOCKED: git checkout . detected (discard all changes).
+
+This command discards all uncommitted changes across every file.
+
+Instead:
+- Use `git checkout -- <file>` to discard changes in a specific file
+- Use `git stash` to save changes temporarily
+- Use `git diff` to review changes before discarding""",
+    ),
+    GuardRule(
+        # Catch-all for any checkout with a standalone "." target that isn't
+        # already caught by checkout-dot above (dot immediately after
+        # `checkout` or after `--`). Must stay ordered after checkout-dot:
+        # _first_block returns the first matching rule in tuple order, and
+        # this pattern is a superset of checkout-dot's.
+        name='checkout-treeish-dot',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+checkout\b.*\s\.(?=\s|$)'),
+        message="""BLOCKED: git checkout <tree-ish> . detected (overwrite all files).
+
+This command overwrites all working tree files from another commit, with or
+without a `--` separator before the target.
+
+Instead:
+- Use `git checkout <tree-ish> -- <file>` to restore a specific file
+- Use `git diff <tree-ish>` to review differences first
+- Use `git stash` to save current changes before restoring""",
+    ),
+    GuardRule(
+        # Standalone "." target anywhere after `restore`, covering
+        # --worktree/-W and --source=<tree-ish> spellings, not just an
+        # immediate `restore .`.
+        name='restore-dot',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+restore\b.*\s\.(?=\s|$)'),
+        safe_patterns=(
+            # Safe only when a staged-only flag is present AND no
+            # worktree-discarding flag is present anywhere in the command
+            # (`--staged --worktree .` still discards working-tree changes).
+            re.compile(
+                r'git\s+restore\b'
+                r'(?=.*(?:--staged\b|\s-[a-zA-Z]*S[a-zA-Z]*(?=\s|$)))'
+                r'(?!.*(?:--worktree\b|\s-[a-zA-Z]*W[a-zA-Z]*(?=\s|$)))'
+            ),
+        ),
+        message="""BLOCKED: git restore . detected (discard all changes).
+
+This command discards all uncommitted changes across every file.
+
+Instead:
+- Use `git restore <file>` to discard changes in a specific file
+- Use `git restore --staged <file>` to unstage specific files
+- Use `git stash` to save changes temporarily""",
+    ),
+    GuardRule(
+        name='clean-force',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+clean\b.*\s-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)'),
+        safe_patterns=(
+            re.compile(r'git\s+clean\b.*\s-[a-zA-Z]*n[a-zA-Z]*(?=\s|$)'),
+            re.compile(r'git\s+clean\b.*\s--dry-run\b'),
+        ),
+        message="""BLOCKED: git clean -f detected (delete untracked files).
+
+This command permanently deletes untracked files with no recovery path.
+
+Instead:
+- Use `git clean -n` to preview what would be deleted (dry run)
+- Use `git clean --dry-run` for the same preview
+- Manually remove specific files you no longer need""",
+    ),
+    GuardRule(
+        name='legacy-bd',
+        category='platform-ops',
+        pattern=re.compile(r'(?:^|&&|\|\||[;(|])\s*(?:npx\s+)?bd(?:\s|$)', re.MULTILINE),
+        message="""BLOCKED: `bd` (legacy beads) is not permitted. Use `br` (beads_rust) instead.
+
+This project uses beads_rust.
+
+Replace:
+  npx bd <subcommand>
+  bd <subcommand>
+
+With:
+  br <subcommand>""",
+    ),
+    GuardRule(
+        name='br-init-force',
+        category='platform-ops',
+        pattern=re.compile(r'\bbr\s+init\b.*(-f\b|--force\b)'),
+        message="""BLOCKED: br init --force is not permitted.
+
+Reinitializing the beads database would destroy all issue history.
+
+Instead:
+- Use `br init` without --force to initialize safely
+- Use `br status` to check current beads state
+- Have the user run this manually if a force-reset is genuinely needed""",
+    ),
+    GuardRule(
+        name='commit-amend',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+commit\s+.*--amend'),
+        message="""BLOCKED: git commit --amend detected (amending commits is prohibited).
+
+Never amend commits - create a new commit instead. Amending after a failed
+pre-commit hook can destroy the previous commit's changes.
+
+Instead:
+- Always create a new commit for changes
+- Use `git reset --soft HEAD~1` to undo a commit without losing changes
+- Have the user run interactive rebase manually if reorganizing history is needed""",
+    ),
+    GuardRule(
+        name='merge-squash',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+merge\s+.*--squash'),
+        message="""BLOCKED: git merge --squash detected (squash-merging is prohibited).
+
+Never squash-merge - preserve full commit history. Squash-merging destroys PR
+commit history and makes debugging harder.
+
+Instead:
+- Use normal `git merge` to preserve commit history
+- Use `git merge --no-ff` to ensure a merge commit is created
+- Have the user perform interactive rebase manually if needed""",
+    ),
+    GuardRule(
+        name='stash-drop',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+stash\s+drop(?:\s|$)'),
+        message="""BLOCKED: git stash drop detected.
+
+This command permanently deletes a stash entry with no recovery path.
+
+Instead:
+- Use `git stash list` to review stashes before dropping
+- Use `git stash apply` to apply without removing the stash
+- Use `git stash pop` to apply and remove only after confirming the contents""",
+    ),
+    GuardRule(
+        name='stash-clear',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+stash\s+clear(?:\s|$)'),
+        message="""BLOCKED: git stash clear detected.
+
+This command permanently deletes all stash entries with no recovery path.
+
+Instead:
+- Use `git stash list` to review stashes before clearing
+- Use `git stash drop stash@{N}` to remove specific stashes one at a time
+- Use `git stash apply` to recover work from a stash before removing it""",
+    ),
+    GuardRule(
+        name='branch-force-delete',
+        category='destructive-git',
+        pattern=re.compile(r'git\s+branch\b.*\s-[a-zA-Z]*D[a-zA-Z]*(?=\s|$)'),
+        message="""BLOCKED: git branch -D detected (force-delete unmerged branch).
+
+This command deletes a branch even if it has unmerged changes, losing work.
+
+Instead:
+- Use `git branch -d <branch>` to safely delete only fully-merged branches
+- Use `git log <branch>` to review commits before deleting
+- Use `git merge <branch>` to merge changes before deleting""",
+    ),
+    GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(r'git\s+commit\b.*\s-[a-zA-Z]*n[a-zA-Z]*(?=\s|$)'),
+        message="""BLOCKED: Hook bypass flags detected.
+
+Prohibited flags: --no-verify, --no-gpg-sign
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use these flags when explicitly requested by the user.""",
+    ),
+    GuardRule(
+        name='catastrophic-rm',
+        category='catastrophic-file-deletion',
+        pattern=re.compile(
+            r'rm\s+(?:-[a-zA-Z]*(?:[rR][fF]|[fF][rR])[a-zA-Z]*|-[a-zA-Z]*[rR]\s+-[a-zA-Z]*[fF]'
+            r'|-[a-zA-Z]*[fF]\s+-[a-zA-Z]*[rR]|--recursive\s+--force|--force\s+--recursive)'
+            r'\s+(?:--\S+\s+)*(?:\$\{HOME\}|\$HOME|\.\./|\./|~/|/|~|\.|\*)(?:/?\*)?(?:\s|$)'
+        ),
+        message="""BLOCKED: Catastrophic rm detected - targets system-critical path.
+
+This command would recursively force-delete a critical path (root, home, the
+current directory, or all files) with no recovery.
+
+Instead:
+- Use `rm -rf <specific-directory>` to remove a known directory
+- Use `ls <path>` to verify what would be affected first
+- Never use rm -rf with /, ., ~, ../, *, $HOME, or similar broad targets""",
+    ),
+)
+
+
+_GIT_GLOBAL_OPTION = (
+    r"(?:-C\s+\S+|-c\s+(?!['\"]?(?i:core\.hookspath)=)\S+|--git-dir(?:=\S+|\s+\S+)"
+    r'|--work-tree(?:=\S+|\s+\S+)'
+    r'|--namespace(?:=\S+|\s+\S+)|--no-pager\b|-P\b|--bare\b|--no-replace-objects\b)'
+)
+_GIT_GLOBAL_OPTIONS_RE = re.compile(r'\bgit\b(?:\s+' + _GIT_GLOBAL_OPTION + r')+')
+
+
+def strip_git_global_options(text: str) -> str:
+    r"""Strip git global options between ``git`` and its subcommand.
+
+    Global options such as ``-C <path>``, ``-c <k=v>``, ``--git-dir=<p>``,
+    ``--work-tree=<p>``, ``--namespace=<n>``, ``--no-pager``, ``-P``,
+    ``--bare``, and ``--no-replace-objects`` can appear before the subcommand
+    and would otherwise slip a rule pattern anchored on ``git\\s+<subcommand>``.
+
+    :param text: The command text to strip.
+    :returns: The text with any git global options collapsed away, leaving
+        ``git`` immediately followed by its subcommand.
+    """
+    return _GIT_GLOBAL_OPTIONS_RE.sub('git', text)
+
+
+def normalize_command(command: str) -> str:
+    """Collapse line continuations and strip leading command wrappers.
+
+    Wrappers (``sudo``, ``command``, ``nohup``, ``exec``, ``time``, ``nice``
+    and ``env FOO=bar``) are stripped iteratively until the string stabilizes,
+    so chained or doubled wrappers cannot hide a destructive command. Git
+    global options between ``git`` and its subcommand are then stripped so
+    they cannot hide a dangerous subcommand flag either.
+
+    :param command: The raw command string.
+    :returns: The normalized command.
+    """
+    result = re.sub(r'\\\n\s*', ' ', command)
+    result = re.sub(r'^\\', '', result)
+    while True:
+        prev = result
+        result = re.sub(r'^(sudo|command|nohup|exec|time|nice)\s+', '', result)
+        result = re.sub(r'^env\s+(\w+=\S+\s+)*', '', result)
+        if result == prev:
+            return strip_git_global_options(result)
+
+
+def strip_quoted_content(command: str) -> str:
+    """Replace heredocs and quoted strings with empty placeholders.
+
+    :param command: The command string.
+    :returns: The command with quoted content removed.
+    """
+    result = re.sub(r"<<-?'?(\w+)'?\n[\s\S]*?\n\s*\1", '', command)
+    result = re.sub(r'"(?:[^"\\]|\\.)*"', '""', result)
+    return re.sub(r"'[^']*'", "''", result)
+
+
+def split_commands(command: str) -> list[str]:
+    """Split a quote-stripped command on shell separators.
+
+    Each sub-command is evaluated independently so a safe pattern in one
+    sub-command cannot whitelist a destructive pattern in another.
+
+    :param command: The quote-stripped command string.
+    :returns: The non-empty sub-command strings.
+    """
+    return [part for part in re.split(r'\s*(?:&&|\|\||[;|])\s*', command) if part]
+
+
+_HEREDOC_RE = re.compile(r"<<-?'?(\w+)'?\n[\s\S]*?\n\s*\1")
+_SEPARATOR_TOKENS = frozenset({';', '|', '||', '&&', '&', '(', ')'})
+_MESSAGE_FLAG_RE = re.compile(r'^-[a-zA-Z]*m$')
+
+
+_COMMAND_SUBSTITUTION_RE = re.compile(r'\$\(|`')
+_SUBSTITUTION_WRAPPER_CHARS_RE = re.compile(r'[$()`]')
+
+
+def _extract_substitution_body(value: str) -> str:
+    """Strip command-substitution wrapper characters from a live message value.
+
+    The shell evaluates ``$(...)`` and backtick payloads before git ever runs,
+    so the wrapped text is the real sub-command. Stripping the wrapper
+    characters (rather than trying to balance nested parens) is enough to let
+    the rule tables match the inner command, e.g. ``$(rm -rf /)`` becomes
+    ``rm -rf /`` -- which still matches a trailing-boundary rule pattern.
+
+    :param value: The de-quoted message-flag value.
+    :returns: The value with ``$``, ``(``, ``)``, and backtick characters removed.
+    """
+    return _SUBSTITUTION_WRAPPER_CHARS_RE.sub('', value)
+
+
+def _drop_message_payloads(tokens: list[str]) -> list[str]:
+    """Drop commit-message flag values so their text cannot trip a rule.
+
+    Handles ``-m <value>``, short clusters ending in ``m`` (``-am <value>``),
+    ``--message <value>``, and ``--message=<value>``.
+
+    A value containing ``$(`` or a backtick is command substitution: the shell
+    evaluates it before git ever sees the message, so it is kept (not
+    dropped) and stays live for the rule tables to inspect. Shlex posix mode
+    has already stripped the surrounding quotes by this point, so it cannot
+    distinguish a single-quoted (inert) message from a double-quoted or
+    unquoted one that the shell would expand -- treating any ``$(``/backtick
+    payload as live is the safe default.
+
+    :param tokens: The de-quoted argv tokens for one sub-command.
+    :returns: The tokens with inert message-flag values removed; live
+        command-substitution payloads are kept.
+    """
+    result: list[str] = []
+    skip_next = False
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            if _COMMAND_SUBSTITUTION_RE.search(token):
+                result.append(_extract_substitution_body(token))
+            continue
+        if token.startswith('--message='):
+            value = token[len('--message=') :]
+            if _COMMAND_SUBSTITUTION_RE.search(value):
+                result.extend(('--message', _extract_substitution_body(value)))
+            else:
+                result.append('--message')
+            continue
+        if token == '--message' or _MESSAGE_FLAG_RE.match(token):  # noqa: S105 -- CLI flag, not a secret
+            result.append(token)
+            skip_next = True
+            continue
+        result.append(token)
+    return result
+
+
+def dequote_subcommands(command: str) -> list[str] | None:
+    """Tokenize and de-quote each sub-command, dropping message payloads.
+
+    Unlike :func:`strip_quoted_content`, this preserves de-quoted content
+    (``"--hard"`` becomes ``--hard``, not ``""``) so a rule keyed on that
+    token still matches, while commit-message flag values are dropped so a
+    message that merely mentions a dangerous phrase is not flagged.
+
+    :param command: The normalized command string.
+    :returns: The de-quoted sub-command strings, or ``None`` on unbalanced
+        quotes (the caller should fail closed in that case).
+    """
+    heredoc_stripped = _HEREDOC_RE.sub('', command)
+    lexer = shlex.shlex(heredoc_stripped, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    tokens = _drop_message_payloads(tokens)
+    subcommands: list[str] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in _SEPARATOR_TOKENS:
+            if current:
+                subcommands.append(' '.join(current))
+                current = []
+        else:
+            current.append(token)
+    if current:
+        subcommands.append(' '.join(current))
+    return subcommands
+
+
+_SHELL_WRAPPER_RE = re.compile(r'^(?:bash|sh|zsh|dash)\s+-c\s+')
+_EVAL_WRAPPER_RE = re.compile(r'^eval\s+')
+_MAX_SHELL_DEPTH = 1
+
+
+def _extract_shell_payload(command: str, prefix: re.Pattern[str]) -> str | None:
+    """Strip a shell-wrapper prefix and unquote the remaining payload.
+
+    :param command: The normalized command starting with the wrapper prefix.
+    :param prefix: The wrapper prefix pattern that matched.
+    :returns: The payload string, or ``None`` when there is nothing after the prefix.
+    """
+    stripped = prefix.sub('', command, count=1)
+    if not stripped:
+        return None
+    first = stripped[0]
+    if first == '"':
+        i = 1
+        while i < len(stripped):
+            if stripped[i] == '\\' and i + 1 < len(stripped):
+                i += 2
+                continue
+            if stripped[i] == '"':
+                return stripped[1:i].replace('\\"', '"')
+            i += 1
+        return stripped[1:]
+    if first == "'":
+        end = stripped.find("'", 1)
+        if end > 0:
+            return stripped[1:end]
+        return stripped[1:]
+    return stripped
+
+
+def _first_block(rules: tuple[GuardRule, ...], text: str) -> Verdict | None:
+    """Return the first rule that blocks ``text``, honouring safe patterns.
+
+    :param rules: The rule table to check, in order.
+    :param text: The command text to match against.
+    :returns: A :class:`Verdict`, or ``None`` when nothing blocks.
+    """
+    for rule in rules:
+        if any(safe.search(text) for safe in rule.safe_patterns):
+            continue
+        if rule.pattern.search(text):
+            return Verdict(rule_id=rule.name, message=rule.message)
+    return None
+
+
+def _check_shell_wrapper(normalized: str, depth: int) -> Verdict | None:
+    """Evaluate the payload of a ``bash -c`` / ``eval`` wrapper, if present.
+
+    :param normalized: The normalized command.
+    :param depth: Remaining recursion depth; negative disables unwrapping.
+    :returns: A :class:`Verdict` from the payload, or ``None``.
+    """
+    if depth < 0:
+        return None
+    payload: str | None = None
+    if _SHELL_WRAPPER_RE.search(normalized):
+        payload = _extract_shell_payload(normalized, _SHELL_WRAPPER_RE)
+    elif _EVAL_WRAPPER_RE.search(normalized):
+        payload = _extract_shell_payload(normalized, _EVAL_WRAPPER_RE)
+    if payload is None:
+        return None
+    return _evaluate_inner(payload, depth - 1)
+
+
+def _pre_strip_verdict(command: str, normalized: str) -> Verdict | None:
+    """Run PRE_STRIP_RULES against both the raw and normalized command.
+
+    Checking the raw text too means ``normalize_command``'s env-wrapper
+    stripping cannot erase a ``GIT_CONFIG_*`` environment assignment that
+    hides a hook-bypass before a rule ever sees it.
+
+    :param command: The raw, un-normalized command string.
+    :param normalized: The normalized command string.
+    :returns: A :class:`Verdict` when blocked, else ``None``.
+    """
+    return _first_block(PRE_STRIP_RULES, command) or _first_block(PRE_STRIP_RULES, normalized)
+
+
+def _evaluate_inner(command: str, depth: int) -> Verdict | None:
+    """Run the full guard pipeline against one command string.
+
+    :param command: The command string.
+    :param depth: Remaining shell-wrapper recursion depth.
+    :returns: A :class:`Verdict` when blocked, else ``None``.
+    """
+    normalized = normalize_command(command)
+    if not normalized.strip():
+        return None
+
+    verdict = _pre_strip_verdict(command, normalized)
+    if verdict is not None:
+        return verdict
+
+    verdict = _first_block(PLATFORM_RULES, normalized)
+    if verdict is not None:
+        return verdict
+
+    verdict = _check_shell_wrapper(normalized, depth)
+    if verdict is not None:
+        return verdict
+
+    for sub in split_commands(strip_quoted_content(normalized)):
+        verdict = _first_block(POST_STRIP_RULES, sub)
+        if verdict is not None:
+            return verdict
+
+    dequoted = dequote_subcommands(normalized)
+    if dequoted is None:
+        # Unbalanced quotes: fail closed onto a quote-character-stripped
+        # rendering rather than skipping the de-quoted check entirely.
+        heredoc_stripped = _HEREDOC_RE.sub('', normalized)
+        dequoted = split_commands(re.sub(r'["\']', '', heredoc_stripped))
+    for sub in dequoted:
+        verdict = _first_block(PRE_STRIP_RULES + PLATFORM_RULES + POST_STRIP_RULES, strip_git_global_options(sub))
+        if verdict is not None:
+            return verdict
+    return None
+
+
+def evaluate_command(command: str) -> Verdict | None:
+    """Evaluate a command against every guard rule.
+
+    :param command: The raw command string from ``tool_input.command``.
+    :returns: A :class:`Verdict` when the command must be blocked, else ``None``.
+    """
+    return _evaluate_inner(command, _MAX_SHELL_DEPTH)
