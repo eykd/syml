@@ -129,11 +129,14 @@ class TestSymlParser:
     def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
         self, parser: parsers.SymlParser
     ) -> None:
-        r"""D15: the key class is the enumerated White_Space-minus set, not ``\s``.
+        r"""D15: the key class is ``\s`` plus an enumerated control-character exclusion.
 
-        ``\x01`` is not matched by Python's ``\s`` but IS excluded by D15's
-        enumerated key class (``\x00-\x1f``), so ``a\x01b: v`` must NOT lex
-        as a key/value pair; it falls through to a bare data value instead.
+        Per §4.5, ``\s`` in the key grammar denotes exactly the Unicode
+        ``White_Space`` set. ``\x01`` is not part of that set, so it is not
+        matched by Python's ``\s`` either -- it is excluded only by the
+        additional enumerated ranges (``\x00-\x1f\x7f-\x9f``) that the key
+        class carries alongside ``\s``. So ``a\x01b: v`` must NOT lex as a
+        key/value pair; it falls through to a bare data value instead.
         """
         text = 'a\x01b: v'
         result = parser.parse(text)
