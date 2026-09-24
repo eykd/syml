@@ -79,6 +79,10 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         textwrap.dedent(
             r"""
             lines       = line*
+            # A bare line's fallback is `data`, not `value`: quoting is recognized only
+            # at the two dedicated inline positions (D2) reached through `structure` --
+            # `quoted_key_value` (after `key:`) and `value_list_item` (after `- `).
+            # A standalone root scalar or continuation line never tries `quoted_value`.
             line        = indent (comment / blank / structure / data) &eol
             structure   = list_item / key_value / (section &eol)
 
