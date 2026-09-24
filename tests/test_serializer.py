@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import pytest
+from serialization_corpus import CORPUS
 
-from syml import serializer
+from syml import loads, serializer
 from syml.exceptions import UnrepresentableValueError
+
+
+class TestDumpsLoadsRoundTripsOverCorpus:
+    """The shared round-trip corpus (Contract 07, pass 25) round-trips through dumps/loads."""
+
+    @pytest.mark.parametrize('corpus_id', sorted(CORPUS))
+    def test_it_should_round_trip_every_corpus_entry_through_dumps_and_loads(self, corpus_id: str) -> None:
+        value = CORPUS[corpus_id]
+        assert loads(serializer.dumps(value)) == value
 
 
 class TestDumpsQuotingTable:

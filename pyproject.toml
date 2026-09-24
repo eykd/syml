@@ -189,7 +189,7 @@ addopts = [
     "-m", "not acceptance",
     "--ignore=tests/acceptance",
 ]
-pythonpath = ["."]
+pythonpath = [".", "tests"]
 testpaths = ["tests"]
 # Gherkin feature files, resolved against the pytest rootdir.
 bdd_features_base_dir = "specs/acceptance-specs"
