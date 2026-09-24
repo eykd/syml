@@ -79,7 +79,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         textwrap.dedent(
             r"""
             lines       = line*
-            line        = indent (comment / blank / structure / value) &eol
+            line        = indent (comment / blank / structure / data) &eol
             structure   = list_item / key_value / (section &eol)
 
             indent      = ~"\s*"
