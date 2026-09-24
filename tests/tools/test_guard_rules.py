@@ -72,6 +72,8 @@ class TestBlockedRules:
             ('git commit -n -m wip', 'hook-bypass'),
             ('git commit -nm wip', 'hook-bypass'),
             ('git commit -anm wip', 'hook-bypass'),
+            ('git -c core.hooksPath=/dev/null commit -m x', 'hook-bypass'),
+            ('git -c core.hooksPath=/tmp/none push', 'hook-bypass'),
             ('git push --force origin main', 'force-push'),
             ('git push -f ', 'force-push'),
             ('git push -f', 'force-push'),

@@ -69,6 +69,23 @@ Fix the root problem rather than bypassing the safety mechanism.
 Only use these flags when explicitly requested by the user.""",
     ),
     GuardRule(
+        name='hook-bypass',
+        category='hook-bypass',
+        pattern=re.compile(r'git\b.*\s(?:-c\s*|--config-env=)core\.hooksPath='),
+        message="""BLOCKED: git -c core.hooksPath override detected.
+
+Overriding core.hooksPath disables every pre-commit hook (ruff, mypy,
+coverage, commit-msg) just as surely as --no-verify.
+
+Instead of bypassing safety checks:
+- If pre-commit fails: fix the ruff/mypy/pytest errors it found
+- If commit-msg fails: write a proper conventional commit message
+- If pre-push fails: fix the issues preventing push
+
+Fix the root problem rather than bypassing the safety mechanism.
+Only use this override when explicitly requested by the user.""",
+    ),
+    GuardRule(
         name='force-push',
         category='destructive-git',
         pattern=re.compile(
@@ -323,7 +340,7 @@ Instead:
 
 
 _GIT_GLOBAL_OPTION = (
-    r'(?:-C\s+\S+|-c\s+\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)'
+    r'(?:-C\s+\S+|-c\s+(?!core\.hooksPath=)\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)'
     r'|--namespace(?:=\S+|\s+\S+)|--no-pager\b|-P\b|--bare\b|--no-replace-objects\b)'
 )
 _GIT_GLOBAL_OPTIONS_RE = re.compile(r'\bgit\b(?:\s+' + _GIT_GLOBAL_OPTION + r')+')
