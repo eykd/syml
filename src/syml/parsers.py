@@ -19,6 +19,7 @@ if TYPE_CHECKING:  # pragma: nocover
 
     from .basetypes import StrPath
     from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
+    from .preprocess import PositionMap
 
 
 def _is_zero_length_text(value: SymlNode) -> bool:
@@ -72,9 +73,10 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
     )
     unwrapped_exceptions = (ParseError,)
 
-    def __init__(self, filename: StrPath | None = None) -> None:
+    def __init__(self, filename: StrPath | None = None, position_map: PositionMap | None = None) -> None:
         super().__init__()
         self.filename = filename
+        self.position_map = position_map
 
     def reduce_children(self, children: OptionalSymlNodes) -> SymlNodes:
         """Return all non-null children."""
@@ -148,7 +150,12 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         except quoting.QuotedStringDefect as defect:
             raise self._malformed_quoted_string(node, escape=defect.escape, code_point=defect.code_point) from defect
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
-        leaf.source = dataclasses.replace(leaf.source, text=text)
+        if self.position_map is not None:
+            start = self.position_map.to_original(Pos.from_str_index(node.full_text, node.start))
+            end = self.position_map.to_original(Pos.from_str_index(node.full_text, node.end))
+            leaf.source = dataclasses.replace(leaf.source, start=start, end=end, text=text)
+        else:
+            leaf.source = dataclasses.replace(leaf.source, text=text)
         return leaf
 
     def visit_key(self, node: PNode, children: SymlNodes) -> nodes.KeyLeafNode:  # noqa: ARG002
@@ -240,4 +247,4 @@ def find_first(node: PNode, expr_name: str) -> PNode:
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
     """Parse a SYML document."""
     doc = preprocess(source_syml, filename)
-    return SymlParser(filename=filename).parse(doc.normalized)
+    return SymlParser(filename=filename, position_map=doc.position_map).parse(doc.normalized)
