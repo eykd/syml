@@ -74,6 +74,10 @@ class TestBlockedRules:
             ('git commit -anm wip', 'hook-bypass'),
             ('git -c core.hooksPath=/dev/null commit -m x', 'hook-bypass'),
             ('git -c core.hooksPath=/tmp/none push', 'hook-bypass'),
+            ("git -c 'core.hooksPath=/dev/null' commit -m x", 'hook-bypass'),
+            ('git -c "core.hooksPath=/dev/null" commit -m x', 'hook-bypass'),
+            ("git -c 'core.hooksPath=/tmp/none' push", 'hook-bypass'),
+            ('git -c "core.hooksPath=/tmp/none" push', 'hook-bypass'),
             ('git push --force origin main', 'force-push'),
             ('git push -f ', 'force-push'),
             ('git push -f', 'force-push'),
@@ -171,6 +175,7 @@ class TestGlobalOptionsAndInterleavedFlags:
         [
             'git -C . status',
             'git -c user.name=x log',
+            "git -c 'user.name=x' commit -m y",
             'git reset --soft HEAD~1',
             'git push',
             'git checkout -- file.py',

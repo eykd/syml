@@ -340,7 +340,8 @@ Instead:
 
 
 _GIT_GLOBAL_OPTION = (
-    r'(?:-C\s+\S+|-c\s+(?!core\.hooksPath=)\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)'
+    r"(?:-C\s+\S+|-c\s+(?!['\"]?(?i:core\.hookspath)=)\S+|--git-dir(?:=\S+|\s+\S+)"
+    r'|--work-tree(?:=\S+|\s+\S+)'
     r'|--namespace(?:=\S+|\s+\S+)|--no-pager\b|-P\b|--bare\b|--no-replace-objects\b)'
 )
 _GIT_GLOBAL_OPTIONS_RE = re.compile(r'\bgit\b(?:\s+' + _GIT_GLOBAL_OPTION + r')+')
