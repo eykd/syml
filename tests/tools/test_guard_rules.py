@@ -232,6 +232,30 @@ class TestSplitCommands:
         assert guard_rules.split_commands(command) == expected
 
 
+class TestCommandSubstitutionInMessagePayload:
+    """Regression coverage for syml-x0m.6.5: command substitution inside a
+
+    commit/tag message payload must not escape guard rules, since the shell
+    evaluates it before git ever runs.
+    """
+
+    @pytest.mark.parametrize(
+        ('command', 'rule_id'),
+        [
+            ('git commit -m "$(git reset --hard)"', 'reset-hard'),
+            ('git commit -m "`git reset --hard`"', 'reset-hard'),
+            ('git commit --message="$(git reset --hard)"', 'reset-hard'),
+            ('git commit -m "$(rm -rf /)"', 'catastrophic-rm'),
+            ('git tag -m "$(git reset --hard)" v1', 'reset-hard'),
+        ],
+    )
+    def test_it_should_block_a_command_substitution_hidden_in_a_message(self, command: str, rule_id: str) -> None:
+        assert block_id(command) == rule_id
+
+    def test_it_should_still_allow_a_plain_message_mentioning_a_dangerous_phrase(self) -> None:
+        assert evaluate_command('git commit -m "docs: explain git reset --hard"') is None
+
+
 class TestShellWrappers:
     def test_it_should_unwrap_a_single_quoted_bash_payload(self) -> None:
         assert block_id("bash -c 'rm -rf /'") == 'catastrophic-rm'

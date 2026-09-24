@@ -337,23 +337,57 @@ _SEPARATOR_TOKENS = frozenset({';', '|', '||', '&&', '&', '(', ')'})
 _MESSAGE_FLAG_RE = re.compile(r'^-[a-zA-Z]*m$')
 
 
+_COMMAND_SUBSTITUTION_RE = re.compile(r'\$\(|`')
+_SUBSTITUTION_WRAPPER_CHARS_RE = re.compile(r'[$()`]')
+
+
+def _extract_substitution_body(value: str) -> str:
+    """Strip command-substitution wrapper characters from a live message value.
+
+    The shell evaluates ``$(...)`` and backtick payloads before git ever runs,
+    so the wrapped text is the real sub-command. Stripping the wrapper
+    characters (rather than trying to balance nested parens) is enough to let
+    the rule tables match the inner command, e.g. ``$(rm -rf /)`` becomes
+    ``rm -rf /`` -- which still matches a trailing-boundary rule pattern.
+
+    :param value: The de-quoted message-flag value.
+    :returns: The value with ``$``, ``(``, ``)``, and backtick characters removed.
+    """
+    return _SUBSTITUTION_WRAPPER_CHARS_RE.sub('', value)
+
+
 def _drop_message_payloads(tokens: list[str]) -> list[str]:
     """Drop commit-message flag values so their text cannot trip a rule.
 
     Handles ``-m <value>``, short clusters ending in ``m`` (``-am <value>``),
     ``--message <value>``, and ``--message=<value>``.
 
+    A value containing ``$(`` or a backtick is command substitution: the shell
+    evaluates it before git ever sees the message, so it is kept (not
+    dropped) and stays live for the rule tables to inspect. Shlex posix mode
+    has already stripped the surrounding quotes by this point, so it cannot
+    distinguish a single-quoted (inert) message from a double-quoted or
+    unquoted one that the shell would expand -- treating any ``$(``/backtick
+    payload as live is the safe default.
+
     :param tokens: The de-quoted argv tokens for one sub-command.
-    :returns: The tokens with message-flag values removed.
+    :returns: The tokens with inert message-flag values removed; live
+        command-substitution payloads are kept.
     """
     result: list[str] = []
     skip_next = False
     for token in tokens:
         if skip_next:
             skip_next = False
+            if _COMMAND_SUBSTITUTION_RE.search(token):
+                result.append(_extract_substitution_body(token))
             continue
         if token.startswith('--message='):
-            result.append('--message')
+            value = token[len('--message=') :]
+            if _COMMAND_SUBSTITUTION_RE.search(value):
+                result.extend(('--message', _extract_substitution_body(value)))
+            else:
+                result.append('--message')
             continue
         if token == '--message' or _MESSAGE_FLAG_RE.match(token):  # noqa: S105 -- CLI flag, not a secret
             result.append(token)
