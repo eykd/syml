@@ -183,7 +183,7 @@ class List(ParentNode):
         """Check if a child node can be added."""
         return super().can_add_node(node) and isinstance(node, ListItem)
 
-    def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
+    def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""
         return [c.as_source() for c in self.children]
 
@@ -228,7 +228,7 @@ class Mapping(ParentNode):
         self.keys[kv.key.as_data()] = kv
         return result
 
-    def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
+    def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""
         return {c.key.as_source(): c.as_source() for c in self.children}  # type: ignore[attr-defined]
 
@@ -268,7 +268,7 @@ class TextLeafNode(SymlNode):
     anchor_level: int = field(default=-1)
     baseline: int | None = field(default=0)
 
-    def as_source(self) -> Source:  # pragma: nocover
+    def as_source(self) -> Source:
         """Return this node as primitive data types with Source objects for strings."""
         source = self.source
         for child in self.children:
@@ -307,7 +307,7 @@ class KeyLeafNode(SymlNode):
         """Return a Source object representing the key."""
         return Source.from_node(self.pnode, filename=self.filename)
 
-    def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
+    def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""
         return self.key
 
