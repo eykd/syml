@@ -91,6 +91,15 @@ def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
     return ''.join(chunks), tuple(crlf_indices)
 
 
+def split_lines_lf(text: str) -> list[str]:
+    """Split `text` into lines on U+000A only (§13.3, FR-003).
+
+    Unlike `str.splitlines()`, this does not treat U+2028, U+2029, U+0085,
+    U+000B, U+000C, or U+001C-U+001E as line terminators.
+    """
+    raise NotImplementedError
+
+
 def preprocess(text: str, filename: StrPath | None = None) -> Document:
     """Apply §9.0 steps 1-3 to `text`. Raises `TabIndentationError`."""
     bom_offset = 1 if text.startswith('﻿') else 0
