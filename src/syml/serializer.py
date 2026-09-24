@@ -6,6 +6,7 @@ from typing import IO, TYPE_CHECKING
 
 import parsimonious
 
+from .exceptions import UnrepresentableValueError
 from .parsers import SymlParser
 
 if TYPE_CHECKING:  # pragma: nocover
@@ -71,8 +72,14 @@ def _not_representable(value: object) -> TypeError:
 def _render_value_lines(value: object, indent: int) -> list[str]:
     """Dispatch `value` to its type's line renderer, or raise TypeError."""
     if isinstance(value, dict):
+        if not value:
+            message = f'{value!r} is not representable in SYML (empty mapping, §11.2.2)'
+            raise UnrepresentableValueError(message, value)
         return _render_mapping_lines(value, indent)
     if isinstance(value, list):
+        if not value:
+            message = f'{value!r} is not representable in SYML (empty list, §11.2.2)'
+            raise UnrepresentableValueError(message, value)
         return _render_list_lines(value, indent)
     if isinstance(value, str):
         return [str.__str__(value)]
