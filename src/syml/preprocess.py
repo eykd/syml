@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .exceptions import TabIndentationError
+
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import Pos, StrPath
 
@@ -38,6 +40,34 @@ class Document:
 
 
 _LINE_ENDING = re.compile(r'\r\n|\r')
+
+_LEADING_WHITESPACE = re.compile(r'[ \t]*')
+
+
+def is_blank(text: str) -> bool:
+    """Return whether `text` is entirely U+0020/U+0009, in any mixture (§4.4, D14).
+
+    An empty string is blank. The one shared blank predicate, used by both
+    the step-3 tab scan and Contract 02's per-line loop.
+    """
+    return all(ch in ' \t' for ch in text)
+
+
+def _scan_for_tab_indentation(normalized: str) -> None:
+    """Raise `TabIndentationError` if any non-blank line has a tab in its leading-whitespace run.
+
+    See §9.0.3, D14.
+    """
+    for line in normalized.split('\n'):
+        if is_blank(line):
+            continue
+        run = _LEADING_WHITESPACE.match(line)
+        run_text = run.group() if run else ''
+        if '\t' in run_text:
+            raise TabIndentationError(
+                "A tab character was found in a line's leading whitespace",
+                run_text.index('\t'),
+            )
 
 
 def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
@@ -69,6 +99,7 @@ def preprocess(text: str, filename: StrPath | None = None) -> Document:
     bom_offset = 1 if text.startswith('﻿') else 0
     stripped = text[bom_offset:]
     normalized, crlf_indices = _normalize_line_endings(stripped)
+    _scan_for_tab_indentation(normalized)
     return Document(
         original=text,
         normalized=normalized,
