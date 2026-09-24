@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 
@@ -335,11 +334,7 @@ class KeyLeafNode(SymlNode):
         """Return a Source object representing the key, in original-text coordinates."""
         source = Source.from_node(self.pnode, filename=self.filename)
         if self.position_map is not None:
-            source = dataclasses.replace(
-                source,
-                start=self.position_map.to_original(source.start),
-                end=self.position_map.to_original(source.end),
-            )
+            source = self.position_map.to_original_source(source)
         return source
 
     def as_source(self) -> Any:  # noqa: ANN401

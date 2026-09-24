@@ -133,11 +133,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename)
         if self.position_map is not None:
-            leaf.source = dataclasses.replace(
-                leaf.source,
-                start=self.position_map.to_original(leaf.source.start),
-                end=self.position_map.to_original(leaf.source.end),
-            )
+            leaf.source = self.position_map.to_original_source(leaf.source)
         return leaf
 
     def _malformed_quoted_string(
@@ -172,11 +168,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         leaf = nodes.TextLeafNode(pnode=node, filename=self.filename, quoted=True, inline=True)
         source = leaf.source
         if self.position_map is not None:
-            source = dataclasses.replace(
-                source,
-                start=self.position_map.to_original(source.start),
-                end=self.position_map.to_original(source.end),
-            )
+            source = self.position_map.to_original_source(source)
         leaf.source = dataclasses.replace(source, text=text)
         return leaf
 

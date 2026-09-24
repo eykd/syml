@@ -7,6 +7,7 @@ back to the caller's original text.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from bisect import bisect_left
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from .basetypes import Pos
 from .exceptions import EncodingError, TabIndentationError, error_message
 
 if TYPE_CHECKING:  # pragma: nocover
-    from .basetypes import StrPath
+    from .basetypes import Source, StrPath
 
 
 @dataclass(slots=True, frozen=True)
@@ -31,6 +32,15 @@ class PositionMap:
         index = pos.index + self.bom_offset + bisect_left(self.crlf_indices, pos.index)
         column = pos.column + self.bom_offset if pos.line == 1 else pos.column
         return Pos(index, pos.line, column)
+
+    def to_original_source(self, source: Source) -> Source:
+        """Return `source` with its `start`/`end` translated into original-document coordinates.
+
+        Shared by the quoted-value, unquoted-leaf, and key `Source`-construction
+        paths (`parsers.py`, `nodes.py`) that all re-anchor a normalized-text
+        `Source` onto the caller's original text (Contract 08, FR-013, R-02, US8).
+        """
+        return dataclasses.replace(source, start=self.to_original(source.start), end=self.to_original(source.end))
 
 
 @dataclass(slots=True, frozen=True)
