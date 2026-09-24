@@ -4,9 +4,50 @@ from __future__ import annotations
 
 import pytest
 
+import syml
 from syml.basetypes import Pos
-from syml.exceptions import ParseError, error_message
+from syml.exceptions import DuplicateKeyError, OutOfContextNodeError, ParseError, error_message
 from syml.preprocess import encoding_error
+
+
+class TestLineTextIsTheOffendingLineOnEveryParseError:
+    """Contract 05 §`line_text`.
+
+    ``line_text`` is the original physical line containing ``position``,
+    without its terminator — the *full* source line, not a truncated node
+    span and not the line with its trailing newline still attached. Every
+    raise site reached from a parsed document must honor this, not just the
+    last line of a document.
+    """
+
+    @pytest.mark.parametrize(
+        ('document', 'error_type', 'expected_line_text'),
+        [
+            pytest.param(
+                'a: 1\n  - foo\nc: 1\n',
+                OutOfContextNodeError,
+                '  - foo',
+                id='out_of_context_node_error_strips_terminator',
+            ),
+            pytest.param(
+                'a: 1\nb: 2\nb: 3\n',
+                DuplicateKeyError,
+                'b: 3',
+                id='duplicate_key_error_is_the_full_line_not_the_key_span',
+            ),
+        ],
+    )
+    def test_line_text_is_the_full_offending_source_line(
+        self,
+        document: str,
+        error_type: type[ParseError],
+        expected_line_text: str,
+    ) -> None:
+        """`.line_text` equals the offending line's full original text, terminator excluded."""
+        with pytest.raises(error_type) as exc_info:
+            syml.loads(document)
+
+        assert exc_info.value.line_text == expected_line_text
 
 
 class TestParseErrorAttributeContract:
