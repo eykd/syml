@@ -34,11 +34,15 @@ class Pos:
 
     @classmethod
     def from_str_index(cls, text: str, index: int) -> Pos:
-        """Get (line_number, col) of `index` in `string`.
+        r"""Get (line_number, col) of `index` in `string`.
 
-        Based on http://stackoverflow.com/a/24495900
+        Counts lines by splitting on ``\n`` only (SYML §13.3): other Unicode
+        line-break characters (e.g. U+2028) do not terminate a line.
         """
-        lines = utils.split_lines(text, keepends=True)
+        parts = text.split('\n')
+        lines = [part + '\n' for part in parts[:-1]]
+        if parts[-1]:
+            lines.append(parts[-1])
         curr_pos = 0
         linenum = 0
         for linenum, line in enumerate(lines):
