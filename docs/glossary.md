@@ -8,38 +8,65 @@ spread through the codebase.
 
 - **Line node** — the result of lexing one line of SYML text in
   `src/syml/parsers.py`; every line lexes independently as
-  `indent (comment / blank / structure / value)`.
+  `indent (comment / blank / structure / data) &eol`. `data` (not `value`) is
+  the fallback alternative reached by a bare line or continuation line;
+  quoting (`quoted_value`) is recognized only at the two dedicated inline
+  positions reached through `structure` — after `key:` (`quoted_key_value`)
+  and after `- ` (`value_list_item`, via `value`) — never on a standalone
+  line.
 
-- **Indentation level** — the leading-whitespace depth tagged onto each
-  `SymlNode` when a line node is produced; tree building climbs and compares
-  these levels to decide parent/child relationships.
+- **Indentation level** — a node's own column (§4.1, R-11): each `SymlNode`
+  computes `self.level` from its own `source.start.column` in
+  `SymlNode.__post_init__`, not from a per-line tag inherited from the
+  physical line it sits on.
 
-- **`incorporate_node`** — the tree-building step that walks the flat list of
-  line nodes and, for each one, climbs the parent chain by indentation level
-  until it finds a node whose `can_add_node` accepts the newcomer.
+- **`incorporate_node`** — the tree-building step (§9.2) that walks up the
+  parent chain from the current tip, at each ancestor calling `can_add_node`
+  to test acceptance; the climb continues node-by-node until some ancestor
+  accepts, not by comparing indentation levels directly.
 
-- **`can_add_node`** — the per-node predicate a container implements to say
-  whether it will accept a given child node; `incorporate_node` calls it while
-  climbing the parent chain.
+- **`can_add_node`** — the per-node predicate `incorporate_node` calls while
+  climbing the parent chain. No longer just a plain container-vs-level check:
+  `Mapping.can_add_node` raises `DuplicateKeyError` (§8.3) for a same-level
+  sibling `KeyValue` that repeats an already-incorporated key, rather than
+  falling through to §9.2's ordinary walk-up; a repeat at a different level
+  is not caught here and falls through as usual. `TextLeafNode.can_add_node`
+  tests the continuation baseline (or, while the baseline is still open, the
+  anchor level) rather than any fixed container rule.
 
 - **`ContainerNode`** — the base class of `Root`, `KeyValue`, and `ListItem`;
   it auto-inserts a `Mapping` or `List` intermediary when it receives a bare
-  `KeyValue` or `ListItem`.
+  `KeyValue` or `ListItem` (§9.4), and fixes a newly-attached `TextLeafNode`'s
+  `anchor_level`/`baseline` in `add_node`.
 
-- **`TextLeafNode`** — a node that accepts further `TextLeafNode`s as
-  children, which is how multiline scalar values accumulate.
+- **`TextLeafNode`** — a node carrying `inline`, `quoted`, `anchor_level`, and
+  `baseline`. It declines more than it accepts: a quoted value accepts no
+  continuation at all; otherwise `can_add_node` compares the candidate's level
+  against the baseline once fixed, or against the anchor level while the
+  baseline is still open (D11). Multiline scalar values accumulate only
+  through nodes this logic admits, not through every following
+  `TextLeafNode`.
 
 - **`Source`** — a value type from `src/syml/basetypes.py` carrying filename
   plus start/end `Pos`; it compares and hashes by its text, so it works
   interchangeably with plain strings as dict keys.
 
-- **`Pos`** — a position marker (index, line, column) used by `Source` to
-  record where a value or key began and ended in the source text.
+- **`Pos`** — a position marker (index, line, column), built during parsing
+  against the preprocessed (normalized) text. `PositionMap.to_original`/
+  `to_original_source` translate a `Pos`/`Source` back to the caller's
+  **original** text — before BOM stripping and CRLF/CR normalization (§9.0,
+  FR-013). `SymlParser` applies this to the `Source` it builds for each
+  parsed text leaf and key (`visit_text`, `visit_quoted_value`,
+  `KeyLeafNode`), so those positions are in original-document coordinates;
+  a container node's own `Source` and a raw error position built straight
+  from `pnode.full_text` (e.g. `OutOfContextNodeError`'s) are not translated
+  and stay in normalized-text coordinates.
 
 - **`OutOfContextNodeError`** — raised when no ancestor in the parent chain
   accepts an incoming node; a subclass of `ParseError` (itself a
-  `ValueError`), listed in `unwrapped_exceptions` so Parsimonious does not
-  wrap it.
+  `ValueError`). `unwrapped_exceptions` names the base, `(ParseError,)`, so
+  every `ParseError` subclass — not just this one — passes the Parsimonious
+  visitor unwrapped.
 
 - **`as_data()`** — the rendering on every node that returns plain
   `str`/`list`/`dict` values, discarding source position information.
@@ -103,3 +130,27 @@ spread through the codebase.
 - **Migration notes** — the changelog or README section listing every
   user-visible behaviour change between `syml` 0.6.2 and 1.0.0, so an upgrading
   caller can predict what will break before it does.
+
+- **`PositionMap`** — a frozen dataclass from `src/syml/preprocess.py` holding
+  the BOM offset and the normalized-text indices where a `\r\n` pair
+  collapsed to `\n`. `to_original` maps a normalized `Pos` back to the
+  original document; `to_original_source` does the same for a whole `Source`.
+  `parse` builds one per document and threads it through `SymlParser` so
+  every position reported to a caller is in original-text coordinates.
+
+- **`EncodingError`** — a `ParseError` subclass raised when `load`'s bytes
+  input fails to decode as UTF-8 (§11.3, FR-009, R-04); built by
+  `encoding_error` from the originating `UnicodeDecodeError`, positioned at
+  the first invalid byte.
+
+- **`dumps`/`dump`** — `src/syml/serializer.py`'s serialization API, the
+  inverse of `loads`/`load`: `dumps` renders a `str`/`list`/`dict` value to
+  SYML text (raising `UnrepresentableValueError` for an unencodable value and
+  `TypeError` for a non-str/list/dict), and `dump` writes that text to a file
+  object in one `write()` call, writing nothing at all if `dumps` raises.
+
+- **`Document`** — the frozen dataclass `preprocess` returns (§9.0 steps 1-3):
+  `original` is the caller's untouched text, `normalized` is that text after
+  BOM-stripping and CRLF/CR-to-LF normalization (the text `SymlParser` actually
+  parses), and `position_map` is the `PositionMap` that translates positions
+  in `normalized` back to `original`.
