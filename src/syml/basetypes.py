@@ -87,11 +87,16 @@ class Source:
         When `line` and `position_map` are given (Contract 08), each endpoint
         is built as `position_map.to_original(pos_at(line, offset))`, so the
         resulting positions land in the caller's original-document
-        coordinates (BOM, CRLF, etc.) rather than the normalized text. Until
-        that wiring is complete, this stub ignores them and falls back to
-        `Pos.from_str_index` over `pnode.full_text`.
+        coordinates (BOM, CRLF, etc.) rather than the normalized text.
+        Otherwise, falls back to `Pos.from_str_index` over `pnode.full_text`.
         """
-        del line, position_map
+        if line is not None and position_map is not None:
+            return cls(
+                filename=filename,
+                start=position_map.to_original(pos_at(line, pnode.start)),
+                end=position_map.to_original(pos_at(line, pnode.end)),
+                text=pnode.text,
+            )
         return cls(
             filename=filename,
             start=Pos.from_str_index(pnode.full_text, pnode.start),
