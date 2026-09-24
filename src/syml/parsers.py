@@ -72,7 +72,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             ws          = ~" +"   # Required whitespace (spaces only; a tab does not satisfy this, see §7.5)
             text        = ~"[^\n]*"
 
-            value       = structure / data
+            value       = structure / quoted_value / data
             data        = text
 
             quoted_value  = single_quoted / double_quoted
