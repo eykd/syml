@@ -8,7 +8,7 @@ from parsimonious.nodes import Node
 
 import syml
 from syml import exceptions, parsers, quoting
-from syml.basetypes import Source
+from syml.basetypes import Pos, Source
 
 
 class TestSymlParser:
@@ -383,6 +383,45 @@ class TestSimpleParserFunction:
         """
         text = 'a: Note\n  Big Warning: do not touch'
         assert syml.loads(text) == {'a': 'Note\nBig Warning: do not touch'}
+
+    def test_it_should_report_out_of_context_position_in_original_text_coordinates_on_bom_crlf_documents(
+        self,
+    ) -> None:
+        """Contract 05: `OutOfContextNodeError.position` must anchor to original-text coordinates.
+
+        `SymlNode.fail_to_incorporate_node` builds its `Pos` from
+        `pnode.full_text` (the NORMALIZED text) and never threads it through
+        `PositionMap.to_original`, unlike leaf `Source`s (Contract 08). On a
+        BOM- and CRLF-prefixed document the CRLF collapses shift every
+        normalized-text index leftward relative to the original document, so
+        the reported position diverges from where the offending line
+        actually sits in the caller's original text.
+        """
+        text = '﻿  - foo:\r\n      - bar\r\n - baz\r\n- blah\r\n'
+        expected_position = Pos.from_str_index(text, text.index('- baz'))
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            syml.loads(text)
+        assert exc_info.value.position == expected_position
+
+    def test_it_should_report_container_node_source_in_original_text_coordinates_on_bom_crlf_documents(
+        self,
+    ) -> None:
+        """Contract 08: a container node's own `Source` must also anchor to original-text coordinates.
+
+        `SymlNode.__post_init__` builds every node's `source` from its raw
+        `pnode` via `Source.from_node`, which uses normalized-text
+        coordinates. Leaf nodes (`TextLeafNode`, `KeyLeafNode`) get
+        re-anchored afterward through `PositionMap.to_original_source`, but a
+        container node (e.g. `KeyValue`, `Mapping`, `ListItem`) never is, so
+        its `source.start` stays in normalized-text coordinates even though
+        leaf `Source`s alongside it are in original-text coordinates.
+        """
+        text = '﻿key:\r\n  value\r\n'
+        expected_start = Pos.from_str_index(text, text.index('key:'))
+        root = parsers.parse(text)
+        mapping = root.children[0]
+        key_value = mapping.children[0]
+        assert key_value.source.start == expected_start
 
     def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
         """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
