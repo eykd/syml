@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
 from .basetypes import Pos, Source, StrPath
-from .exceptions import OutOfContextNodeError
+from .exceptions import DuplicateKeyError, OutOfContextNodeError
 from .utils import get_line
 
 
@@ -182,12 +182,37 @@ class ListItem(ContainerNode):
     """A list item within a list."""
 
 
+@dataclass(kw_only=True)
 class Mapping(ParentNode):
     """A mapping of keys to values"""
 
+    keys: dict[str, KeyValue] = field(default_factory=dict)
+
     def can_add_node(self, node: SymlNode) -> bool:
-        """Check if a child node may be added."""
-        return super().can_add_node(node) and isinstance(node, KeyValue)
+        """Check if a child node may be added.
+
+        Raises `DuplicateKeyError` immediately when a same-level
+        `KeyValue` repeats an already-incorporated sibling's key
+        (FR-007, §8.3, §10.3), rather than falling through to §9.2's
+        walk-up.
+        """
+        if not (super().can_add_node(node) and isinstance(node, KeyValue)):
+            return False
+        first = self.keys.get(node.key.as_data())
+        if first is not None:
+            raise DuplicateKeyError(
+                'Duplicate key',
+                key=node.key.as_data(),
+                first_position=first.source.start,
+            )
+        return True
+
+    def add_node(self, node: SymlNode) -> SymlNode:
+        """Add a child node, recording its key for duplicate detection."""
+        kv = cast('KeyValue', node)  # can_add_node admitted only a KeyValue
+        result = super().add_node(kv)
+        self.keys[kv.key.as_data()] = kv
+        return result
 
     def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
         """Return this node as primitive data types with Source objects for strings."""
