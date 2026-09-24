@@ -163,7 +163,12 @@ def find_first(node: PNode, expr_name: str) -> PNode:
     :param expr_name: The `expr_name` to match.
     :returns: The first matching node, in depth-first order.
     """
-    raise NotImplementedError
+    stack = [node]
+    while True:
+        current = stack.pop()
+        if current.expr_name == expr_name:
+            return current
+        stack.extend(reversed(current.children))
 
 
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
