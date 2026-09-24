@@ -2,7 +2,7 @@
 
 import pytest
 
-from syml import parsers, quoting
+from syml import exceptions, parsers, quoting
 
 
 class TestWhereQuotingIsRecognized:
@@ -77,3 +77,20 @@ class TestDiagnoseMalformed:
     def test_it_should_report_a_dangling_backslash_at_end_of_line(self) -> None:
         r"""A trailing `\` with nothing after it is its own defect: `escape == '\\'`."""
         assert quoting.diagnose_malformed('"abc\\') == '\\'
+
+
+class TestQuoteGuardRule:
+    """The quote-guard rule (§4.1, R-10): data beginning with a quote at an inline position is malformed."""
+
+    def test_it_should_raise_malformed_with_the_diagnosed_escape_on_fallthrough(self) -> None:
+        r"""`key: "a\xb"` fails to match `quoted_value` and falls through to `data_key_value`.
+
+        The quote-guard must raise `MalformedQuotedStringError` diagnosed via `diagnose_malformed`
+        (`escape == '\\x'`, `code_point is None`) rather than silently keeping the leading quote as text
+        (Contract 04 §The quote-guard rule / §What the quote-guard reports).
+        """
+        parser = parsers.SymlParser()
+        with pytest.raises(exceptions.MalformedQuotedStringError) as excinfo:
+            parser.parse(r'key: "a\xb"')
+        assert excinfo.value.escape == '\\x'
+        assert excinfo.value.code_point is None
