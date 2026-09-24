@@ -82,11 +82,13 @@ Contract 02 tabulates both substitutions.
   forbids relying on, and it keeps the `SyntaxWarning`.
 - **Escape it as `\\s` to silence the warning only.** Rejected: fixes the
   warning without fixing the D15 violation.
-- **Switch to the `regex` module for `\p{White_Space}`.** Rejected: `regex` is
-  already a declared dependency but is unused by `src/`; Parsimonious compiles
-  its own atoms with `re`, so this would mean replacing the grammar engine.
-  Constitution principle V (no gratuitous dependency growth) points the other
-  way — and the enumerated class is a strictly local change.
+- **Switch to the `regex` module for `\p{White_Space}`.** Rejected: Parsimonious
+  itself does `import regex as re` and compiles every atom through it, so
+  `\p{White_Space}` is already reachable without adding a new dependency —
+  but D15 says implementations "MUST use this exact set," and enumerating it
+  is the literal, engine-independent way to satisfy that. Constitution
+  principle V (no gratuitous dependency growth) points the same way — the
+  enumerated class is a strictly local change.
 
 ---
 
