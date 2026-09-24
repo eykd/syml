@@ -77,6 +77,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
             quoted_value  = single_quoted / double_quoted
             single_quoted = "'" ~"(?:''|[^'\n])*" "'"
+            # §4.7 escape table: \n \t \r \\ \/ \" \uXXXX \UXXXXXXXX. An invalid or
+            # incomplete escape fails to match here, so the line falls through to the
+            # quote-guard (R-10) instead of silently decoding.
             double_quoted = "\"" ~"(?:\\\\(?:[\\\\/\"ntr]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})|[^\"\\\\\n])*" "\""
 
             """
