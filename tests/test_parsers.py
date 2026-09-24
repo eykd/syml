@@ -582,3 +582,21 @@ class TestVisitCommentWithNoTrailingText:
             pass
         else:
             assert isinstance(result, str)
+
+
+class TestTrailingContentAfterClosedInlineQuote:
+    """§4.7: an inline quoted value followed by trailing content on the same line is malformed.
+
+    `key: "a" trailing` currently escapes the grammar's `lines = line*` rule
+    unmatched (the `line` rule fails to consume the trailing text), so
+    `parsimonious.exceptions.IncompleteParseError` -- a third-party exception
+    (FR-009) -- leaks straight through `parse()` instead of being converted to
+    `exceptions.MalformedQuotedStringError` (§8.5's documented example row).
+    """
+
+    def test_trailing_content_after_a_closed_inline_quote_raises_malformed_quoted_string_error(
+        self,
+    ) -> None:
+        """Trailing content after a closed quote must raise `MalformedQuotedStringError`, not leak."""
+        with pytest.raises(exceptions.MalformedQuotedStringError):
+            syml.loads('key: "a" trailing')
