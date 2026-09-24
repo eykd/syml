@@ -1,4 +1,4 @@
-"""Pre-processing pipeline for SYML documents (§9.0) and line splitting (§13.3).
+"""Pre-processing pipeline for SYML documents (§9.0).
 
 Applies the BOM-stripping, line-ending-normalization, and tab-indentation
 scan steps to a raw document before parsing, while tracking a position map
@@ -61,8 +61,8 @@ _BOM = '﻿'
 def is_blank(text: str) -> bool:
     """Return whether `text` is entirely U+0020/U+0009, in any mixture (§4.4, D14).
 
-    An empty string is blank. The one shared blank predicate, used by both
-    the step-3 tab scan and Contract 02's per-line loop.
+    An empty string is blank. Used by the step-3 tab scan to exempt
+    blank lines from the leading-whitespace tab check.
     """
     return all(ch in ' \t' for ch in text)
 
@@ -110,15 +110,6 @@ def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
         pos = end
     chunks.append(text[pos:])
     return ''.join(chunks), tuple(crlf_indices)
-
-
-def split_lines_lf(text: str) -> list[str]:
-    """Split `text` into lines on U+000A only (§13.3, FR-003).
-
-    Unlike `str.splitlines()`, this does not treat U+2028, U+2029, U+0085,
-    U+000B, U+000C, or U+001C-U+001E as line terminators.
-    """
-    return text.split('\n')
 
 
 def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> EncodingError:

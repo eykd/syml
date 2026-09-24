@@ -32,14 +32,6 @@ class TestPreprocessLineEndings:
         assert document.position_map.crlf_indices == ()
 
 
-class TestSplitLinesLf:
-    def test_it_should_split_only_on_lf_not_other_unicode_line_terminators(self) -> None:
-        assert preprocess.split_lines_lf('a: b c\nx: y') == [  # noqa: RUF001
-            'a: b c',  # noqa: RUF001
-            'x: y',
-        ]
-
-
 class TestPreprocessBlankClassificationAndTabScan:
     def test_it_should_raise_tab_indentation_error_for_a_leading_tab_but_not_for_a_blank_line(
         self,
