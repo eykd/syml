@@ -51,4 +51,4 @@ def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> list
 
 def parse(document: str, filename: StrPath | None = None) -> Root:
     """Parse a SYML document into its `Root` node (Contract 06 §`parse`)."""
-    raise NotImplementedError
+    return parsers.parse(document, filename=filename)
