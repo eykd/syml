@@ -8,7 +8,7 @@ import pytest
 
 import syml
 from syml import nodes, parsers
-from syml.exceptions import DuplicateKeyError
+from syml.exceptions import DuplicateKeyError, OutOfContextNodeError
 from syml.parsers import SymlParser
 
 if TYPE_CHECKING:
@@ -242,3 +242,37 @@ class TestQuotedValueCompleteness:
         continuation = nodes.TextLeafNode(pnode=_pnode('b'), level=2)
 
         assert leaf.can_add_node(continuation) is False
+
+
+class TestSymlNodeBaseStubs:
+    """Contract 08 §Coverage / Contract 03 §Coverage without pragmas (FR-012).
+
+    `SymlNode`'s undecorated `as_data`/`as_source`/`can_add_node`/
+    `incorporate_node` failure path are reachable directly through a
+    subclass with no overrides (`IndentNode`) rather than pragma'd as dead.
+    """
+
+    def test_as_data_raises_not_implemented(self) -> None:
+        node = nodes.IndentNode(pnode=_pnode('  '))
+
+        with pytest.raises(NotImplementedError):
+            node.as_data()
+
+    def test_as_source_raises_not_implemented(self) -> None:
+        node = nodes.IndentNode(pnode=_pnode('  '))
+
+        with pytest.raises(NotImplementedError):
+            node.as_source()
+
+    def test_can_add_node_rejects_by_default(self) -> None:
+        node = nodes.IndentNode(pnode=_pnode('  '))
+        other = nodes.IndentNode(pnode=_pnode('  '))
+
+        assert node.can_add_node(other) is False
+
+    def test_incorporate_node_fails_when_parentless_and_rejected(self) -> None:
+        node = nodes.IndentNode(pnode=_pnode('  '))
+        other = nodes.IndentNode(pnode=_pnode('  '))
+
+        with pytest.raises(OutOfContextNodeError):
+            node.incorporate_node(other)

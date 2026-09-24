@@ -119,7 +119,7 @@ class Source:
         filename: StrPath | None = None,
     ) -> Source:
         """Build a Source from the given components."""
-        if substring is None:  # pragma: no cover
+        if substring is None:
             substring = text
         match = re.search(substring, text)
         if match is None:

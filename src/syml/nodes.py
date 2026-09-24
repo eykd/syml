@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
@@ -37,11 +37,11 @@ class SymlNode:
             # anything inherited from the line it's on.
             self.level = self.source.start.column
 
-    def as_data(self) -> Any:  # noqa: ANN401  # pragma: nocover
+    def as_data(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types."""
         raise NotImplementedError
 
-    def as_source(self) -> Any:  # noqa: ANN401  # pragma: nocover
+    def as_source(self) -> Any:  # noqa: ANN401
         """Return this node as primitive data types with Source objects for strings."""
         raise NotImplementedError
 
@@ -51,7 +51,7 @@ class SymlNode:
             return self.children[-1].get_tip()
         return self
 
-    def can_add_node(self, node: SymlNode) -> bool:  # noqa: ARG002  # pragma: nocover
+    def can_add_node(self, node: SymlNode) -> bool:  # noqa: ARG002
         """Check if this node can add a child node."""
         return False
 
@@ -67,12 +67,9 @@ class SymlNode:
             return self.add_node(node)
         if self.parent is not None:
             return self.parent.incorporate_node(node)
-        else:  # pragma: nocover  # noqa: RET505
-            # Shouldn't ever get here:
-            self.fail_to_incorporate_node(node)
-            return self  # pragma: nocover
+        return self.fail_to_incorporate_node(node)
 
-    def fail_to_incorporate_node(self, node: SymlNode) -> None:
+    def fail_to_incorporate_node(self, node: SymlNode) -> NoReturn:
         """Report a failure to incorporate a node."""
         pnode = node.pnode
         pos = Pos.from_str_index(pnode.full_text, pnode.start)
@@ -129,9 +126,7 @@ class ContainerNode(SymlNode):
             return super().incorporate_node(node)
         if self.parent is not None:
             return self.parent.incorporate_node(node)
-        else:  # pragma: nocover  # noqa: RET505
-            self.fail_to_incorporate_node(node)
-            return self
+        return self.fail_to_incorporate_node(node)
 
     @staticmethod
     def _intermediary_for(node: SymlNode) -> ParentNode | None:
@@ -332,10 +327,6 @@ class KeyLeafNode(SymlNode):
     # `visit_quoted_value` does rather than through `Source.from_node`'s
     # `line`/`position_map` branch (Contract 08, FR-013, R-02, US8).
     position_map: PositionMap | None = field(default=None, repr=False)
-
-    def can_add_node(self, node: SymlNode) -> bool:  # noqa: ARG002  # pragma: nocover
-        """Check if this node can add a child. It can't."""
-        return False
 
     @property
     def key(self) -> Source:

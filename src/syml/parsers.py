@@ -115,10 +115,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         nodes = self.reduce_children(children)
         if not nodes:
             return None
-        if len(nodes) == 1:
-            return nodes[0]
-        else:  # pragma: nocover  # noqa: RET505
-            return nodes
+        return nodes[0] if len(nodes) == 1 else nodes
 
     def visit_text(self, node: Node, children: SymlNodes) -> nodes.TextLeafNode:  # noqa: ARG002
         """Return a text leaf node, in original-text coordinates when normalization ran (Contract 08).
@@ -231,7 +228,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Visit a list item carrying an inline value."""
         _, _, value = children
         li = nodes.ListItem(pnode=node, filename=self.filename)
-        if value is not None and not _is_zero_length_text(value):  # pragma: nobranch
+        if not _is_zero_length_text(value):
             _mark_inline(value)
             li.incorporate_node(value)
         return li
