@@ -268,6 +268,21 @@ class TestSimpleParserFunction:
             'false',
         ]
 
+    def test_it_should_run_preprocessing_and_raise_tab_indentation_error(self) -> None:
+        """`parsers.parse` must run §9.0's `preprocess` before lexing (Contract 02, R-09).
+
+        Contract 02's entry-point pseudocode opens with
+        ``doc = preprocess(text, filename)`` ahead of the per-line lexing
+        loop, so every document passes through the tab-indentation scan
+        (§9.0.3, D14) on the way in. Today `parsers.parse` hands the raw
+        text straight to the whole-document grammar and never calls
+        `preprocess`, so a tab in a line's leading whitespace is silently
+        accepted instead of raising `TabIndentationError`.
+        """
+        text = 'a:\n\tx: 1\n'
+        with pytest.raises(exceptions.TabIndentationError):
+            parsers.parse(text)
+
     def test_it_should_parse_whats_in_the_readme_text_only(self) -> None:
         text = textwrap.dedent(
             """
