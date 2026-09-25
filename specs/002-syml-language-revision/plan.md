@@ -283,7 +283,20 @@ independent.
    or comments. Also `serializer.key_is_representable` as the key regex
    (it calls the removed `key_has_uppercase`), the grammar-driven corpus rows,
    and the README lead example's key with its two `test_parsers.py` tests
-   (Existing tests that invert, below).
+   (Existing tests that invert, below). The rule names follow Contract 01:
+   master's `section` rule becomes `key_colon` and `section_line` becomes
+   `section`, with their visitors (data-model § Parser).
+   **The grammar leaf tests only what the grammar alone produces (red team
+   outer iteration 9).** The tree builder is still 1.0's at this commit: D13
+   rejects a structure-shaped continuation, blank lines are dropped, and a
+   root scalar loses its indentation. Contract 01's behaviour row
+   `-\tk: v\n        j: w` → `[{"k": "v\nj: w"}]` needs D21 and raises
+   `OutOfContextNodeError` at this commit (verified on `master` with the
+   space-separated `- k: v\n        j: w`), so it is pinned in the text-context
+   leaf by Contract 02's matching `silent` row, not here; Contract 01 marks it.
+   The spec leaf keys §6.2's matching `PENDING` entry to FR-003, so the grammar
+   leaf leaves it in place. `/sp:05-tasks` gives the grammar leaf no test whose
+   expected value depends on a Contract 02 rule.
 3. **Tree-builder leaves** (Contract 02), in order: strict depth + `bar.syml`
    (independent); root scalar; text context; paragraph breaks (needs text
    context).

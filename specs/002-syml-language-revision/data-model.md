@@ -106,7 +106,8 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | `visit_line` | Returns `None` for a blank content span; otherwise returns the lexed node with `content_pnode`/`line_pnode` set. |
 | `visit_document` | Replaces `visit_lines`: flattens the visited children and incorporates each line into the tip, starting at a new `Root`. |
 | `visit_key_value`, `visit_section` | Lose the D19 text fallthrough. |
-| `visit_key_colon` | Renamed from `visit_section` (rule rename). |
+| `visit_key_colon` | Renamed from `visit_section`: the rule `section = key ":"` becomes `key_colon = key ":"` (Contract 01). |
+| `visit_section` | Renamed from `visit_section_line`: the rule `section_line = section &eol` becomes `section = key_colon &eol`. No `visit_section_line` or `section_line` rule survives; a leftover visitor for a rule the grammar no longer has is dead code that fails the coverage gate, and the §4.1 identity test compares rule names (red team outer iteration 9). |
 | `visit_blank`, `visit_comment`, `visit_indent`, `key_has_uppercase`, `_is_text_line`, `_text_leaf` | Removed. |
 
 ---

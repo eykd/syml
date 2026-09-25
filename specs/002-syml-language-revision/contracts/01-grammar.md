@@ -88,7 +88,7 @@ Separator whitespace (FR-008):
 | `- a` + newline + `-\tx` | `["a", "x"]` |
 | `k: a\tb` | `{"k": "a\tb"}` (a tab after the value's first character is unchanged) |
 | `-\tk: v` + newline + `  j: w` | `[{"k": "v", "j": "w"}]`: a column is a code-point count, so the tab is one column and `k` sits at column 2 (§6.2) |
-| `-\tk: v` + newline + `        j: w` | `[{"k": "v\nj: w"}]`: eight spaces is past `k`'s column 2, so the line joins the inline value (D21), even where an editor shows it aligned under `k` |
+| `-\tk: v` + newline + `        j: w` | `[{"k": "v\nj: w"}]`: eight spaces is past `k`'s column 2, so the line joins the inline value (D21), even where an editor shows it aligned under `k`. **Not a grammar-leaf test** (red team outer iteration 9): the row needs Contract 02's text context; at the grammar-leaf commit the 1.0 tree builder still rejects a structure-shaped continuation and the input raises `OutOfContextNodeError` (verified on `master` with `- k: v\n        j: w`). It is pinned by Contract 02's matching `silent` row in the text-context leaf and listed here only for the column arithmetic |
 
 Indentation (FR-009):
 
@@ -114,7 +114,14 @@ Document shape: `k: v` and `k: v\n` both → `{"k": "v"}`; `""`, `"\n"`,
    both grammars' `default_rule.name == 'document'`, and it runs under the
    repository's `error::SyntaxWarning` policy, so a non-raw escape in either
    grammar fails it.
-2. One parametrized test per table above.
+2. One parametrized test per table above, except the one row marked **Not a
+   grammar-leaf test** (it lands with the text-context leaf, Contract 02). A
+   row in this contract may only expect what the grammar swap alone produces
+   under the 1.0 tree builder (D13 still in force, blank lines still dropped,
+   no root-scalar indentation), because obligation 4 requires the suite green
+   at the grammar-leaf commit. The spec leaf's `PENDING` entry for §6.2's
+   matching Output example is keyed to FR-003, not FR-008, so the grammar leaf
+   does not delete it (red team outer iteration 9).
 3. `visit_line` returns `None` for `""`, `"   "`, `"\t"`, `" \t "` content
    spans and not for `"\xa0"`.
 4. The grammar leaf is atomic (R-02): top rule, `indent`, `ws`, `key`, `eol`,
