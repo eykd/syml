@@ -216,9 +216,11 @@ def when_compared_with_exports(section_11_3_classes: list[str]) -> list[str]:
 
 @then('every class the spec says MUST exist is exported')
 def then_every_required_class_is_exported(section_11_3_classes: list[str]) -> None:
-    required = [name for name in section_11_3_classes if name != 'DocumentLimitError']
-    assert required
-    for name in required:
+    # `DocumentLimitError` is reserved in §11.3's closing prose, below the
+    # "MUST expose these exact class names" sentence, so it never appears in
+    # the fenced class block `section_11_3_classes` is drawn from.
+    assert section_11_3_classes
+    for name in section_11_3_classes:
         assert name in syml.__all__, f'{name} is documented in §11.3 but missing from syml.__all__'
 
 

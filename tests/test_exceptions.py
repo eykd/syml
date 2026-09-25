@@ -129,38 +129,48 @@ class TestWhichErrorForWhichConditionMapping:
 class TestSpecificationSection113MatchesSymlAll:
     """Contract 05 §Test obligation 2: §11.3's class list matches `syml.__all__` (`syml-xreq.7`).
 
-    `DocumentLimitError` is documented in §11.3's closing paragraph as a
-    *reserved* name for implementations that enforce §13.4 -- `syml`
-    enforces none, so it is deliberately absent from both the fenced class
-    block's required-export classes and `syml.__all__`.
+    `DocumentLimitError` is documented in §11.3's closing paragraph, below
+    the "MUST expose these exact class names" sentence, as a *reserved*
+    name for implementations that enforce §13.4 -- `syml` enforces none,
+    so it is deliberately absent from both the fenced class block's
+    required-export classes and `syml.__all__`.
     """
 
     _SPEC_PATH = pathlib.Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
     _CLASS_HEADER_RE = re.compile(r'^([A-Za-z]+)\(([A-Za-z]+)\)$', re.MULTILINE)
 
-    def _section_11_3_class_names(self) -> list[str]:
-        """Extract every `Name(Base)` header from the §11.3 fenced code block."""
+    def _section_11_3_text(self) -> str:
+        """Return the full text of §11.3, from its heading to the next `## ` heading."""
         text = self._SPEC_PATH.read_text(encoding='utf-8')
         start = text.index('### 11.3 Exceptions')
-        block_start = text.index('```\n', start) + len('```\n')
-        block_end = text.index('\n```', block_start)
-        block = text[block_start:block_end]
+        end = text.index('\n## ', start)
+        return text[start:end]
+
+    def _section_11_3_class_names(self) -> list[str]:
+        """Extract every `Name(Base)` header from the §11.3 fenced code block."""
+        section = self._section_11_3_text()
+        block_start = section.index('```\n') + len('```\n')
+        block_end = section.index('\n```', block_start)
+        block = section[block_start:block_end]
         return [name for name, _base in self._CLASS_HEADER_RE.findall(block)]
 
     def test_every_required_export_class_in_section_11_3_is_in_syml_all(self) -> None:
-        """Every §11.3 class except `DocumentLimitError` is exported in `syml.__all__`."""
+        """Every §11.3 fenced-block class is exported in `syml.__all__`."""
         class_names = self._section_11_3_class_names()
-        required = [name for name in class_names if name != 'DocumentLimitError']
 
-        assert required, 'expected to find at least one class header in §11.3'
-        for name in required:
+        assert class_names, 'expected to find at least one class header in §11.3'
+        for name in class_names:
             assert name in syml.__all__, f'{name} is documented in §11.3 but missing from syml.__all__'
 
     def test_document_limit_error_is_reserved_not_exported(self) -> None:
-        """`DocumentLimitError` is named in §11.3 but is not a required export."""
+        """`DocumentLimitError` is named in §11.3's closing paragraph but is not a required export."""
+        section = self._section_11_3_text()
         class_names = self._section_11_3_class_names()
 
-        assert 'DocumentLimitError' in class_names, '§11.3 should still document the reserved name'
+        assert (
+            'DocumentLimitError' not in class_names
+        ), '§11.3 should reserve the name in prose, not the required-export class block'
+        assert '`DocumentLimitError(ParseError)`' in section, '§11.3 should still document the reserved name'
         assert 'DocumentLimitError' not in syml.__all__
         assert not hasattr(syml, 'DocumentLimitError')
 

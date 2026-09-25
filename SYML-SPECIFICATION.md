@@ -1220,7 +1220,8 @@ nesting depth, line length, and document size) and raise
 `DocumentLimitError` (§11.3) when a document exceeds them, rather than
 crash or hang. For example, a document nested 501 levels deep — one past
 the recommended default of 500 — SHOULD raise `DocumentLimitError` rather
-than exhaust the host language's call stack.
+than exhaust the host language's call stack. `syml` enforces none of
+these limits and does not define `DocumentLimitError`.
 
 ---
 
@@ -1680,11 +1681,6 @@ TabIndentationError(ParseError)
 EncodingError(ParseError)
     `load()` could not decode the file's bytes as strict UTF-8 (§11.1).
 
-DocumentLimitError(ParseError)
-    A document exceeded a recommended implementation limit (§13.4).
-    Reserved: no shipped limit in §13.4 is enforced (§8.5), so this
-    exception is never raised by the reference implementation today.
-
 UnrepresentableValueError(ValueError)
     Raised by `dumps`, not `loads`, when asked to serialize a value with
     no SYML encoding in this version (§11.2.1, §11.2.2, §11.2.3).
@@ -1693,6 +1689,10 @@ UnrepresentableValueError(ValueError)
 A conforming implementation MUST expose these exact class names (or
 re-export them under these names), so that catching code is portable
 across implementations.
+
+Implementations that enforce §13.4's limits SHOULD raise
+`DocumentLimitError(ParseError)`; `syml` enforces none and does not
+define it.
 
 ---
 
@@ -1872,7 +1872,8 @@ These are default SHOULD limits for out-of-the-box safety;
 implementations MAY expose them as configurable and MAY choose different
 defaults suited to their deployment, but MUST document whatever limits
 they enforce (or that they enforce none) so callers can reason about
-worst-case behavior on untrusted input.
+worst-case behavior on untrusted input. `syml` enforces none of these
+limits and does not define `DocumentLimitError`.
 
 There are two independent recursion shapes to bound, not one. Block
 nesting (`key:\n  key:\n    ...`) recurses once per level of
