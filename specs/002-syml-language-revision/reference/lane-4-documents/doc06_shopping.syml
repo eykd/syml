@@ -1,0 +1,15 @@
+groceries:
+  - milk
+  - eggs: 12
+  - Eggs: 12
+  - bread
+    - rye
+    - sourdough
+  - produce:
+    - apples
+    - pears
+  -
+  - 
+  - cheese
+  - - brie
+    - cheddar

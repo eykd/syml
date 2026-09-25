@@ -157,3 +157,56 @@ spread through the codebase.
   BOM-stripping and CRLF/CR-to-LF normalization (the text `SymlParser` actually
   parses), and `position_map` is the `PositionMap` that translates positions
   in `normalized` back to `original`.
+
+## Terms introduced by the language revision (spec 002)
+
+Added by `/sp:02-specify` for `specs/002-syml-language-revision/spec.md`. The
+entries above that describe comments (`comment` in the line-node rule, the
+"comment lines are skipped" clauses) and quoted values predate D18 and this
+revision; they are corrected when the corresponding code lands, not here.
+Under the principal's ruling of 2026-09-24 the "comment lines are skipped"
+clauses stay true for column-0 comments only (see **Comment** below).
+
+- **Comment** (revised 2026-09-24) — a line whose first character, at column
+  0 with no indentation, is `#`, or whose first two characters are `//`
+  (FR-007, D23 as revised). It is skipped as if it were not in the document,
+  anywhere: between entries, before a block's first line, and between two
+  lines of an open text value, where it is neither a line of the value nor a
+  paragraph break. An indented `#`/`//` line, and a `#` after a key or
+  marker (`server: # prod`), is text. The grammar lexes it as the first
+  alternative of `line = comment / (indent (structure / data))`, so it can
+  only match at column 0; the line visitor drops it, and no node represents
+  it. Not "no comments": that was the pre-ruling reading of `syml-xreq.21`.
+
+- **Text context** — the state a block or root position enters when its first
+  own line is text (FR-003). While open, every line at or past the value's
+  baseline is that value's text whatever it lexes as; a line below the
+  baseline closes it and is re-offered. The one piece of tree-builder state
+  the revision adds back; "open text value" is the same thing.
+
+- **Paragraph break** — an empty line inside a multi-line value, written as a
+  physical blank line between two continuation lines and kept one for one
+  (FR-004). A column-0 comment line between them is not counted. Blank lines before the first or after the last continuation line
+  stay inert, so no value begins or ends with a paragraph break.
+
+- **Key pattern** — `[a-z][a-z0-9_-]*` (FR-001): the whole rule for what may
+  stand before a colon and be a key. Replaces D15's White_Space exclusion and
+  D19's no-uppercase rule. "Would-be key" names a line that has a colon in
+  key position but fails the pattern; it is text.
+
+- **Separator whitespace** — the run of spaces or tabs between `key:` or `-`
+  and an inline value (FR-008). A marker followed only by separator
+  whitespace is a bare marker. Supersedes the "spaces only" reading in
+  `ws`; a tab in *indentation* is still `TabIndentationError`.
+
+- **Indentation** (revised) — a run of U+0020 only (FR-009). Every other
+  White_Space code point and every control character at the start of a line
+  is content, so an NBSP-only line is a text line, not a blank line.
+
+- **Error hint** — the trailing sentence of an `OutOfContextNodeError`
+  message that names the likely cause (FR-012): a would-be key on the failing
+  line or the line above, or a list item at its key's column. Lives in the
+  message string only; there is no reason code.
+
+- **Coming from YAML** — the README section (FR-015) listing, in trip-over
+  order, the YAML habits SYML does not share.

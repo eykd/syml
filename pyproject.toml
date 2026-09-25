@@ -42,6 +42,7 @@ test = [
     "pydantic>=2.8.2,<3",
     "types-parsimonious>=0.10.0.20240331,<0.11",
     "pytest-bdd>=8.1.0",
+    "hypothesis>=6.168.1",
 ]
 
 [build-system]
@@ -62,6 +63,10 @@ only-include = ["src/syml", "README.md", "LICENSE", "CHANGELOG.md", "SYML-SPECIF
 line-length = 120
 src = ["src", "."]
 target-version = "py312"
+# Preserved planning-spike reference material, excluded from pre-commit's ruff
+# hook (.pre-commit-config.yaml) but not from `just lint`'s bare `ruff check`;
+# align the two so `just check` matches what every prior commit's hooks passed.
+extend-exclude = ["specs/002-syml-language-revision/reference/"]
 
 [tool.ruff.lint]
 preview = true
@@ -206,6 +211,7 @@ markers = [
     #         # ...
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "acceptance: pytest-bdd acceptance tests bound to specs/acceptance-specs/*.feature (run with `just acceptance`)",
+    "release: acceptance scenarios that only pass after the 1.0.0 tag is pushed (run with `just release-check`)",
 ]
 
 

@@ -21,7 +21,7 @@ look-in-dark:
 fumble-around:
 
   - when:
-    - Bar >= 2
+      - Bar >= 2
 
   - [Fumble around for a light switch.]You fumble around in the dark, but to no avail.
 
@@ -33,4 +33,4 @@ leave:
   - [The bright opulence of the Foyer beckons you.]You leave the darkened Bar.
 
   - effect:
-    - Location = "Foyer"
+      - Location = "Foyer"

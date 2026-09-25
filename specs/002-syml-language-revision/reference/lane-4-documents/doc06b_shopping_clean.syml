@@ -1,0 +1,12 @@
+groceries:
+  - milk
+  - eggs: 12
+  - Eggs: 12
+  - produce:
+    - apples
+    - pears
+  -
+  - 
+  - cheese
+  - - brie
+    - cheddar

@@ -1,0 +1,16 @@
+name: "quoted"
+nick: 'single'
+tags: [a, b]
+opts: {a: 1}
+empty: null
+flag: true
+count: 123
+nothing: ~
+anchor: &base value
+ref: *base
+comment: value # trailing
+people:
+  - name: x
+    age: 3
+  - name: y
+    age: 4

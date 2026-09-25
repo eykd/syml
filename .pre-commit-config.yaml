@@ -1,3 +1,5 @@
+# Break-test evidence documents must stay byte-exact (trailing spaces, CRLF, tabs).
+exclude: ^specs/002-syml-language-revision/reference/
 default_language_version:
     python: python3.12
 repos:
@@ -11,7 +13,7 @@ repos:
     -   id: check-merge-conflict
     -   id: mixed-line-ending
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.3
+    rev: v0.6.9
     hooks:
     -   id: ruff
         args: [ --fix ]

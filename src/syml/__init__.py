@@ -1,6 +1,6 @@
 """SYML (Simple YAML-like Markup Language) is a simple markup language with similar structure to YAML, but without all the gewgaws and folderol."""
 
-from pathlib import Path
+import os
 from typing import IO
 
 from . import parsers
@@ -37,6 +37,9 @@ __all__ = [
 
 def loads(document: str, filename: StrPath | None = None) -> SymlData:
     """Load a SYML document from a string."""
+    if not isinstance(document, str):
+        message = f'loads() expects str, not {type(document).__name__}'
+        raise TypeError(message)
     return parsers.parse(document, filename=filename).as_data()
 
 
@@ -46,16 +49,30 @@ def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> Syml
         filename = _resolve_filename(file_obj)
     try:
         raw = file_obj.read()
-        text = raw.decode('utf-8') if isinstance(raw, bytes) else raw
     except UnicodeDecodeError as err:
         raise encoding_error(err, filename) from err
+    except ValueError as err:
+        message = f'load() could not read file_obj: {err}'
+        raise TypeError(message) from err
+    if isinstance(raw, bytes):
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError as err:
+            raise encoding_error(err, filename) from err
+    elif isinstance(raw, str):
+        text = raw
+    else:
+        message = f'load() expects file_obj.read() to return str or bytes, not {type(raw).__name__}'
+        raise TypeError(message)
     return loads(text, filename=filename)
 
 
 def _resolve_filename(file_obj: IO[str] | IO[bytes]) -> StrPath | None:
-    """Return `file_obj.name` when it is a usable path-like value, else `None`."""
+    """Return `file_obj.name`, `os.fsdecode`d, when it is a usable path-like value, else `None`."""
     name = getattr(file_obj, 'name', None)
-    return name if isinstance(name, str | Path) else None
+    if isinstance(name, str | os.PathLike):
+        return os.fsdecode(name)
+    return None
 
 
 def parse(document: str, filename: StrPath | None = None) -> Root:

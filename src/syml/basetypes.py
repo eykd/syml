@@ -24,6 +24,15 @@ StrPath = str | Path
 type SymlData = str | list[SymlData] | dict[str, SymlData]
 SymlInput = str | list[Any] | dict[str, Any]
 
+#: The single source of truth for the grammar's `key` rule (§4.5, D20):
+#: exactly `[a-z][a-z0-9_-]*` — ASCII, lowercase, leading letter. Interpolated
+#: directly into the Parsimonious grammar in `parsers.py`, and reused as a
+#: compiled `re.Pattern` by `exceptions.would_be_key` and
+#: `serializer.key_is_representable` so all three sites share one definition
+#: (sp:code-quality-review, syml-s9p9.11).
+KEY_PATTERN_SOURCE = r'[a-z][a-z0-9_-]*'
+KEY_PATTERN = re.compile(KEY_PATTERN_SOURCE)
+
 # Scoped, per-parse cache for `_line_start_offsets` (see below): `None` outside
 # a `line_offset_cache_scope()` block, and a fresh `dict` for the duration of
 # one `parsers.parse()` call otherwise. Keyed by `id(text)` rather than `text`
@@ -116,6 +125,11 @@ class Pos:
         starts, ends_without_newline = _line_start_offsets(text)
         if not starts:
             return cls(len(text), 1, 0)
+        if index == len(text) and not ends_without_newline:
+            # Contract 05 §Behaviour: end-of-text right after a trailing `\n`
+            # reports the *next* line, column 0 -- not the last line that
+            # ended, which every other index still resolves to (syml-xreq.11).
+            return cls(index, len(starts) + 1, 0)
         linenum = bisect_right(starts, index) - 1
         line_start = starts[linenum]
         is_last_line = linenum == len(starts) - 1
@@ -132,12 +146,28 @@ def get_line_text(text: str, line_number: int) -> str:
     Splits on ``\n`` only (SYML §13.3): other Unicode line-break characters
     (e.g. U+2028) do not terminate a line, matching `Pos.from_str_index`.
     Returns ``''`` for an out-of-range `line_number`.
+
+    Looks up the line via `_line_start_offsets` (cached for the duration of
+    an enclosing `line_offset_cache_scope()`) instead of `text.split('\n')`,
+    because callers such as `nodes._line_above` invoke this once per
+    skipped blank/comment line while walking back to a would-be-key
+    candidate: an uncached O(n) split per call made that walk O(k*n) over a
+    k-line run of blanks or comments -- algorithmic DoS from a document of
+    attacker-controlled blank lines (sp:security-review remediation,
+    syml-s9p9.8).
     """
-    lines = text.split('\n')
+    starts, ends_without_newline = _line_start_offsets(text)
     index = line_number - 1
-    if 0 <= index < len(lines):
-        return lines[index]
-    return ''
+    if not (0 <= index < len(starts)):
+        return ''
+    start = starts[index]
+    if index + 1 < len(starts):
+        end = starts[index + 1] - 1
+    elif ends_without_newline:
+        end = len(text)
+    else:
+        end = len(text) - 1
+    return text[start:end]
 
 
 @dataclass(slots=True, repr=False, frozen=True)

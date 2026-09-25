@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import re
 from typing import TYPE_CHECKING
 
+from .basetypes import KEY_PATTERN
+
 if TYPE_CHECKING:  # pragma: nocover
+    from collections.abc import Sequence
+
     from .basetypes import Pos, StrPath
 
 
@@ -13,6 +19,135 @@ def error_message(description: str, filename: StrPath | None) -> str:
     if filename is None:
         return description
     return f'{filename}: {description}'
+
+
+#: A would-be key candidate: leading indentation, then a non-empty run of
+#: non-whitespace, non-colon characters, then ':' followed by whitespace or
+#: end of line (Contract 03 §Hints (a)).
+_WOULD_BE_KEY_RE = re.compile(r'^[ \t]*([^\s:]+):(?=[ \t]|$)')
+
+
+def would_be_key(line_text: str) -> str | None:
+    """Return the `RUN` would-be-key candidate in `line_text`, or `None` if there isn't one.
+
+    Matches `_WOULD_BE_KEY_RE` against `line_text` and returns the captured
+    run only when it does NOT already fully match the grammar's key pattern
+    (Contract 03 §Hints (a)) — a line that already lexes as a valid key never
+    gets a "not a key" hint about itself.
+    """
+    match = _WOULD_BE_KEY_RE.match(line_text)
+    if match is None:
+        return None
+    run = match.group(1)
+    if KEY_PATTERN.fullmatch(run) is not None:
+        return None
+    return run
+
+
+def _columns_phrase(columns: Sequence[int]) -> str:
+    """Render the sorted, distinct `columns` as 'column 0', 'columns 0 and 2', or 'columns 0, 2 and 4'."""
+    cols = sorted(set(columns))
+    if len(cols) == 1:
+        return f'column {cols[0]}'
+    *head, last = (str(c) for c in cols)
+    return f"columns {', '.join(head)} and {last}"
+
+
+def out_of_context_description(
+    *,
+    line_number: int,
+    column: int,
+    kind: str,
+    open_columns: Sequence[int],
+    other_kind: str | None,
+    continues_at: int | None,
+    list_under_key: bool,
+    would_be_key_name: str | None,
+) -> str:
+    """Build `OutOfContextNodeError`'s description (Contract 03 §Messages).
+
+    `other_kind` is `None` when `column` is not one of `open_columns` (form
+    1: "does not fit any open block"); otherwise it is `'keys'` or `'list
+    items'` (form 2: "is a {kind}, but the open block ... holds
+    {other_kind}"). `continues_at`, when given, appends the text-value
+    clause. `list_under_key` selects hint (b); otherwise `would_be_key_name`
+    (already gated by the caller), when given, selects hint (a) — escaped
+    through `_printable` so an unprintable would-be key does not leak raw
+    control characters into `.message` (§Surface).
+    """
+    cols_phrase = _columns_phrase(open_columns)
+    if other_kind is None:
+        sentence = (
+            f'Line {line_number}, at column {column}, does not fit any open block; open blocks are at {cols_phrase}.'
+        )
+    else:
+        sentence = (
+            f'Line {line_number}, at column {column}, is a {kind}, but the open block at column {column} '
+            f'holds {other_kind}; open blocks are at {cols_phrase}.'
+        )
+    if continues_at is not None:
+        sentence = f'{sentence[:-1]}; the open value continues at column {continues_at}.'
+    hint: str | None = None
+    if list_under_key:
+        hint = "Hint: a list under a key must be indented past the key's column."
+    elif would_be_key_name is not None:
+        escaped = _printable(_truncated_window(would_be_key_name, center=0))
+        hint = f"Hint: '{escaped}' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter."
+    if hint is not None:
+        sentence = f'{sentence} {hint}'
+    return sentence
+
+
+def duplicate_key_description(key: str) -> str:
+    """Build `DuplicateKeyError`'s description: `Duplicate key '{key}'`, `key` windowed.
+
+    `key` is rendered through `_truncated_window(key, center=0)` before being
+    quoted, mirroring hint (a)'s treatment of a would-be key (Contract 03
+    §Messages/§Bounded rendering, syml-s9p9.14): the grammar's key pattern
+    (`[a-z][a-z0-9_-]*`) has no length bound, so an attacker-repeated 1 MB
+    key would otherwise make `.message`/`str(e)` scale with the key's
+    length. No `_printable` escaping is needed here — the key pattern admits
+    no non-printable code point. The caller still stores the full,
+    untruncated `key` on `DuplicateKeyError.key`/`.args`.
+    """
+    return f"Duplicate key '{_truncated_window(key, center=0)}'"
+
+
+def _printable(text: str) -> str:
+    """Replace every non-`str.isprintable()` character in `text` with its Python escape.
+
+    Used to render `line_text` and `filename` in `ParseError.__str__` without
+    echoing raw control characters, ANSI escapes, or lone surrogates onto the
+    caller's terminal/stream (Contract 03 §Security).
+    """
+    return ''.join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in text)
+
+
+#: Window width (in code points of the *unescaped* input) rendered around a
+#: point of interest by `_truncated_window` (Contract 03 §Surface/§Hints (a)).
+_TRUNCATION_WINDOW = 80
+
+
+def _truncated_window(text: str, *, center: int, width: int = _TRUNCATION_WINDOW) -> str:
+    r"""Return a bounded slice of `text` around code-point index `center`, elided on any cut side.
+
+    Bounds `_printable`'s escape expansion (each character can grow to
+    several characters, e.g. `'\\x00'` is 4 characters) on attacker-controlled
+    input by capping the window's *pre-escape* length, so the rendered output
+    stays proportional to `width` regardless of `len(text)` — a single 1 MB
+    hostile line no longer yields a multi-megabyte `.message`/`str(e)`
+    (Contract 03 §Hints (a) / §Surface, syml-s9p9.9). `center` is clamped
+    into range; an ellipsis marker (`'…'`) replaces each side that gets cut.
+    """
+    if len(text) <= width:
+        return text
+    half = width // 2
+    start = max(0, min(center, len(text)) - half)
+    end = min(len(text), start + width)
+    start = max(0, end - width)
+    prefix = '…' if start > 0 else ''
+    suffix = '…' if end < len(text) else ''
+    return f'{prefix}{text[start:end]}{suffix}'
 
 
 class ParseError(ValueError):
@@ -24,12 +159,48 @@ class ParseError(ValueError):
     position: Pos
     line_text: str
 
-    def __init__(self, message: str, position: Pos, line_text: str, *extra: object) -> None:
-        """Store `message`, `position`, and `line_text`, preserving `.args`."""
-        super().__init__(message, position, line_text, *extra)
-        self.message = message
+    def __init__(
+        self,
+        message: str,
+        position: Pos,
+        line_text: str,
+        *extra: object,
+        filename: StrPath | None = None,
+    ) -> None:
+        """Store `message`, `position`, and `line_text`, preserving `.args`.
+
+        `message` is the bare description (no filename prefix). `filename`,
+        when given, is normalized with `os.fspath` (`''` normalizes to
+        `None`) and used both to build the prefixed `.message` and to render
+        `__str__`'s `<filename>:` segment.
+        """
+        normalized_filename = os.fspath(filename) if filename else None
+        full_message = error_message(message, normalized_filename)
+        super().__init__(full_message, position, line_text, *extra)
+        self.message = full_message
         self.position = position
         self.line_text = line_text
+        self._description = message
+        self._filename = normalized_filename
+
+    def __str__(self) -> str:
+        r"""Render `<filename>:<line>:<column>: <description>\n<line_text>` (Contract 03 §Surface).
+
+        `<filename>:` is omitted when no filename is known. `<line>` is
+        1-indexed, `<column>` 0-indexed, both taken from `self.position`
+        (§10.2). The filename and line text are rendered through
+        `_printable` so no non-printable character (including a stray
+        newline in a caller-supplied filename) escapes into the two-line
+        shape this format promises. The rendered line text is first
+        windowed through `_truncated_window`, centered on `self.position.column`,
+        so a hostile multi-megabyte `line_text` (unbounded, per `.line_text`'s
+        own attribute contract) still yields a bounded `str(e)`
+        (Contract 03 §Surface, syml-s9p9.9); `self.line_text` itself is
+        untouched.
+        """
+        prefix = f'{_printable(self._filename)}:' if self._filename else ''
+        windowed_line_text = _truncated_window(self.line_text, center=self.position.column)
+        return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(windowed_line_text)}'
 
 
 class OutOfContextNodeError(ParseError):
@@ -54,9 +225,11 @@ class DuplicateKeyError(ParseError):
         line_text: str,
         key: str,
         first_position: Pos,
+        *,
+        filename: StrPath | None = None,
     ) -> None:
         """Store the repeated key and the position of its first occurrence."""
-        super().__init__(message, position, line_text, key, first_position)
+        super().__init__(message, position, line_text, key, first_position, filename=filename)
         self.key = key
         self.first_position = first_position
 

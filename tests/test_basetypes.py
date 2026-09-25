@@ -10,6 +10,7 @@ import pytest
 
 import syml
 from syml import basetypes, parsers
+from syml.exceptions import OutOfContextNodeError
 from syml.nodes import KeyValue
 
 
@@ -191,9 +192,10 @@ class TestPosFromStrIndex:
         text = 'a\nb'
         assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 1)
 
-    def test_it_should_report_column_zero_past_a_trailing_newline(self) -> None:
+    def test_it_should_report_the_next_line_column_zero_past_a_trailing_newline(self) -> None:
+        r"""Contract 05 §Behaviour: end-of-text after a trailing `\n` is the *next* line (`syml-xreq.11`)."""
         text = 'a\nb\n'
-        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 0)
+        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 3, 0)
 
 
 def _reference_from_str_index(text: str, index: int) -> basetypes.Pos:
@@ -202,12 +204,17 @@ def _reference_from_str_index(text: str, index: int) -> basetypes.Pos:
     Pins the bisect-based rewrite in `basetypes.Pos.from_str_index` to the exact
     behavior (including its bad-index and unterminated-line quirks) that shipped
     before this module cached `_line_start_offsets` to fix the O(n^2) parse-time
-    regression.
+    regression, plus the end-of-text-after-trailing-`\n` fix (Contract 05
+    §Behaviour, `syml-xreq.11`): `index == len(text)` right after a trailing
+    `\n` reports the *next* line, column 0, rather than staying on the last
+    line that ended.
     """
     parts = text.split('\n')
     lines = [part + '\n' for part in parts[:-1]]
     if parts[-1]:
         lines.append(parts[-1])
+    if text and text.endswith('\n') and index == len(text):
+        return basetypes.Pos(index, len(lines) + 1, 0)
     curr_pos = 0
     linenum = 0
     last = len(lines) - 1
@@ -419,3 +426,62 @@ class TestLineStartOffsetsCaching:
             assert after - before < 100_000
         finally:
             tracemalloc.stop()
+
+
+class TestLineAboveScanScaling:
+    r"""Regression guard for the O(k*n) `_line_above` bug (sp:security-review, syml-s9p9.8).
+
+    `nodes._line_above` walks back over a run of `k` blank or column-0
+    comment lines, calling `basetypes.get_line_text` once per skipped line.
+    Before this fix, `get_line_text` did `text.split('\\n')` -- an O(n) scan
+    of the *whole* document -- on every call, making the walk O(k*n)
+    overall: a document of mostly blank lines (attacker-controlled) made
+    `loads` hang. `get_line_text` now looks the line up via the cached
+    `_line_start_offsets` table instead, so a full split happens at most
+    once per document regardless of how many lines `_line_above` skips.
+    """
+
+    def _misses_for(self, text: str) -> int:
+        real_compute = basetypes._compute_line_start_offsets  # noqa: SLF001
+        misses = 0
+
+        def counting_compute(candidate: str) -> tuple[tuple[int, ...], bool]:
+            nonlocal misses
+            misses += 1
+            return real_compute(candidate)
+
+        with (
+            mock.patch.object(basetypes, '_compute_line_start_offsets', counting_compute),
+            pytest.raises(OutOfContextNodeError),
+        ):
+            syml.loads(text)
+        return misses
+
+    def test_it_should_compute_line_start_offsets_at_most_once_over_a_long_blank_run(self) -> None:
+        text = 'k:\n  text\n' + '\n' * 40_000 + '- x\n'
+
+        assert self._misses_for(text) <= 1
+
+    def test_it_should_compute_line_start_offsets_at_most_once_over_a_long_comment_run(self) -> None:
+        text = 'k:\n  text\n' + '#c\n' * 40_000 + '- x\n'
+
+        assert self._misses_for(text) <= 1
+
+    def test_doubling_the_blank_run_should_not_roughly_quadruple_the_time(self) -> None:
+        """A generous bound (< 4x for 2N) that catches quadratic blowup without pinning wall-clock exactly."""
+        import time
+
+        def timed(n: int) -> float:
+            text = 'k:\n  text\n' + '\n' * n + '- x\n'
+            start = time.perf_counter()
+            with pytest.raises(OutOfContextNodeError):
+                syml.loads(text)
+            return time.perf_counter() - start
+
+        n = 20_000
+        # Warm up once (import/JIT-ish costs) so the timed runs reflect steady-state cost.
+        timed(n)
+        baseline = timed(n)
+        doubled = timed(n * 2)
+
+        assert doubled < baseline * 4

@@ -47,6 +47,11 @@ CORPUS: dict[str, SymlInput] = {
     'literal_single_quotes': {'k': "''"},
     'literal_double_quotes': {'k': '""'},
     'colon_escape_list_item_as_mapping_value': {'k': 'a\\: b'},
+    # A backslash-escaped colon can no longer lex as a `key_colon` (the key
+    # rule is ASCII `[a-z][a-z0-9_-]*`, which never matches through a `\`),
+    # so this is representable as a list item too, not position-dependent
+    # like the true structure-shaped strings below (xreq.16).
+    'colon_escape_list_item': ['a\\: b'],
     'literal_backslash_u003a_as_mapping_value': {'k': 'a: \\u003a'},
     'mixed_quote_backslash_as_mapping_value': {'k': 'a: \'b" \\c'},
     'stranded_double_quote_as_mapping_value': {'k': 'k: "a" x'},
@@ -57,25 +62,32 @@ CORPUS: dict[str, SymlInput] = {
     'nested_depth_4': {'a': {'b': {'c': {'d': 'e'}}}},
     'list_of_mappings': [{'a': '1'}, {'b': '2'}],
     'insertion_order_mapping': {'z': '1', 'a': '2', 'm': '3'},
-    'lowercase_roman_numeral_key': {'\u217b': 'x'},
     'leading_feff_root_scalar': '\ufeffhello',
-    'leading_feff_first_key': {'\ufeffk': 'v'},
+    # US3-5 (Contract 04): structure-match on the isolated line runs no
+    # \u00a79.0 pre-processing, so a leading U+FEFF is that line's own content,
+    # not a document-level BOM to strip \u2014 `\ufeff- x` does not lex as a
+    # list item and both round-trip (syml-xreq.6).
+    'leading_feff_list_item': ['\ufeff- x'],
+    'leading_feff_block_line': {'k': 'a\n\ufeff- x'},
+    # D21/D23 (Contract 04): once a block value's baseline is fixed, a later
+    # line is that value's text whatever it lexes as, and a non-root line
+    # beginning with '#'/'//' is text too (only a root scalar's line can be
+    # read back as a comment). These four moved out of UNREPRESENTABLE.
+    'leading_space_root_scalar': '  hello',
+    'contains_blank_line': {'k': 'x\n\ny'},
+    'block_line_begins_with_comment_marker': {'k': 'a\n# c'},
+    'block_line_lexes_as_structure': {'k': 'a\n  - b'},
 }
 
 UNREPRESENTABLE: dict[str, object] = {
     'leading_trailing_space': {'k': ' x '},
     'leading_trailing_tab': {'k': '\tx\t'},
-    'leading_space_root_scalar': '  hello',
     'contains_cr': {'k': 'a\rb'},
     'contains_nul': {'k': 'a\x00b'},
-    'contains_blank_line': {'k': 'x\n\ny'},
     'block_line_begins_with_tab': {'k': 'a\n\tb'},
-    'block_line_begins_with_comment_marker': {'k': 'a\n# c'},
-    'block_line_lexes_as_structure': {'k': 'a\n  - b'},
     'looks_like_key_value': ['key: value'],
     'looks_like_list_item': ['- x'],
     'bare_dash_list_item': ['-'],
-    'colon_escape_list_item': ['a\\: b'],
     'literal_backslash_u003a': ['a: \\u003a'],
     'mixed_quote_backslash': ['a: \'b" \\c'],
     'stranded_double_quote': ['k: "a" x'],
@@ -91,4 +103,9 @@ UNREPRESENTABLE: dict[str, object] = {
     'control_x1c_key': {'a\x1cb': 'v'},
     'nbsp_key': {'a\xa0b': 'v'},
     'line_separator_key': {'a\u2028b': 'v'},
+    # The key rule is now ASCII `[a-z][a-z0-9_-]*` (xreq.16, Contract 01):
+    # neither a non-ASCII letter nor a leading U+FEFF ever matches it, so
+    # both are unrepresentable keys now, not merely non-uppercase-but-fine.
+    'lowercase_roman_numeral_key': {'\u217b': 'x'},
+    'leading_feff_first_key': {'\ufeffk': 'v'},
 }

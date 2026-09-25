@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 import syml
 from syml import nodes, parsers
+from syml.basetypes import Pos
 from syml.exceptions import DuplicateKeyError, OutOfContextNodeError
 from syml.parsers import SymlParser
 
@@ -18,6 +19,15 @@ if TYPE_CHECKING:
 def _pnode(text: str) -> PNode:
     """Build a real parsimonious node usable as a SymlNode's `pnode`."""
     return SymlParser.grammar['text'].parse(text)
+
+
+class _BareSymlNode(nodes.SymlNode):
+    """A `SymlNode` subclass with no overrides, for exercising the base class's own methods directly.
+
+    Replaces the deleted `IndentNode` (Contract 01 §Coverage at the
+    grammar-leaf commit): `SymlNode.as_data`/`as_source`/`can_add_node`/
+    `fail_to_incorporate_node` must stay reachable without a pragma.
+    """
 
 
 class TestTextLeafNodeAnchorLevelAndBaseline:
@@ -85,6 +95,108 @@ class TestTextLeafNodeContinuationBaseline:
         assert leaf.can_add_node(below_baseline) is False
 
 
+class TestAcceptsLevelTruthTable:
+    """Contract 02 rule 2 / §Test obligations item 2: `accepts_level`'s full truth table.
+
+    `False` for `None`. While `baseline` is unset (inline value awaiting its
+    first continuation), the threshold is `anchor_level` and the comparison
+    is strict (`>`): at or below is declined. Once `baseline` is fixed, the
+    comparison is inclusive (`>=`): at or above is accepted, below declined.
+    """
+
+    def test_none_level_is_never_accepted(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+
+        assert leaf.accepts_level(None) is False
+
+    def test_unset_baseline_accepts_only_strictly_above_anchor_level(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+        leaf.anchor_level = 2
+        leaf.baseline = None
+
+        assert leaf.accepts_level(3) is True
+        assert leaf.accepts_level(2) is False
+        assert leaf.accepts_level(1) is False
+
+    def test_set_baseline_accepts_at_or_above_it(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+        leaf.baseline = 4
+
+        assert leaf.accepts_level(5) is True
+        assert leaf.accepts_level(4) is True
+        assert leaf.accepts_level(3) is False
+
+
+class TestTextContextRereadsStructureShapedLines:
+    """Contract 02 rule 1 (R-01, FR-003): a text tip re-reads a later structure-shaped line as text.
+
+    `TextLeafNode.incorporate_node` swaps a candidate that lexed as
+    structure (a `KeyValue`, `ListItem`, etc. carrying a `content_pnode`)
+    for a fresh `TextLeafNode` built over that same `content_pnode`,
+    whenever the candidate's level clears this leaf's threshold — before
+    delegating to the normal accept/decline walk.
+    """
+
+    @staticmethod
+    def _key_value_line(text: str) -> nodes.KeyValue:
+        """Build a real `KeyValue` the way `visit_line` would, `content_pnode`/`level` included."""
+        parser = SymlParser()
+        line_pnode = SymlParser.grammar['line'].parse(text)
+        return cast('nodes.KeyValue', parser.visit(line_pnode))
+
+    def test_structure_shaped_candidate_at_or_past_threshold_is_rebuilt_as_text(self) -> None:
+        """A KeyValue-shaped candidate within threshold becomes a TextLeafNode over content_pnode."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 2
+        candidate = self._key_value_line('  key: value')
+
+        leaf.incorporate_node(candidate)
+
+        rebuilt = leaf.children[-1]
+        assert isinstance(rebuilt, nodes.TextLeafNode)
+        assert rebuilt is not candidate
+        assert rebuilt.pnode is candidate.content_pnode
+
+    @staticmethod
+    def _attach_to_root(leaf: nodes.TextLeafNode) -> None:
+        """Parent `leaf` under a realistic `Root -> Mapping -> KeyValue` spine.
+
+        So a rejected candidate's walk-up reaches `Root.fail_to_incorporate_node`
+        with the `List`/`Mapping`-first-child invariant it assumes (Contract 03
+        §Messages: "Root can only fail once its first child is a List or Mapping").
+        """
+        key_value = nodes.KeyValue(pnode=_pnode(''), key=nodes.KeyLeafNode(pnode=_pnode('k')), level=0)
+        key_value.children = [leaf]
+        leaf.parent = key_value
+        mapping = nodes.Mapping(pnode=_pnode(''), level=0)
+        mapping.children = [key_value]
+        key_value.parent = mapping
+        root = nodes.Root(pnode=_pnode(''))
+        root.children = [mapping]
+        mapping.parent = root
+
+    def test_structure_shaped_candidate_below_threshold_is_not_rebuilt(self) -> None:
+        """A candidate below threshold walks up unchanged, never swapped for text."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 4
+        self._attach_to_root(leaf)
+        candidate = self._key_value_line('  key: value')
+
+        with pytest.raises(OutOfContextNodeError):
+            leaf.incorporate_node(candidate)
+
+    def test_candidate_without_content_pnode_is_not_rebuilt(self) -> None:
+        """A candidate carrying no content_pnode (not a whole-line lex) is left alone."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 2
+        self._attach_to_root(leaf)
+        candidate = self._key_value_line('  key: value')
+        candidate.content_pnode = None
+
+        with pytest.raises(OutOfContextNodeError):
+            leaf.incorporate_node(candidate)
+
+
 class TestMappingDuplicateKeyDetection:
     """Contract 03 §Duplicate keys (FR-007, §8.3, §10.3).
 
@@ -132,23 +244,6 @@ class TestAutomaticContainerCreation:
         intermediary = root.children[0]
         assert isinstance(intermediary, nodes.Mapping)
         assert intermediary.source.filename == kv.source.filename
-
-
-class TestDirectTestsForPreviouslyPragmadBranches:
-    """Contract 03 §Coverage without pragmas (red-team pass 23).
-
-    `Comment.as_data`/`can_add_node` are pragma'd dead code: the per-line
-    visitor loop routes comments to `tip.comments` (Contract 02), so no
-    `loads` input ever calls them. The contract's disposition deletes both
-    overrides, leaving `Comment` inherit `TextLeafNode.as_data` (the joined
-    source text) instead of always returning `''`.
-    """
-
-    def test_comment_as_data_is_inherited_from_text_leaf_node(self) -> None:
-        """Comment.as_data is deleted (§Coverage without pragmas); it inherits TextLeafNode's."""
-        comment = nodes.Comment(pnode=_pnode('note'))
-
-        assert comment.as_data() == 'note'
 
 
 class TestChildlessRootYieldsEmptyString:
@@ -230,31 +325,118 @@ class TestSymlNodeBaseStubs:
     """Contract 08 §Coverage / Contract 03 §Coverage without pragmas (FR-012).
 
     `SymlNode`'s undecorated `as_data`/`as_source`/`can_add_node`/
-    `incorporate_node` failure path are reachable directly through a
-    subclass with no overrides (`IndentNode`) rather than pragma'd as dead.
+    `incorporate_node` failure path are reachable directly through a bare
+    subclass with no overrides, since the grammar leaf deletes `IndentNode`.
     """
 
     def test_as_data_raises_not_implemented(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
 
         with pytest.raises(NotImplementedError):
             node.as_data()
 
     def test_as_source_raises_not_implemented(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
 
         with pytest.raises(NotImplementedError):
             node.as_source()
 
     def test_can_add_node_rejects_by_default(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
-        other = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
+        other = _BareSymlNode(pnode=_pnode('  '))
 
         assert node.can_add_node(other) is False
 
     def test_incorporate_node_fails_when_parentless_and_rejected(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
-        other = nodes.IndentNode(pnode=_pnode('  '))
+        """The base-class `fail_to_incorporate_node` stub is a plain `NotImplementedError`.
 
-        with pytest.raises(OutOfContextNodeError):
+        Contract 03 §Placement: only `Root` builds the real
+        `OutOfContextNodeError` description — a non-`Root` node, such as
+        this bare, parentless `_BareSymlNode`, never reaches this path in a
+        real parse (every other node type is attached to a parent the
+        moment it exists), so the base stub stays a `NotImplementedError`
+        rather than duplicating `Root`'s message-building logic.
+        """
+        node = _BareSymlNode(pnode=_pnode('  '))
+        other = _BareSymlNode(pnode=_pnode('  '))
+
+        with pytest.raises(NotImplementedError):
             node.incorporate_node(other)
+
+
+class TestRootScalarKeepsIndentation:
+    """Contract 02 rule 5 (R-12, US1-10, US1-14, US1-25 half, `syml-xreq.2`).
+
+    An empty `Root` offered a plain, non-inline `TextLeafNode` rebuilds it
+    over `line_pnode` (the whole physical line, indentation included) rather
+    than the grammar's `text` pnode, and fixes its `baseline` at 0 — a root
+    scalar keeps its own leading indentation as literal characters instead
+    of having it stripped like a nested value's anchor column would.
+    """
+
+    def test_root_incorporate_node_rebuilds_an_indented_first_line_over_line_pnode(self) -> None:
+        """An empty Root offered an indented plain-text line keeps the leading spaces."""
+        root = nodes.Root(pnode=_pnode(''))
+        line_node = SymlParser.grammar['line'].parse('  hello')
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), line_pnode=line_node, level=2)
+
+        root.incorporate_node(value)
+
+        rebuilt = cast('nodes.TextLeafNode', root.children[0])
+        assert rebuilt.source.text == '  hello'
+        assert rebuilt.baseline == 0
+
+    def test_root_incorporate_node_leaves_an_inline_leaf_unrebuilt(self) -> None:
+        """A `TextLeafNode` already marked inline is not rebuilt (rule 5 only covers bare lines)."""
+        root = nodes.Root(pnode=_pnode(''))
+        line_node = SymlParser.grammar['line'].parse('  hello')
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), line_pnode=line_node, level=2, inline=True)
+
+        root.incorporate_node(value)
+
+        assert root.children[0] is value
+        assert root.children[0].source.text == 'hello'
+
+    def test_root_incorporate_node_leaves_a_leaf_without_line_pnode_unrebuilt(self) -> None:
+        """A `TextLeafNode` with no `line_pnode` (not a whole-line lex) is not rebuilt."""
+        root = nodes.Root(pnode=_pnode(''))
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), level=2)
+
+        root.incorporate_node(value)
+
+        assert root.children[0] is value
+        assert root.children[0].source.text == 'hello'
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('  hello', '  hello'),
+            ('  hello\nworld', '  hello\nworld'),
+            ('  hello\n    world', '  hello\n    world'),
+            ('# c\n  hello', '  hello'),
+        ],
+    )
+    def test_an_indented_root_scalar_keeps_its_indentation(self, text: str, expected: str) -> None:
+        assert syml.loads(text) == expected
+
+    def test_an_indented_root_scalars_source_starts_at_column_0(self) -> None:
+        assert parsers.parse('  hello').as_source().start == Pos(0, 1, 0)
+
+
+class TestBlankAndCommentOnlyDocumentSourceStart:
+    r"""Contract 05 §Behaviour: a blank-only or comment-only document ending in `\n` (`syml-xreq.11`).
+
+    Both are zero-width under the empty-document/column-0-comment rules, so
+    `.as_source().start` must report a `Pos` consistent with the end-of-text
+    fix in `Pos.from_str_index` -- the *next* line, column 0 -- not the line
+    that ended.
+    """
+
+    def test_a_blank_only_document_reports_the_next_line_column_zero(self) -> None:
+        assert parsers.parse('\n').as_source().start == Pos(index=1, line=2, column=0)
+
+    def test_a_comment_only_document_reports_the_next_line_column_zero(self) -> None:
+        assert parsers.parse('# x\n').as_source().start == Pos(index=4, line=2, column=0)
+
+    def test_an_empty_document_still_reports_the_first_line_column_zero(self) -> None:
+        assert parsers.parse('').as_source().start == Pos(index=0, line=1, column=0)

@@ -1,0 +1,21 @@
+Given:
+  - Money = 5
+
+taxi:
+
+  - The cab smelled like wet dog and cheap cigars. The meter read 3:15.
+
+    Rain, rain -- always rain.
+
+  - "Where to?" the driver asked. I told him: the docks.
+
+  - choice: "The docks," I said.
+
+  - choice:
+
+      - [Pay the fare.]
+
+      - {Money >= 5}You hand over five bucks -- he doesn't count it.
+        - and that's that.
+
+  - "...and then: nothing," he muttered.

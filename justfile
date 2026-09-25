@@ -52,8 +52,15 @@ check: lint type-check test
 # `-o addopts=""` drops the unit run's `-m "not acceptance"` and `--ignore`.
 
 # Run the acceptance suite. Unbound scenarios fail with StepDefinitionNotFoundError (the RED marker).
+# Excludes @release scenarios (US13 scenario 7): they only pass after the 1.0.0
+# tag is pushed, so they must never gate a CI push (plan.md § Acceptance Test
+# Strategy, red team outer iteration 10).
 acceptance:
-    uv run pytest tests/acceptance -m acceptance --no-cov -o addopts="" -p no:random_order
+    uv run pytest tests/acceptance -m "acceptance and not release" --no-cov -o addopts="" -p no:random_order
+
+# Run only the @release-tagged scenarios. Run by hand in the release leaf, after `git push origin 1.0.0`.
+release-check:
+    uv run pytest tests/acceptance -m release --no-cov -o addopts="" -p no:random_order
 
 # List every step that has no binding yet, as ready-to-paste stubs. pytest-bdd exits 100 when steps are missing, hence `|| true`.
 acceptance-missing:
@@ -61,6 +68,12 @@ acceptance-missing:
 
 # Run both unit tests and acceptance tests
 test-all: test acceptance
+
+# Run the round-trip property suite at high volume (thousands of examples per
+# property, non-deterministic). Hand-run only; the commit gate runs the
+# `gate` profile (a few hundred, derandomized) as part of `just test`.
+fuzz:
+    HYPOTHESIS_PROFILE=fuzz uv run pytest tests/test_roundtrip_property.py --no-cov --hypothesis-show-statistics
 
 # Build the sdist and wheel into dist/ (what the release workflow uploads to PyPI)
 build:

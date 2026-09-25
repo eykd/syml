@@ -79,9 +79,8 @@ def given_unrepresentable_key(context: dict[str, Any], marker: str, marker2: str
 
 
 @given(
-    'a root scalar that would lex as structure, begins with a comment marker, holds a '
-    'control character other than tab, has leading whitespace on its first line, or '
-    'contains a blank line'
+    'a root scalar that would lex as structure, holds a control character other than tab, '
+    'begins with a tab on its first line, or has a line beginning with a comment marker'
 )
 def given_unrepresentable_root_scalar(context: dict[str, Any]) -> None:
     """Store a root scalar that would lex as list structure."""

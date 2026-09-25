@@ -9,10 +9,10 @@ Feature: Tree building follows the specification's acceptance rules
     When it is parsed
     Then parsing fails with "OutOfContextNodeError"
 
-  Scenario: An inline value closes its pair to further content
+  Scenario: An inline value's text context absorbs further content (D21)
     Given a SYML document "note: hello\\n  more: text"
     When it is parsed
-    Then parsing fails with "OutOfContextNodeError"
+    Then the result equals {'note': 'hello\nmore: text'}
 
   Scenario: A multiline value's first own-line sets the baseline
     Given a SYML document "key:\\n  first\\n    indented\\n  back"

@@ -1,0 +1,3 @@
+SOURCE = '\n'
+SPEC = ''
+AUTHOR = SPEC

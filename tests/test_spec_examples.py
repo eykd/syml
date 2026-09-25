@@ -22,10 +22,10 @@ import syml
 
 SPEC_PATH = Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
 
-#: SC-001's documented count (54) as of the 2026-09-24 D18/D19 spec amendment;
-#: guards against the extractor's regexes silently matching zero blocks and
-#: passing vacuously.
-MINIMUM_EXAMPLE_COUNT = 54
+#: SC-001's documented count as of the 2026-09-24 D20-D25 spec amendment
+#: (US4 scenario 1); guards against the extractor's regexes silently
+#: matching zero blocks and passing vacuously.
+MINIMUM_EXAMPLE_COUNT = 69
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
 _INLINE_CODE_RE = re.compile(r'`([^`]*)`')
@@ -39,6 +39,7 @@ class SpecExample:
     source: str
     expected_json: str | None
     expected_exception_name: str | None
+    expected_exception_text: str | None = None
 
 
 def _find_stated_output(lines: list[str], after_fence: int) -> str | None:
@@ -80,12 +81,16 @@ def _find_stated_output(lines: list[str], after_fence: int) -> str | None:
 def _example_from_content(line_number: int, source: str, content: str) -> SpecExample:
     """Build a `SpecExample`, distinguishing an ``ERROR:``-shaped content from JSON."""
     if content.startswith('ERROR:'):
-        exception_name = content[len('ERROR:') :].strip().split(':')[0].strip()
+        rest = content[len('ERROR:') :].strip()
+        exception_name = rest.split(':')[0].strip()
+        exception_text = rest[len(exception_name) :].lstrip()
+        exception_text = exception_text[1:].strip() if exception_text.startswith(':') else ''
         return SpecExample(
             line_number=line_number,
             source=source,
             expected_json=None,
             expected_exception_name=exception_name,
+            expected_exception_text=exception_text or None,
         )
     return SpecExample(
         line_number=line_number,
@@ -139,15 +144,17 @@ def test_at_least_the_documented_minimum_of_spec_examples_were_found() -> None:
 
 @pytest.mark.parametrize(
     'example',
-    SPEC_EXAMPLES,
-    ids=[f'L{example.line_number}' for example in SPEC_EXAMPLES],
+    [pytest.param(example, id=f'L{example.line_number}') for example in SPEC_EXAMPLES],
 )
 def test_spec_example_produces_its_stated_output(example: SpecExample) -> None:
     """Every fenced example's stated Output/ERROR is exactly what `loads()` produces."""
     if example.expected_exception_name is not None:
         exception_type: type[BaseException] = getattr(syml, example.expected_exception_name)
-        with pytest.raises(exception_type):
+        with pytest.raises(exception_type) as exc_info:
             syml.loads(example.source)
+        assert type(exc_info.value) is exception_type
+        if example.expected_exception_text is not None:
+            assert exc_info.value.message == example.expected_exception_text  # type: ignore[attr-defined]
     else:
         assert example.expected_json is not None
         expected = json.loads(example.expected_json)

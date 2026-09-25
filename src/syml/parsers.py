@@ -3,20 +3,20 @@
 from __future__ import annotations
 
 import textwrap
-import unicodedata
 from typing import TYPE_CHECKING, cast
 
 from parsimonious import Grammar, NodeVisitor
-from parsimonious.nodes import Node
 
 from . import nodes
-from .basetypes import line_offset_cache_scope
+from .basetypes import KEY_PATTERN_SOURCE, line_offset_cache_scope
 from .exceptions import ParseError
-from .preprocess import preprocess
+from .preprocess import is_blank, preprocess
 
 if TYPE_CHECKING:  # pragma: nocover
+    from parsimonious.nodes import Node
+
     from .basetypes import StrPath
-    from .nodes import OptionalNodes, OptionalSymlNodes, SymlNode, SymlNodes
+    from .nodes import OptionalSymlNodes, SymlNode, SymlNodes
     from .preprocess import PositionMap
 
 
@@ -54,37 +54,37 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
     grammar = Grammar(
         textwrap.dedent(
-            r"""
-            lines       = line*
-            # Every line lexes independently as one of these four shapes. Values are
-            # literal text (D18): there is no quoted-string rule anywhere, so a `'` or
-            # `"` is always ordinary content.
-            line        = indent (comment / blank / structure / data) &eol
-            structure   = list_item / key_value / section_line
+            rf"""
+            document        = (line "\n")* line?
+            # Every physical line lexes independently as a comment or as one of
+            # the three structure shapes / bare data. Values are literal text
+            # (D18): there is no quoted-string rule anywhere, so a `'` or `"` is
+            # always ordinary content.
+            line            = comment / (indent (structure / data))
+            # Tried BEFORE indent: a comment starts at column 0 only (principal
+            # ruling 2026-09-24, R-18). One regex, not `("#" / "//") text?`, so
+            # no TextLeafNode is ever built for a comment's content.
+            comment         = ~"(?:#|//)[^\n]*"
+            structure       = list_item / key_value / section
+            indent          = ~" *"
 
-            indent      = ~r"\s*"
+            list_item       = value_list_item / guard_list_item
+            value_list_item = "-" ws value
+            guard_list_item = "-" &eol
 
-            blank       = &eol
-            comment     = ~"(#|//+)+" text?
+            key_value       = key_colon ws data
+            section         = key_colon &eol
+            key_colon       = key ":"
+            # Exactly `KEY_PATTERN_SOURCE` (§4.5, D20; basetypes.py is the
+            # single source of truth, syml-s9p9.11); ASCII, leading letter.
+            key             = ~"{KEY_PATTERN_SOURCE}"
 
-            list_item        = value_list_item / guard_list_item
-            value_list_item  = "-" ws value
-            guard_list_item  = "-" &eol
+            eol             = &"\n" / ~r"\Z"
+            ws              = ~"[ \t]+"   # Required whitespace (space or tab; §7.5)
+            text            = ~"[^\n]*"
 
-            key_value    = section ws data
-            section_line = section &eol
-            section      = key ":"
-            # Printable, non-whitespace, non-colon (§4.5's \s is the Unicode White_Space set).
-            # D19's "no uppercase code point" rule is not expressible here; `SymlParser`
-            # applies it in `visit_key_value` / `visit_section_line`.
-            key         = ~r"[^\s:\x00-\x1f\x7f-\x9f]+"
-
-            eol         = "\n" / ~"$"
-            ws          = ~" +"   # Required whitespace (spaces only; a tab does not satisfy this, see §7.5)
-            text        = ~"[^\n]*"
-
-            value       = structure / data
-            data        = text
+            value           = structure / data
+            data            = text
 
             """
         )
@@ -100,19 +100,31 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return all non-null children."""
         return [c for c in children if c is not None]
 
-    def visit_blank(self, node: Node, children: SymlNodes) -> None:  # noqa: ARG002
-        """Visit a blank."""
+    def visit_comment(self, node: Node, children: SymlNodes) -> None:  # noqa: ARG002
+        """Discard a comment line's content; nothing about it survives into the tree."""
         return
 
-    def visit_line(self, node: Node, children: SymlNodes) -> OptionalNodes:  # noqa: ARG002
-        """Visit a line."""
-        _indent, value, _eol = children
-        if value is not None:
-            # R-11: level comes from the node's own column (set at
-            # construction from its own `pnode.start`), not the line's
-            # `indent` token — no longer applied here.
-            return value
-        return None
+    def visit_line(self, node: Node, children: SymlNodes) -> SymlNode | None:
+        """Visit a physical line.
+
+        Returns `None` when the line's chosen alternative is `comment`, and
+        when the line's content span (after `indent`) is empty or
+        `preprocess.is_blank`. A dropped line leaves no node, so the next
+        line's parse node and original-text position are unchanged.
+        Otherwise sets `content_pnode` (the `(structure / data)` child's
+        parse node) and `line_pnode` (the whole line's parse node) on the
+        lexed node and returns it.
+        """
+        (value,) = children
+        chosen = node.children[0]
+        if chosen.expr_name == 'comment':
+            return None
+        content_pnode = chosen.children[1].children[0]
+        if is_blank(content_pnode.text):
+            return None
+        value.content_pnode = content_pnode
+        value.line_pnode = node
+        return value
 
     def generic_visit(self, node: Node, children: OptionalSymlNodes) -> SymlNodes | SymlNode | None:  # type: ignore[override]  # noqa: ARG002
         """Visit a generic node."""
@@ -134,59 +146,21 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Return a key leaf node, threading `position_map` for original-text coordinates."""
         return nodes.KeyLeafNode(pnode=node, filename=self.filename, position_map=self.position_map)
 
-    def visit_comment(self, node: Node, children: SymlNodes) -> nodes.Comment:
-        """Visit a comment node.
-
-        The trailing `text?` is optional (FR-009): a comment-only line whose
-        markers consume the whole line (e.g. '####') leaves it unmatched, so
-        parsimonious visits it to `None` rather than a zero-length node.
-        Synthesize a zero-width node at the comment's own end position
-        instead of dereferencing `.pnode` on `None`.
-        """
-        _, text = children
-        text_pnode = text.pnode if text is not None else Node(node.expr, node.full_text, node.end, node.end)
-        return nodes.Comment(pnode=text_pnode, filename=self.filename, position_map=self.position_map)
-
-    def visit_indent(self, node: Node, children: SymlNodes) -> nodes.IndentNode:  # noqa: ARG002
-        """Visit an indentation token."""
-        return nodes.IndentNode(
-            pnode=node, level=len(node.text.replace('\t', ' ' * 4).strip('\n')), filename=self.filename
-        )
-
-    def visit_key_value(self, node: Node, children: SymlNodes) -> SymlNode:
-        """Visit a `key: value` line; its inline value is literal text (D18).
-
-        A would-be key that contains an uppercase code point is not a key
-        (D19, §4.5): the whole line is then a `TextLeafNode`, exactly as if
-        it had lexed as `data`.
-        """
-        section, _, value = children
-        if self._is_text_line(section):
-            return self._text_leaf(node)
-        _incorporate_inline_value(section, value)
-        return section
-
-    def visit_section_line(self, node: Node, children: SymlNodes) -> SymlNode:
-        """Visit a standalone `key:` section header, applying D19's no-uppercase rule."""
-        section, _ = children
-        if self._is_text_line(section):
-            return self._text_leaf(node)
-        return section
-
-    @staticmethod
-    def _is_text_line(section: SymlNode) -> bool:
-        """Return whether `section`'s would-be key fails D19, making its line literal text."""
-        key_value = cast('nodes.KeyValue', section)  # `section` only ever visits to a KeyValue
-        return key_has_uppercase(key_value.key.as_data())
-
-    def _text_leaf(self, node: Node) -> nodes.TextLeafNode:
-        """Build a `TextLeafNode` spanning `node`'s whole text (a D19 fallthrough to text)."""
-        return nodes.TextLeafNode(pnode=node, filename=self.filename, position_map=self.position_map)
-
-    def visit_section(self, node: Node, children: SymlNodes) -> nodes.KeyValue:
-        """Visit a key/value section."""
+    def visit_key_colon(self, node: Node, children: SymlNodes) -> nodes.KeyValue:
+        """Visit a `key:` colon pair, wrapping the key in a not-yet-populated `KeyValue`."""
         key, _ = children
         return nodes.KeyValue(pnode=node, key=key, filename=self.filename, position_map=self.position_map)  # type: ignore[arg-type]
+
+    def visit_key_value(self, node: Node, children: SymlNodes) -> nodes.KeyValue:  # noqa: ARG002
+        """Visit a `key: value` line; its inline value is literal text (D18)."""
+        key_value, _, value = children
+        _incorporate_inline_value(key_value, value)
+        return cast('nodes.KeyValue', key_value)
+
+    def visit_section(self, node: Node, children: SymlNodes) -> nodes.KeyValue:  # noqa: ARG002
+        """Visit a standalone `key:` section header."""
+        key_value, _ = children
+        return cast('nodes.KeyValue', key_value)
 
     def visit_value_list_item(self, node: Node, children: SymlNodes) -> nodes.ListItem:
         """Visit a list item carrying an inline value."""
@@ -199,25 +173,32 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
         """Visit a bare list item whose value comes from a nested block."""
         return nodes.ListItem(pnode=node, filename=self.filename, position_map=self.position_map)
 
-    def visit_lines(self, node: Node, children: OptionalSymlNodes) -> nodes.Root:
-        """Visit the lines within a SYML document."""
+    def visit_document(self, node: Node, children: OptionalSymlNodes) -> nodes.Root:
+        """Visit the document, incorporating every lexed line into a fresh Root's tip.
+
+        `children` nests `Node | list | None` shapes, because `generic_visit`
+        collapses a single-item group to its bare item: flatten before
+        incorporating.
+        """
         root = nodes.Root(pnode=node, filename=self.filename, position_map=self.position_map)
         current: SymlNode = root
 
-        for child in self.reduce_children(children):
-            if isinstance(child, nodes.Comment):
-                current.comments.append(child)
-            else:
-                current = current.incorporate_node(child)
+        for child in _flatten_lines(children):
+            current = current.incorporate_node(child)
         return root
 
 
-def key_has_uppercase(key: str) -> bool:
-    """Return whether `key` contains a code point of General_Category Lu or Lt (D19, §4.5)."""
-    return any(unicodedata.category(char) in _UPPERCASE_CATEGORIES for char in key)
-
-
-_UPPERCASE_CATEGORIES = frozenset({'Lu', 'Lt'})
+def _flatten_lines(children: OptionalSymlNodes) -> SymlNodes:
+    """Flatten `visit_document`'s nested `Node | list | None` children into a flat list of lines."""
+    flat: SymlNodes = []
+    for child in children:
+        if child is None:
+            continue
+        if isinstance(child, list):
+            flat.extend(_flatten_lines(child))
+        else:
+            flat.append(child)
+    return flat
 
 
 def parse(source_syml: str, filename: StrPath | None = None) -> nodes.Root:
