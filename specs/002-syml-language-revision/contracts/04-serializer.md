@@ -10,6 +10,12 @@ def dump(data: SymlInput, file_obj: IO[str]) -> None: ...
 def key_is_representable(k: str) -> bool: ...   # re.fullmatch(r'[a-z][a-z0-9_-]*', k) is not None
 ```
 
+`key_is_representable` changes in the **grammar leaf**, not the serializer
+leaves: today it calls `parsers.key_has_uppercase`, which Contract 01 removes
+there, and it matches with the grammar's `key` rule, so the rewrite to the
+regex has to land in the same commit to keep mypy and `dumps` working (red
+team outer iteration 4, plan § Existing tests that invert).
+
 Signatures are unchanged. `SymlInput` is unchanged; a `Source` is accepted at
 runtime wherever a `str` key or scalar is (FR-014). The static type does not
 widen: `as_source()` already returns `Any`, so `dumps(parse(t).as_source())`
@@ -112,3 +118,14 @@ written by `dumps` and round-trips. P8 below pins this.
    depth.
 5. The existing `tests/serialization_corpus.py` rows that pinned D12, D13,
    comments, and D19 are rewritten to the rows above (plan § Inverted tests).
+   By name, besides those the plan lists: `lowercase_roman_numeral_key`
+   (`{"\u217b": "x"}`) and `leading_feff_first_key` (`{"\ufeffk": "v"}`) move
+   from round-trip to item-7 refusals; `colon_escape_list_item`
+   (`["a\\: b"]`, now a text item) moves from refusal to round trip, and its
+   `TestDumpsStructureShapedStringsArePositionDependent` case (which expects
+   the list item refused beside the mapping value) is dropped (these three in
+   the grammar leaf);
+   `leading_space_root_scalar` (`"  hello"`) and
+   `block_line_lexes_as_structure` (`{"k": "a\n  - b"}`) move from refusal to
+   round trip (serializer leaves). The plan's spike-run command is the
+   inventory; this list is what it found at `21eae88`.

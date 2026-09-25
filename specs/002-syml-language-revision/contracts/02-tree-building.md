@@ -154,7 +154,10 @@ unchanged. `stranger.syml` is unchanged.
 3. SC-004: the four lane-4 documents (`doc01_scene_cellar`,
    `doc01b_scene_taxi` with `Given:` lowercased, `doc03_prose`,
    `doc03b_prose_root`) copied to `tests/fixtures/lane4/` and pinned to their
-   ruled values.
+   ruled values. The ruled value is not the lane-4 `AUTHOR` column verbatim:
+   `doc01b`'s `AUTHOR` has the key `'Given'`, but SC-004 loads the document
+   with the header lowercased, so the pinned key is `'given'` (red team outer
+   iteration 4).
 4. The existing D11 baseline tests stay green unchanged (FR-003: "D11's
    baseline rule stands").
 5. The four `silent` rows are pinned as unit tests (US1's 18 acceptance

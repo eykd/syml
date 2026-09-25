@@ -134,7 +134,7 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | Element | Change |
 | --- | --- |
 | `dumps(data)` | `''` → `''`. Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
-| `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. |
+| `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. Lands in the grammar leaf, which removes the `parsers.key_has_uppercase` it calls today. |
 | `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line `RecursionError` clause (a `-`-led line whose `document`-rule lex recurses too deep is refused). |
 | `_check_block_line` | Removed (its checks move into R-05's per-value rules). |
 | `_lexes_as_structure(line)` | Matches `SymlParser.grammar['structure']` against `line.lstrip(' ')` with `parse` (full match), no `preprocess`; `RecursionError` still counts as structure. |

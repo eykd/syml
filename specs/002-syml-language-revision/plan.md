@@ -277,13 +277,16 @@ independent.
 2. **Grammar leaf** (Contract 01), atomic: top rule, `indent`, `ws`, `key`,
    `eol` (written `~r"\Z"`, Security Considerations), comment removal, D19 removal, `IndentNode`/`Comment` removal, grammar
    identity test, and the rewrite of existing tests that pinned D5, D15, D19,
-   or comments.
+   or comments. Also `serializer.key_is_representable` as the key regex
+   (it calls the removed `key_has_uppercase`), the grammar-driven corpus rows,
+   and the README lead example's key with its two `test_parsers.py` tests
+   (Existing tests that invert, below).
 3. **Tree-builder leaves** (Contract 02), in order: strict depth + `bar.syml`
    (independent); root scalar; text context; paragraph breaks (needs text
    context).
 4. **Error leaves** (Contract 03): `ParseError` filename/`__str__`; tab-scan
    positions; out-of-context message and hints (needs 3 for the new shapes).
-5. **Serializer leaves** (Contract 04), after 2–3: key regex; structure match
+5. **Serializer leaves** (Contract 04), after 2–3: structure match
    without pre-processing; residual set; `Source`; `dumps('')`; then the
    round-trip property test (lands RED on anything still missing), with the
    load-first property P8, the Hypothesis `gate`/`fuzz` profiles, `just fuzz`,
@@ -310,6 +313,52 @@ independent.
   message-text assertions (about 90 matching lines by a rough grep; 05-tasks
   greps for `comment`, `uppercase`, `Listen`, `IndentNode`, `\t`, `>=`,
   `Failed to incorporate`).
+
+**The grep is a floor, not the inventory (red team outer iteration 4).**
+Running the current suites against the planning spike finds inversions that
+none of the grep terms match. The oracle command, from the repository root:
+
+```sh
+PYTHONPATH=specs/002-syml-language-revision/reference/planning-spike \
+  .venv/bin/python -m pytest tests --ignore=tests/acceptance --no-cov \
+  -o addopts="" -p no:random_order -q -W ignore::SyntaxWarning
+PYTHONPATH=specs/002-syml-language-revision/reference/planning-spike \
+  .venv/bin/python -m pytest tests/acceptance -m acceptance --no-cov \
+  -o addopts="" -p no:random_order -q -W ignore::SyntaxWarning
+```
+
+(`-W ignore::SyntaxWarning` because the spike still has the non-raw `\Z`.)
+At `21eae88` it reports 65 unit and 13 acceptance failures. Besides the
+spec-example rows (the spec leaf's `PENDING` table), `bar.syml`, and the
+rows already named above, it finds these, which `/sp:05-tasks` must assign
+to the leaf that inverts them:
+
+| Test | Why it inverts | Leaf |
+| --- | --- | --- |
+| `US01-tree-building-acceptance.feature` "An inline value closes its pair to further content" (`note: hello\n  more: text` raises) | D21 / US1-16: now `{"note": "hello\nmore: text"}` | text context |
+| `test_parsers.py::TestSimpleParserFunction::test_it_should_parse_whats_in_the_readme_text_only` and `…_from_a_fileobj` | the README lead example's `booleans?:` is not a key (D20), so the line is text at the root mapping's column and raises (see "README lead example" below) | grammar |
+| `test_parsers.py::TestSymlParser::test_it_should_parse_a_nested_list_with_mapping` | indentless list under `- foo:` (D25) | strict depth |
+| `test_exceptions.py::TestLineTextIsTheOffendingLineOnEveryParseError[out_of_context_node_error_strips_terminator]` | its input no longer raises (a deeper line after an inline value is text, R-06); pick an input that still raises | text context |
+| `serialization_corpus.py` `lowercase_roman_numeral_key` (`{"ⅻ": "x"}`), `leading_feff_first_key` (`{"﻿k": "v"}`) | round-trip rows that become item-7 refusals (D20) | grammar (see below) |
+| `serialization_corpus.py` `colon_escape_list_item` (`["a\\: b"]`) and its `colon_escape_list_item_as_mapping_value` pair in `TestDumpsStructureShapedStringsArePositionDependent` | `a\:` is not a key under D20, so `- a\: b` is a text item and the refusal row becomes a round-trip row | grammar |
+| `serialization_corpus.py` `leading_space_root_scalar` (`"  hello"`), `block_line_lexes_as_structure` (`{"k": "a\n  - b"}`) | refusal rows that FR-005 and FR-006 make writable | serializer |
+
+The spike implements Contracts 01, 02 and the R-05 serializer only: it has
+no Contract 03 message text, `__str__`, or hints, and no Contract 05 changes,
+so message-text and API-tail assertions still need the grep. It also keeps
+`parsers.key_has_uppercase`, so it cannot show the next hazard.
+
+**The grammar leaf must carry the serializer's key predicate (red team outer
+iteration 4).** `serializer.key_is_representable` calls
+`parsers.key_has_uppercase` (`src/syml/serializer.py:85`), which Contract 01
+removes in the grammar leaf, and it matches keys with the grammar's own `key`
+rule. Left for the serializer stage, the grammar leaf's commit fails mypy
+(`attr-defined`) and every `dumps` of a mapping raises `AttributeError`. The
+grammar leaf therefore also rewrites `key_is_representable` to Contract 04's
+`re.fullmatch(r'[a-z][a-z0-9_-]*', k)` and moves the three grammar-driven
+corpus rows above (the two keys and the `colon_escape` pair) and
+`TestKeyIsRepresentable`'s rows with it. The serializer stage keeps
+everything else in Contract 04.
 
 ## Ready-queue Hazard (for `/sp:05-tasks`)
 
@@ -627,6 +676,35 @@ depends on the caller's stack and is R-17's to measure, not a promise.
   found no value outside families L1 and L2 that `dumps` refuses, and no
   round-trip failure, so Contract 04's P8 should land GREEN rather than
   surface a third family during implementation.
+
+### README lead example and Serializing paragraph (red team outer iteration 4)
+
+- **The README's first example raises.** Its document (README lines 17–35) has a
+  `booleans?:` key on line 27 after the `foo:` list, echoed as `'booleans?'`
+  in the printed result on line 43. `?` is outside D20's pattern, so the line is text; it sits at the root
+  mapping's column 0 after that mapping's first entry, so `loads` raises
+  `OutOfContextNodeError` at line 9 (verified on the spike). Contract 06 §D
+  item 3 fixed only comment lines, uppercase keys, and indentless lists, and
+  no US4 scenario reads the example, so the shipped README would open with a
+  document the release rejects. Fix: rename the key (`booleans:`) in the
+  README input and output, in the grammar leaf together with the two
+  `test_parsers.py` tests that mirror it; widen §D item 3 to "any key outside
+  `[a-z][a-z0-9_-]*`"; and add a test that parses the README's lead example
+  from `README.md` itself and compares it with the printed result (Contract 06
+  obligation 6), so the two cannot drift again.
+- **The README's "Serializing" paragraph states the 1.0 refusal set.** It
+  says the output has "no blank lines", that `dumps` refuses "a leading space
+  or tab" and "a blank or `#`-initial or structure-shaped line inside a
+  multi-line value", and that the key rule is "whitespace, a colon, or an
+  uppercase letter". D20, D21, D22, and FR-005 make each of these false.
+  FR-015 covers only the new "Coming from YAML" section, so Contract 06 §D
+  gains an item that rewrites the paragraph to Contract 04's layout (paragraph
+  breaks written as empty lines; a root scalar keeps its leading spaces) and
+  its eight refusal items, and adds `Source` to the accepted types.
+- **The `doc01b` ruled value has a lowercase key.** The lane-4
+  `doc01b_scene_taxi.expected.py` `AUTHOR` has `'Given'`; SC-004 loads the
+  document with the header lowercased, so the pinned value's key is `'given'`
+  (Contract 02 obligation 3).
 
 ### Load-then-dump
 

@@ -142,8 +142,20 @@ raises.
       a tab there counts as one column.
    8. A blank line inside a value is a paragraph break.
 2. A **`Source`** paragraph with Contract 05's three facts (FR-014).
-3. Any README example that uses a comment line, an uppercase key, or an
-   indentless list is fixed.
+3. Any README example that uses a comment line, a key outside
+   `[a-z][a-z0-9_-]*` (uppercase, camelCase, or punctuation: the lead
+   example's `booleans?:` raises `OutOfContextNodeError` under D20), or an
+   indentless list is fixed. The lead example's key becomes `booleans:` in
+   both the input and the printed result; that edit lands in the **grammar
+   leaf**, with the two `tests/test_parsers.py` README tests that mirror it
+   (red team outer iteration 4, plan § Edge Cases).
+4. The **"Serializing"** paragraph is rewritten to what ships (red team outer
+   iteration 4): the output writes a paragraph break as an empty line (not
+   "no blank lines"); a root scalar keeps its leading spaces; `dumps` accepts
+   `Source` keys and scalars; and the `UnrepresentableValueError` list is
+   Contract 04's eight items in plain words (no "leading space", "blank or
+   `#`-initial or structure-shaped line inside a multi-line value", or
+   "uppercase letter" wording), with the key rule stated as the pattern.
 
 ## E. Other text
 
@@ -174,3 +186,9 @@ commit, `git push origin 1.0.0`, and verify with `git ls-remote --tags origin`
    (built for 001) are updated for the rewritten items rather than deleted.
 5. A US13 acceptance scenario reads the README section headings and asserts
    the eight items in order.
+6. A unit test reads `README.md`, extracts the lead example's document and
+   its printed result (the first two fenced `python` blocks), and asserts
+   `loads(document) == ast.literal_eval(result)`, so the README's first
+   example cannot again drift from the parser. It replaces the two
+   hand-copied `test_parsers.py` README tests or sits beside them (red team
+   outer iteration 4).
