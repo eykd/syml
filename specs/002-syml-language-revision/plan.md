@@ -468,8 +468,10 @@ on. Question 8 was added by red team outer iteration 2.
    recorded in D24.
 5. **Constitution IV's decision range.** It still reads "D1–D17" (D18/D19 were
    cited without amending it). Every change here also cites an FR, so the gate
-   passes; the release leaf could PATCH the range to "D-numbered decisions"
-   alongside CLAUDE.md's "D1–D25". Suggested, not planned.
+   passes without touching it. **Verdict: not done in this feature.** Whether
+   to PATCH the range to "D-numbered decisions" (matching CLAUDE.md's
+   "D1–D25") is a governance edit outside this feature's leaves; it is the
+   principal's call, not `/sp:05-tasks`'s to schedule.
 6. **Closed-handle `TypeError` (R-10).** The spec's Edge Cases ask for
    `TypeError`; an `OSError` subclass would also escape `except ValueError`.
    **Verdict: keep `TypeError`** (the spec asks for it; either escapes
