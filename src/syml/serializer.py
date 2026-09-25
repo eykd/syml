@@ -217,8 +217,10 @@ def _render_scalar_lines(value: str, indent: int, position: Position) -> list[st
         raise _unrepresentable(text, 'contains a control character')
     lines = text.split('\n')
     multiline = len(lines) > 1
-    if multiline and (lines[0] == '' or lines[-1] == ''):
-        raise _unrepresentable(text, 'begins or ends with a blank line')
+    if multiline and lines[0] == '':
+        raise _unrepresentable(text, 'begins with a blank line')
+    if multiline and lines[-1] == '':
+        raise _unrepresentable(text, 'ends with a trailing newline')
     if position in ('mapping', 'list') and not multiline:
         _check_inline_first_line(text, lines[0], position)
     else:
@@ -242,7 +244,7 @@ def _check_block_line(text: str, line: str, index: int, position: Position) -> N
     if '\t' in leading:
         raise _unrepresentable(text, 'a line begins with a tab')
     if leading and len(leading) == len(line):
-        raise _unrepresentable(text, 'contains a blank or whitespace-only line')
+        raise _unrepresentable(text, 'contains a non-empty whitespace-only line')
     if position == 'root' and line.startswith(_COMMENT_MARKERS):
         raise _unrepresentable(text, 'a line begins with a comment marker')
     if index == 0:
