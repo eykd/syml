@@ -352,17 +352,20 @@ Clarifications:
    35–36, R-13).
 4. `reference/README.md`: `doc05c` and `doc05d` now load as text (R-06).
 5. User Story 3's closing sentence ("the residual unrepresentable set is
-   exactly the values that have no spelling at all") is **not yet** corrected
-   in `spec.md`: it is deferred to the spec leaf, which Contract 06 §A binds to
-   reword it. R-05 found one family that keeps a spelling (`k: a: 1\n  b` for
+   exactly the values that have no spelling at all") was deferred to the spec
+   leaf by earlier passes; red team outer iteration 3 **applied it in
+   `spec.md`** instead, because `/sp:05-tasks` binds acceptance scenarios from
+   `spec.md` and must not inherit a sentence the code contradicts. R-05 found one family that keeps a spelling (`k: a: 1\n  b` for
    `{"k": "a: 1\nb"}`) and `dumps` still refuses it; rule D also refuses
    control characters that §4.6.1 lets `loads` read verbatim (red team,
    below). The rewording must name both load-only families.
-6. **Deferred to the spec leaf (red team):** FR-016's and US4 scenario 4's
-   phrase "loud for third-party files with `#` lines" is false for a `#`/`//`
-   line that is the first line of a document or of a block (it silently makes
-   the document or block one string, see Edge Cases & Error Handling). The
-   spec leaf rewords both; Contract 06 §A pins it.
+6. FR-016's and US4 scenario 4's phrase "loud for third-party files with
+   `#` lines" is false for a `#`/`//` line that is the first line of a
+   document or of a block (it silently makes the document or block one
+   string, see Edge Cases & Error Handling). First deferred to the spec leaf;
+   **applied in `spec.md` in red team outer iteration 3** (US4 scenario 4
+   would otherwise become a US13 Gherkin assertion that the CHANGELOG says
+   "loud", which Contract 06 §C forbids).
 7. **FR-004** said the kept blank sits "between two continuation lines," with
    blanks "before the first continuation line" inert — read literally, that
    makes the blank in `k: first\n\n  second` inert, the opposite of R-04's
@@ -373,6 +376,11 @@ Clarifications:
    first line, and carries the R-04 example inline; Contract 02's rule 4 and
    Contract 06 §5.1 rule 5 already used this wording, so this closes the gap
    between them and the FR text rather than opening a new one.
+8. **FR-006** (red team outer iteration 3) gains the recursion refusal: a
+   later line of a multi-line value whose per-line lex exceeds the parser's
+   recursion depth (Edge Cases & Error Handling, "A `- ` chain is text but
+   still recurses"). FR-006's list was exhaustive ("MUST shrink to"), so the
+   serializer could not refuse this family without the FR saying so.
 
 ## Open Questions for the Principal
 
@@ -473,6 +481,20 @@ so no carried-over finding applies).
   raw, so programmatic callers lose nothing. This also helps the whitespace
   errors this feature adds: `k:\n  a\n\xa0\n  b` shows `\xa0` on the second
   line instead of an invisible character (Contract 03).
+- **The filename is rendered too (red team outer iteration 3).** The
+  `<filename>:` prefix of `str(e)`'s first line is also caller- or
+  attacker-controlled: an archive entry named `a\n.syml` splits `str(e)` into
+  three lines (breaking Contract 03 obligation 8's two-line shape and forging a
+  log line), `\x1b[2J.syml` is terminal-escape injection, and `load()` on a
+  handle whose `.name` is an undecodable `bytes` path gives a filename with
+  lone surrogates (`os.fsdecode(b'\xff.syml') == '\udcff.syml'`), so
+  `print(e)` to a UTF-8 stream raises `UnicodeEncodeError` inside the
+  caller's `except` block. `__str__` passes the filename through the same
+  `_printable` helper as the line text. `.message` keeps the raw filename
+  (like `.line_text`, a programmatic field). `ParseError` normalizes a
+  `PathLike` filename with `os.fspath` in its constructor, so
+  `loads(text, filename=PurePath("p.syml"))` and `load()`'s `.name` path give
+  the same prefix (Contract 03, Contract 05).
 
 ### Resource Limits
 
@@ -481,6 +503,11 @@ so no carried-over finding applies).
   failure path's "previous non-blank line" scan is O(n) once per raised error,
   so no new super-linear path is added. The recursion cliff is measured after
   the grammar leaf (R-17).
+- **One existing recursion path becomes reachable from text, and from
+  `dumps` output** (red team outer iteration 3; Edge Cases & Error Handling).
+  A long `- - - …` chain recurses in the per-line lex even where D21 makes
+  the line text. The load side stays documented, not fixed; the serializer
+  refuses to write such a line (FR-006, Contract 04 item 2).
 
 ## Edge Cases & Error Handling
 
@@ -496,6 +523,7 @@ kept, but no document may call it loud:
 | `Name: app\nport: 80`, `---\nname: app` | one `str` each | same, via D20 and the no-document-markers rule |
 | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` | a tab after `-` counts as **one** column, so `k` is at column 2 and a line an editor shows aligned under `k` (tab stop 8) is past it and joins the inline value (D24 × §6.2 × D21) |
 | `parent:\n  child1: a\n   child2: b` | `{"parent": {"child1": "a\nchild2: b"}}` | R-06 |
+| `name:\xa0app\nport: 80` | the `str` `"name:\xa0app\nport: 80"` | a NBSP (or any character other than space or tab) after `key:` is not separator whitespace (D24), so the line is text; as a first line it makes the root (or block) text. In 1.0 this raised at line 2; it is now silent (red team outer iteration 3; macOS Option-Space and pasted web text produce it) |
 
 Consequences for the text leaves (Contract 06): D23's breaking-change note,
 the CHANGELOG D23 item, and README "Coming from YAML" item 1 state that a
@@ -535,6 +563,47 @@ Neither change adds API: both stay in the message string (the ruling on
 raises `'Failed to incorporate a node'`), so these rows are pinned by
 Contract 03's table rather than by spike evidence.
 
+### A `- ` chain is text but still recurses (red team outer iteration 3)
+
+D21 says a line inside an open text value is text "whatever it lexes as", but
+lexing still happens first, per line, on the whole line. The grammar's only
+recursive path is `value_list_item = "-" ws value` with
+`value = structure / data`, so a line of `- ` repeated N times recurses about
+N levels deep in Parsimonious before the tree builder ever sees it. On the
+planning spike (called directly, default recursion limit) a line with a
+little over a hundred `- ` repetitions raises `RecursionError` from `loads`
+at any position: first line, continuation of a block value
+(`k:\n  a\n  - - - … x`), or continuation of a root scalar. The exact depth
+depends on the caller's stack and is R-17's to measure, not a promise.
+
+- **Load side: documented, not fixed.** Scope Boundaries keep limits and the
+  recursion cliff out of this feature. CHANGELOG item 13 and §13.4 name this
+  shape alongside the nesting cliff (Contract 06 §C, measurement 5): a line
+  made of many `- ` markers raises `RecursionError` even inside a text value.
+  The alternative (an iterative `("-" ws)+` list-marker rule in the grammar,
+  which would make text lines immune) was not taken here: it rewrites the
+  grammar's list rules and visitor late in planning and moves the structural
+  cliff rather than removing it. It is a 1.x candidate recorded in D21's note.
+- **Serializer side: refused.** Before this feature `dumps` refused every
+  structure-shaped later line (D13), so it never wrote such a line. Under
+  R-05's "later lines are unrestricted" it would write
+  `{"k": "a\n" + "- " * 400 + "x"}` and `loads` of the output raises
+  `RecursionError`, an out-of-contract exception that breaks SC-002 and
+  §11.2.1's "MUST raise rather than emit text that would not read back". The
+  generated SC-002 inputs never reach that depth, so the property alone would
+  not catch it. Fix: Contract 04 item 2 extends its existing
+  `RecursionError`-counts-as-structure rule (obligation 4) from the first
+  line to every later line of a multi-line value that begins with `-` after
+  its leading spaces; such a line is refused with `UnrepresentableValueError`
+  (FR-006). The check parses the line with the full `document` rule, so it
+  recurses at least as deep as `loads` will; a pinned example uses a depth
+  far past the cliff (several hundred) so it does not sit on the
+  stack-dependent boundary.
+- **P8's family predicate is `RecursionError`-safe.** A mapping value whose
+  first line is a long `- ` chain loads fine (a mapping's inline value is
+  `data`, §7.2) and is family L1; the predicate that recognizes L1 uses the
+  same helper, so it classifies the line as structure instead of raising.
+
 ### Smaller notes (red team outer iteration 2)
 
 - **NBSP-led first line is silent too.** `\xa0\xa0name: app\nport: 80`
@@ -557,8 +626,10 @@ Contract 03's table rather than by spike evidence.
 
 ### Load-then-dump
 
-US3's persona loads a file and writes it back. `dumps` refuses exactly two
-families of values that `loads` can return: a multi-line mapping value whose
+US3's persona loads a file and writes it back. Apart from values `loads`
+cannot return at all (the `- ` chain above raises `RecursionError` before
+`dumps` sees it), `dumps` refuses exactly two families of values that `loads`
+can return: a multi-line mapping value whose
 first line is structure-shaped (R-05; `k: note: the door\n  is locked`,
 `notes: - milk\n  - eggs`), and a value containing a control character that
 §4.6.1 reads verbatim but rule D refuses (`\x0bx`, `a\x1cb`). Both stay refused

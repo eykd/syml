@@ -37,7 +37,7 @@ type-checks today.
 | # | Condition | Positions |
 | --- | --- | --- |
 | 1 | a control character other than LF and TAB (includes `\r`) | all |
-| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing | list (single- or multi-line); mapping (multi-line only); root |
+| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing (a `RecursionError` counts as structure). **Also (red team outer iteration 3):** any later line of a multi-line value that begins with `-` after its leading spaces and whose lex raises `RecursionError` (a long `- - - …` chain: D21 makes it text, but the per-line lex still recurses once per `- `, so `loads` cannot read it back). The later-line check parses the line with the full `document` rule | first line: list (single- or multi-line); mapping (multi-line only); root. Later line: all |
 | 3 | first line begins with a space | mapping, list |
 | 4 | any line's leading run of spaces and tabs contains a tab | all |
 | 5 | any line is non-empty and consists only of spaces and tabs | all |
@@ -66,6 +66,8 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 | R-05 | `{"k": "a\n \nb"}`, `{"k": "a\n  \tb"}`, `{"k": "\ta"}`, `"x\n"` | `UnrepresentableValueError` (items 5, 4, 4, 6) | — |
 | R-05 | `{"k": "# x"}`, `"# x\n// y"`, `{"k": "a\n# b"}` | `k: # x\n`, `# x\n// y\n`, `k:\n  a\n  # b\n` | yes |
 | R-05 | `{"k": "a: 1\nb"}` | `UnrepresentableValueError` (item 2; see R-05 "one family refused despite having a spelling") | — |
+| recursion | `{"k": "a\n" + "- " * 1000 + "x"}`, `["a\n" + "- " * 1000 + "x"]`, `"a\n" + "- " * 1000 + "x"` | `UnrepresentableValueError` (item 2, later line); `loads` of the same text written by hand raises `RecursionError` (documented, not fixed: plan § Edge Cases, "A `- ` chain is text but still recurses") | — |
+| recursion | `{"k": "a\n" + "- " * 20 + "x"}` | `k:\n  a\n  - - … x\n` (a short chain is an ordinary later line) | yes |
 | load-only | `dumps(loads("k: note: the door\n  is locked"))`, `dumps(loads("notes: - milk\n  - eggs"))` | `UnrepresentableValueError` (item 2): values `loads` returns that `dumps` refuses (red team pass 1; kept, plan open question 3) | — |
 | load-only | `dumps(loads("\x0bx"))`, `dumps(loads("k: a\x1cb"))` | `UnrepresentableValueError` (item 1): §4.6.1 reads controls verbatim, rule D still refuses them (US3 scenario 10) | — |
 
@@ -90,7 +92,10 @@ written by `dumps` and round-trips. P8 below pins this.
    either `loads(dumps(x)) == x`, or `dumps(x)` raises
    `UnrepresentableValueError` and `x` contains a value in family L1 or L2
    (checked by a predicate written against the definitions above, not by
-   calling `dumps`). A third load-only family fails P8.
+   calling `dumps`; the L1 predicate uses `_lexes_as_structure`, so a long
+   `- ` chain as a mapping value's first line is classified as structure
+   rather than raising `RecursionError` in the test). A third load-only family
+   fails P8.
    **Hypothesis settings** (plan § Performance Considerations): a `gate`
    profile (`deadline=None`, `derandomize=True`, a few hundred examples per
    property) registered in `tests/conftest.py` and loaded by default, a
@@ -100,6 +105,10 @@ written by `dumps` and round-trips. P8 below pins this.
 3. `key_is_representable` agrees with `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`
    (P7) and with the grammar: a key it accepts round-trips as a key.
 4. `_lexes_as_structure` does not strip a BOM or NBSP and treats a
-   `RecursionError` as structure.
+   `RecursionError` as structure. The later-line recursion check (item 2)
+   runs only on lines that begin with `-` after their leading spaces, and its
+   pinned examples use a depth of several hundred `- ` markers, far from the
+   stack-dependent cliff, so the test does not flake with the caller's stack
+   depth.
 5. The existing `tests/serialization_corpus.py` rows that pinned D12, D13,
    comments, and D19 are rewritten to the rows above (plan § Inverted tests).

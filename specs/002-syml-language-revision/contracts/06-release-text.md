@@ -44,15 +44,16 @@ later leaves delete their entries and the release leaf deletes the table
 | §8.5, §13.4 | Limits are recommendations; `DocumentLimitError` is the name for an implementation that enforces them; `syml` enforces none (FR-017). |
 | §9.1 | Step 3: drop comment classification; blank lines are skipped by the builder, and paragraph breaks are recovered from line positions (§5.1). |
 | §9.3 | KeyValue row unchanged in text (`level > keyvalue.level`), now true of the code. TextLeaf paragraph: add the text-context rule (a candidate at or past the threshold is accepted as text whatever it lexed as). Delete "`key: \t` has the one-character value `\t`" (R-11). |
-| §10.2 | Add R-09's BOM sentence. State the `str(error)` form (FR-011) and that its rendered line escapes non-printable characters (`\xa0`, `\x1b`, `\t`) while `line_text` stays raw (Contract 03). |
+| §10.2 | Add R-09's BOM sentence. State the `str(error)` form (FR-011) and that its rendered filename and line escape non-printable characters (`\xa0`, `\x1b`, `\t`, `\n`, lone surrogates) while `message` and `line_text` stay raw (Contract 03). |
 | §11.1 | "an empty document or a document containing only blank lines". |
-| §11.2.1 | Rewrite to Contract 04's eight items; B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). |
-| US3 narrative (spec.md, not §11.2.1) | The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. The rewording must also not claim that every value `loads` returns can be written: name both load-only families (Contract 04 L1 and L2, the second being rule D's control characters that §4.6.1 reads verbatim). Record the red team's verdict (plan open question 3) in spec.md's Clarifications. |
-| FR-016, US4 scenario 4 (spec.md) | Both say the comments item warns that files with `#` lines are "loud"/"change meaning". Reword so the obligation matches the behaviour: a `#`/`//` line that is the first line of a document or block makes that document or block one string, silently; a later one at a container's level raises. Record the correction in spec.md's Clarifications (red team pass 1, plan open question 7). |
+| §11.2.1 | Rewrite to Contract 04's eight items (item 2 including its later-line `RecursionError` clause); B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). |
+| US3 narrative (spec.md, not §11.2.1) | **Applied in `spec.md` by red team outer iteration 3; the spec leaf only checks it still holds.** The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. The rewording must also not claim that every value `loads` returns can be written: name both load-only families (Contract 04 L1 and L2, the second being rule D's control characters that §4.6.1 reads verbatim). Record the red team's verdict (plan open question 3) in spec.md's Clarifications. |
+| FR-016, US4 scenario 4 (spec.md) | **Applied in `spec.md` by red team outer iteration 3.** Both said the comments item warns that files with `#` lines are "loud"/"change meaning". Reword so the obligation matches the behaviour: a `#`/`//` line that is the first line of a document or block makes that document or block one string, silently; a later one at a container's level raises. Record the correction in spec.md's Clarifications (red team pass 1, plan open question 7). |
 | §11.2.3 | Keys: exactly `[a-z][a-z0-9_-]*`; everything else raises. Delete the quoted-key/`#` v1.2 note or reduce it to the quoted-key candidate. |
 | §11.3 | Contract 05 wording: add `EncodingError`; `DocumentLimitError` reserved. |
 | §12.1 | Remove the `# Application configuration` line. |
 | §13.1–§13.3 | Remove comment and White_Space-in-key references; keep §13.3's LF-only line boundary. |
+| §13.4 | Name the second recursion shape next to the nesting cliff: a line of many `- ` markers raises `RecursionError` from the per-line lex even inside a text value (§5.1), and `dumps` refuses to write one (§11.2.1). Figures from R-17 measurement 5. |
 | §14 | Rewrite the 1.0 row's comment, key, blank-line, D13, and tab clauses to the revised rules (keep it one row). |
 
 ## B. `SYML-SPEC-REVIEW.md` (spec leaf)
@@ -65,7 +66,7 @@ breaking-change note (FR-016):
 | # | Decision (summary) | Alternative not taken | Supersedes | Breaking change |
 | --- | --- | --- | --- | --- |
 | D20 | A key is exactly `[a-z][a-z0-9_-]*`, preceded only by indentation spaces; any other would-be key line is text; `dumps` refuses other keys. | Keep D19's "no `Lu`/`Lt`" rule plus a leading-bracket/quote exclusion (`syml-xreq.16` option b). | D15, D19 | `Name:`, `firstName:`, `URL:`, `1:`, `e.mail:`, `名前:` stop being keys. |
-| D21 | Values are just text: structure is lexed at a block's first line and inline only; once a value is text, every line at or past its baseline is text until a line below it; a root document whose first line is text is text throughout. | Keep per-line lexing and add an error hint (`syml-xreq.22` option a). | D13 | Deeper structure-shaped lines after a text value join it; a line indented past a sibling that holds an inline value is absorbed silently (R-06). |
+| D21 | Values are just text: structure is lexed at a block's first line and inline only; once a value is text, every line at or past its baseline is text until a line below it; a root document whose first line is text is text throughout. | Keep per-line lexing and add an error hint (`syml-xreq.22` option a). | D13 | Deeper structure-shaped lines after a text value join it; a line indented past a sibling that holds an inline value is absorbed silently (R-06). Lexing still runs first, so a long `- - - …` line still raises `RecursionError` inside a text value; an iterative list-marker rule that would lift this is a 1.x candidate. |
 | D22 | A blank line between two lines of the same value is an empty line of that value, one per physical line; blank lines before a value's first line, after its last, or between items/keys are inert; `dumps` writes paragraph breaks. | An explicit paragraph marker line (`syml-xreq.15` option c). | D12 | `k:\n  a\n\n  b` was `"a\nb"`, is `"a\n\nb"`. |
 | D23 | SYML has no comments; `#` and `//` are text everywhere. | Keep whole-line comments and document the continuation case (`syml-xreq.21` option a). | §4.3, M6's fix, B9's exception | Any `#`/`//` line changes meaning: text inside a value; `OutOfContextNodeError` at a container's level after its first entry; and, **silently**, a first line of the document or of a block makes that whole document or block one string (`# header\nk: v` → `"# header\nk: v"`; `a:\n  # s\n  b: 1` → `{"a": "# s\nb: 1"}`). The ruling's "all loud" premise holds only for the middle case. |
 | D24 | A tab is separator whitespace after `key:` and `-` (`ws = [ \t]+`); a marker followed only by spaces/tabs is bare; a tab in indentation still raises. A separator tab counts as one column for §6.2's sibling column. | Make a post-marker tab an error (v1.2 candidate 4). | D5 | `k:\tv` was `"k:\tv"`, is `{"k": "v"}`; `k: \tv` was `{"k": "\tv"}`, is `{"k": "v"}`. After `-\tk: v`, a sibling key goes at column 2; a line an editor shows aligned under `k` at a tab stop joins `v` silently. |
@@ -105,13 +106,20 @@ used; D24 tab as separator (with the one-column note) (`k:\tv`, `k: \tv`); D25 i
 rejected. One more item for the only-U+0020-indentation fix (`\xa0k: v` is
 text; NBSP, VT, FF, NEL, U+2028 at a line start are content; a document or
 block whose first line starts with a NBSP, as indentation pasted from a web
-page does, silently loads as one string, red team outer iteration 2).
+page does, silently loads as one string, red team outer iteration 2). The D24
+item states the converse edge: only a space or a tab separates; a NBSP after
+`key:` (macOS Option-Space, pasted text) makes the line text, so
+`name:\xa0app\nport: 80` is one string where 1.0 raised at line 2 (red team
+outer iteration 3).
 
 Recursion measurement method (R-17): at the default recursion limit, bisect
 the largest depth that loads for (1) `k0:\n  k1:\n    …` with no trailing
 line, (2) the same plus a trailing `z: 1` at column 0, (3) `- - … - x` on one
-line, (4) `dumps` of a nested dict; also record the depth where `parse()`
-succeeds but `.as_data()` raises.
+line, (4) `dumps` of a nested dict, (5) the same `- ` chain as a continuation
+line of a text value (`k:\n  a\n  - - … - x`), confirming it raises where (3)
+does and that `dumps` refuses the value that would write it (Contract 04
+item 2); also record the depth where `parse()` succeeds but `.as_data()`
+raises.
 
 ## D. `README.md` (release leaf)
 

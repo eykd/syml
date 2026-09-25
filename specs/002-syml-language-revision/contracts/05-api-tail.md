@@ -23,6 +23,7 @@ Signatures unchanged. `syml.__all__` unchanged (no `DocumentLimitError`).
 | `load(h)` with `h.name = pathlib.PurePosixPath("p.syml")` and a duplicate key | `.message` begins `p.syml: ` |
 | `load(h)` with a custom `os.PathLike` name | its `os.fspath`, decoded with `os.fsdecode`, is the filename |
 | `load(h)` with `h.name` an `int` or `bytes` | no filename (unchanged) |
+| `load(h)` with `h.name = pathlib.PurePosixPath(os.fsdecode(b"\xff.syml"))` and a duplicate key | `.message` begins `\udcff.syml: ` (raw); `str(e)` begins `\\udcff.syml:` (escaped by `_printable`, Contract 03) and encodes to UTF-8 |
 | `parse("\n").as_source().start` | `Pos(index=1, line=2, column=0)` |
 | `parse("").as_source().start` | `Pos(index=0, line=1, column=0)` (unchanged) |
 

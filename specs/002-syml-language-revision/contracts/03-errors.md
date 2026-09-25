@@ -24,8 +24,10 @@ class ParseError(ValueError):
 def error_message(description: str, filename: StrPath | None) -> str: ...
 ```
 
-Private state: `_description: str`, `_filename: StrPath | None` (`""`
-normalizes to `None`). No new public attribute. `.args` is
+Private state: `_description: str`, `_filename: str | None` (`""`
+normalizes to `None`; a `PathLike` is normalized with `os.fspath`, so
+`loads(text, filename=PurePath("p.syml"))` and `load()`'s `.name` give the
+same prefix). No new public attribute. `.args` is
 `(self.message, position, line_text, *extra)`.
 
 `__str__`:
@@ -43,8 +45,14 @@ The `<filename>:` part is omitted when there is none. `<line>` is 1-indexed,
 that replaces each character for which `str.isprintable()` is false with its
 Python escape (`repr(ch)[1:-1]`: `\t`, `\x1b`, `\xa0`, `\u202e`, `\x00`).
 Hint (a) interpolates its would-be key through the same helper when the
-description is built, so the escaped key is part of `.message` too; apart
-from that, `.line_text`, `.message`, and `.args` carry the raw text. `<column>` still counts code points of the
+description is built, so the escaped key is part of `.message` too. The
+`<filename>` segment of `__str__` goes through `_printable` as well (red team
+outer iteration 3): a filename is caller- or attacker-controlled (archive
+entry names), a `\n` in it would break `str(e)`'s two-line shape, and
+`load()` on a handle whose `.name` is an undecodable `bytes` path yields lone
+surrogates (`'\udcff.syml'`), which make `print(e)` raise
+`UnicodeEncodeError` on a UTF-8 stream. Apart from those, `.line_text`,
+`.message` (including its filename prefix), and `.args` carry the raw text. `<column>` still counts code points of the
 raw line, so it is not a caret offset into the rendered text (there is no
 caret).
 
@@ -114,6 +122,8 @@ Hints (at most one; (b) is checked first):
 | gate | `config:\n  Host: x\n port: 1` | hint (a) names `Host` (the line above is the first line of `config`'s block value) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
+| escape | `a: 1\na: 2`, `filename="x\n\x1b[2J\udcff.syml"` | `str(e)` is exactly two lines; its first begins `x\\n\\x1b[2J\\udcff.syml:2:0: ` (escaped); `str(e).encode("utf-8")` does not raise; `e.message` begins with the raw filename |
+| filename | `a: 1\na: 2`, `filename=pathlib.PurePosixPath("p.syml")` | `str(e)` begins `p.syml:2:0: `; `e.message` begins `p.syml: ` |
 
 ## Placement
 
@@ -133,7 +143,8 @@ Hints (at most one; (b) is checked first):
 
 1. Every row above.
 2. `str(e)` for each of the four `ParseError` subclasses, with and without a
-   filename, and with `filename=""`.
+   filename, with `filename=""`, with a `PurePosixPath` filename, and with a
+   filename containing `\n`, `\x1b`, and a lone surrogate (the escape rows).
 3. `pickle.loads(pickle.dumps(e))` preserves `str(e)`, `.message`, `.args`,
    and (for `DuplicateKeyError`) `.key` / `.first_position`.
 4. The column list formatter: one, two, and three columns; both message forms

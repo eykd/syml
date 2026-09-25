@@ -23,7 +23,7 @@ exception surface. Entities below follow the spec's Key Entities list.
 | **Comment** | removed | No line is a comment. `#` and `//` are text everywhere. | FR-007, D23 |
 | **Strict child depth** | revised | Every child is strictly deeper than its parent, list items included; the indentless-sequence carve-out is gone. `- key:`'s sibling-column rule (§6.2) is unchanged. | FR-010, D25 |
 | **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key (gated to a line at an open mapping's column, or the open text value's first line), or list at its key's column. The message also names the open text value's baseline when the failing line is below it (Contract 03, text-value clause). | FR-012 |
-| **Unrepresentable set** | shrunk | research.md R-05's eight items. | FR-006, FR-002 |
+| **Unrepresentable set** | shrunk | research.md R-05's eight items; item 2 also covers a later line whose per-line lex raises `RecursionError` (a long `- ` chain; Contract 04, red team outer iteration 3). | FR-006, FR-002 |
 
 ---
 
@@ -120,12 +120,12 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 
 | Class | Change |
 | --- | --- |
-| `ParseError` | Constructor gains keyword-only `filename: StrPath \| None = None`; stores private `_description`, `_filename`; public `.message` is the prefixed text; new `__str__` → `<loc>: <description>\n<rendered line_text>` (R-07), where the rendered line escapes every non-printable character (`_printable`, Contract 03); `.line_text` stays raw. |
+| `ParseError` | Constructor gains keyword-only `filename: StrPath \| None = None`; stores private `_description`, `_filename: str \| None` (`os.fspath` of a `PathLike`; `""` → `None`); public `.message` is the prefixed text (raw filename); new `__str__` → `<loc>: <description>\n<rendered line_text>` (R-07), where the filename in `<loc>` and the rendered line escape every non-printable character (`_printable`, Contract 03); `.line_text` stays raw. |
 | `OutOfContextNodeError`, `TabIndentationError`, `EncodingError`, `DuplicateKeyError` | Unchanged classes; every raise passes `filename=`. `DuplicateKeyError` keeps `key` and `first_position`. |
 | `UnrepresentableValueError` | Unchanged (a `ValueError`, not a `ParseError`). |
 | `DocumentLimitError` | Not added. §11.3 reserves the name (FR-017). |
 | `error_message(description, filename)` | Treats `""` like `None`. |
-| `_printable(text)` | **New**, private: each character with `str.isprintable()` false becomes `repr(ch)[1:-1]`. Used by `ParseError.__str__` and hint (a). |
+| `_printable(text)` | **New**, private: each character with `str.isprintable()` false becomes `repr(ch)[1:-1]`. Used by `ParseError.__str__` (filename and line text) and hint (a). |
 
 ---
 
@@ -135,7 +135,7 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | --- | --- |
 | `dumps(data)` | `''` → `''`. Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
 | `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. |
-| `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5. |
+| `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line `RecursionError` clause (a `-`-led line whose `document`-rule lex recurses too deep is refused). |
 | `_check_block_line` | Removed (its checks move into R-05's per-value rules). |
 | `_lexes_as_structure(line)` | Matches `SymlParser.grammar['structure']` against `line.lstrip(' ')` with `parse` (full match), no `preprocess`; `RecursionError` still counts as structure. |
 | `_COMMENT_MARKERS` | Removed. |
