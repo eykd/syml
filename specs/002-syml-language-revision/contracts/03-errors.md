@@ -56,6 +56,20 @@ surrogates (`'\udcff.syml'`), which make `print(e)` raise
 raw line, so it is not a caret offset into the rendered text (there is no
 caret).
 
+**Bounded rendering** (`syml-s9p9.9`): `_printable` can expand a single
+character to several (`'\x00'` renders as the 4 characters `\x00`), so
+attacker-controlled text is windowed through a private
+`_truncated_window(text, *, center, width=80)` helper *before* escaping —
+capping the pre-escape window bounds the escaped output too, regardless of
+how long the hostile input is. `__str__` windows `<line_text>` centered on
+`<column>`; hint (a) windows its would-be-key quote centered on `0` (the run
+always starts at the candidate key's own first character). A truncated side
+is marked with a single `'…'`. Neither `.line_text` nor `.args` is affected —
+only `__str__`'s rendering and hint (a)'s quoted run inside `.message` are
+windowed — so a 1 MB hostile line (e.g. a run of `\x00` before a bare `:`)
+still yields a bounded `.message` and `str(e)` instead of the unbounded,
+multi-megabyte rendering this caps.
+
 ## Messages
 
 | Class | Description (the part after any filename prefix) |
@@ -186,3 +200,7 @@ Hints (at most one; (b) is checked first):
 8. `_printable`: `str(e)` contains no character outside `str.isprintable()`
    except the one `\n` between its two lines, for every raised error in the
    SC-002/P3 property run (the property asserts it on each `ParseError`).
+9. Bounded rendering (`syml-s9p9.9`): a hostile 1 MB line (e.g. a run of
+   `\x00` before a bare `:`) yields a `.message` and `str(e)` that both stay
+   well under the input's size, while `.line_text` still carries the full,
+   untruncated line.

@@ -519,6 +519,24 @@ class TestOutOfContextNodeErrorEscaping:
         assert "Hint: '\\x1b[31mX' is not a key" in exc_info.value.message
 
 
+class TestOutOfContextNodeErrorBoundedSize:
+    """Contract 03 §Surface/§Hints (a): a hostile long line yields a bounded `.message`/`str(e)` (syml-s9p9.9)."""
+
+    def test_bounded_message_and_str_for_a_hostile_one_megabyte_line(self) -> None:
+        r"""A 1 MB `\x00`-run before a bare `:` used to yield a multi-megabyte `.message`/`str(e)`."""
+        hostile_run = '\x00' * 1_000_000
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads(f'a: 1\n{hostile_run}: x')
+
+        error = exc_info.value
+        # `.line_text` itself carries the raw, untruncated line (Contract 05 §`line_text`).
+        assert error.line_text == f'{hostile_run}: x'
+        # Both the hint's would-be-key quote and `str(e)`'s line text are windowed,
+        # so neither `.message` nor `str(e)` scales with the hostile line's length.
+        assert len(error.message) < 1_000
+        assert len(str(error)) < 1_000
+
+
 class TestOutOfContextNodeErrorSC007:
     """Contract 03 §Test obligations item 7: SC-007's plain context error."""
 

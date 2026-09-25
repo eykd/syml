@@ -92,7 +92,7 @@ def out_of_context_description(
     if list_under_key:
         hint = "Hint: a list under a key must be indented past the key's column."
     elif would_be_key_name is not None:
-        escaped = _printable(would_be_key_name)
+        escaped = _printable(_truncated_window(would_be_key_name, center=0))
         hint = f"Hint: '{escaped}' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter."
     if hint is not None:
         sentence = f'{sentence} {hint}'
@@ -107,6 +107,33 @@ def _printable(text: str) -> str:
     caller's terminal/stream (Contract 03 §Security).
     """
     return ''.join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in text)
+
+
+#: Window width (in code points of the *unescaped* input) rendered around a
+#: point of interest by `_truncated_window` (Contract 03 §Surface/§Hints (a)).
+_TRUNCATION_WINDOW = 80
+
+
+def _truncated_window(text: str, *, center: int, width: int = _TRUNCATION_WINDOW) -> str:
+    r"""Return a bounded slice of `text` around code-point index `center`, elided on any cut side.
+
+    Bounds `_printable`'s escape expansion (each character can grow to
+    several characters, e.g. `'\\x00'` is 4 characters) on attacker-controlled
+    input by capping the window's *pre-escape* length, so the rendered output
+    stays proportional to `width` regardless of `len(text)` — a single 1 MB
+    hostile line no longer yields a multi-megabyte `.message`/`str(e)`
+    (Contract 03 §Hints (a) / §Surface, syml-s9p9.9). `center` is clamped
+    into range; an ellipsis marker (`'…'`) replaces each side that gets cut.
+    """
+    if len(text) <= width:
+        return text
+    half = width // 2
+    start = max(0, min(center, len(text)) - half)
+    end = min(len(text), start + width)
+    start = max(0, end - width)
+    prefix = '…' if start > 0 else ''
+    suffix = '…' if end < len(text) else ''
+    return f'{prefix}{text[start:end]}{suffix}'
 
 
 class ParseError(ValueError):
@@ -150,10 +177,16 @@ class ParseError(ValueError):
         (§10.2). The filename and line text are rendered through
         `_printable` so no non-printable character (including a stray
         newline in a caller-supplied filename) escapes into the two-line
-        shape this format promises.
+        shape this format promises. The rendered line text is first
+        windowed through `_truncated_window`, centered on `self.position.column`,
+        so a hostile multi-megabyte `line_text` (unbounded, per `.line_text`'s
+        own attribute contract) still yields a bounded `str(e)`
+        (Contract 03 §Surface, syml-s9p9.9); `self.line_text` itself is
+        untouched.
         """
         prefix = f'{_printable(self._filename)}:' if self._filename else ''
-        return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(self.line_text)}'
+        windowed_line_text = _truncated_window(self.line_text, center=self.position.column)
+        return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(windowed_line_text)}'
 
 
 class OutOfContextNodeError(ParseError):
