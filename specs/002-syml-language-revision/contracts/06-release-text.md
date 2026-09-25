@@ -209,6 +209,10 @@ not document the 32-marker bound.
       `- server:\n    host: x` nests (show both). Use a space after `-`:
       a tab there counts as one column.
    9. A blank line inside a value is a paragraph break.
+   10. Trailing whitespace on a value is kept, and an over-indented line
+       joins the value above it (D28): `host: db1   ` keeps its trailing
+       spaces; a YAML-style sub-bullet like `- Budget review\n    - Q3
+       numbers` is one item, not two.
 2. A **`Source`** paragraph with Contract 05's three facts (FR-014).
 3. Any README example that uses an indented comment line, a key outside
    `[a-z][a-z0-9_-]*` (uppercase, camelCase, or punctuation: the lead

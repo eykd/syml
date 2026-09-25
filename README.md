@@ -88,6 +88,12 @@ Skimming a YAML file into SYML? Watch for these, in order:
    there counts as one column too, but is easy to misalign visually.
 9. **A blank line inside a value is a paragraph break.** `k:\n  a\n\n  b`
    is `{'k': 'a\n\nb'}`, not `{'k': 'a\nb'}`.
+10. **Trailing whitespace on a value is kept, and an over-indented line
+    joins the value above it.** `host: db1   ` keeps the trailing spaces
+    (`'db1   '`); `port: 5432 ` too. An indented line deeper than an open
+    value's baseline is that value's text, not a new sibling — YAML-style
+    sub-bullets fall into this: `- Budget review\n    - Q3 numbers` is
+    `['Budget review\n- Q3 numbers']`, one item, not two.
 
 
 `Source`
