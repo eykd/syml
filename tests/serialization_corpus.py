@@ -63,6 +63,12 @@ CORPUS: dict[str, SymlInput] = {
     'list_of_mappings': [{'a': '1'}, {'b': '2'}],
     'insertion_order_mapping': {'z': '1', 'a': '2', 'm': '3'},
     'leading_feff_root_scalar': '\ufeffhello',
+    # US3-5 (Contract 04): structure-match on the isolated line runs no
+    # \u00a79.0 pre-processing, so a leading U+FEFF is that line's own content,
+    # not a document-level BOM to strip \u2014 `\ufeff- x` does not lex as a
+    # list item and both round-trip (syml-xreq.6).
+    'leading_feff_list_item': ['\ufeff- x'],
+    'leading_feff_block_line': {'k': 'a\n\ufeff- x'},
 }
 
 UNREPRESENTABLE: dict[str, object] = {

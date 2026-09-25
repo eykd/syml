@@ -205,13 +205,16 @@ def _check_block_line(text: str, line: str) -> None:
 def _lexes_as_structure(line: str) -> bool:
     """Does the single physical line `line` parse as a list item, key-value pair, or section?
 
-    Parses `line` with the real parser, so D19's no-uppercase key rule is
+    Parses `line` with the real grammar directly (`parsers.SymlParser`), not
+    `parsers.parse`, so §9.0 pre-processing never runs on the isolated line:
+    a leading U+FEFF is judged as the line's own content, not stripped as a
+    document-level BOM (US3-5, FR-006). D19's no-uppercase key rule is still
     honoured (`Listen: here` is text, `listen: here` is structure). A
     `- `-led run deep enough to exhaust the parser's recursion is treated
     as structure, since it cannot be re-read at all.
     """
     try:
-        root = parsers.parse(line)
+        root = parsers.SymlParser(filename=None, position_map=None).parse(line)
     except RecursionError:
         return True
     return bool(root.children) and not isinstance(root.children[0], nodes.TextLeafNode)

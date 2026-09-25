@@ -379,7 +379,15 @@ independent.
   `tests/serialization_corpus.py`: rows `contains_blank_line`,
   `block_line_begins_with_comment_marker` (`{"k": "a\n# c"}` is now written
   as `k:\n  a\n  # c\n` and round-trips), `uppercase_key`, the key-rule and
-  root-scalar-refusal scenarios.
+  root-scalar-refusal scenarios. Done: US07's Examples tables now move
+  `lowercase_roman_numeral_key` and `leading_feff_first_key` to the
+  unrepresentable outline (item-7 refusals) and `colon_escape_list_item` to
+  the representable outline, matching `serialization_corpus.py` (grammar
+  leaf's code change had landed without this follow-through). The BOM-led
+  round-trip leaf (serializer, `syml-s9p9.5.3.1`) adds
+  `leading_feff_list_item` (`["\ufeff- x"]`) and `leading_feff_block_line`
+  (`{"k": "a\n\ufeff- x"}`) to both `CORPUS` and US07's representable
+  Examples (US3-5, `syml-xreq.6`).
 - `specs/acceptance-specs/US09-release-readiness.feature`: CHANGELOG item
   assertions.
 - `tests/test_parsers.py`, `tests/test_nodes.py`, `tests/test_serializer.py`,

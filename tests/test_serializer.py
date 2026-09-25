@@ -186,6 +186,11 @@ class TestLexesAsStructure:
     def test_it_should_report_text_or_a_comment_as_not_structure(self, line: str) -> None:
         assert serializer._lexes_as_structure(line) is False  # noqa: SLF001
 
+    @pytest.mark.parametrize('line', ['﻿- x', '﻿key: v', '﻿k:', '﻿-'])
+    def test_it_should_not_strip_a_leading_bom_before_judging_structure(self, line: str) -> None:
+        """No §9.0 pre-processing runs on the isolated line (US3-5, FR-006): a leading U+FEFF is content."""
+        assert serializer._lexes_as_structure(line) is False  # noqa: SLF001
+
 
 class TestWithMarker:
     """`_with_marker` attaches a scalar's rendered lines to its `key:`/`-` marker."""
