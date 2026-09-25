@@ -15,6 +15,8 @@ from syml.exceptions import (
     OutOfContextNodeError,
     ParseError,
     error_message,
+    is_comment_shaped,
+    is_document_marker,
     needs_space_after_marker,
     would_be_key,
 )
@@ -541,9 +543,80 @@ class TestOutOfContextNodeErrorHintC:
         )
 
     def test_no_hint_for_a_document_marker_shaped_line(self) -> None:
-        """`---`/`--x` never gets hint (c) — mid-file document markers are `.11`'s leaf, not this one's."""
+        """`---`/`--x` never gets hint (c) — mid-file document markers get hint (e), not hint (c)."""
         assert needs_space_after_marker('---') is False
         assert needs_space_after_marker('--x') is False
+
+
+class TestOutOfContextNodeErrorHintD:
+    """Contract 03 §Hints (d) (D27): indented-comment hint, on the failing line only."""
+
+    def test_indented_hash_comment_gets_the_hint(self) -> None:
+        """The repro from `syml-cjk2.11`: commenting out a key in place raises on the next real key."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  # port: 80\n  port: 81')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds keys; '
+            "open blocks are at columns 0 and 2. Hint: comments must start at column 0; an indented '#' line is text."
+        )
+
+    def test_indented_slash_slash_comment_gets_the_hint(self) -> None:
+        """`//` is the other comment marker (Contract 03 §Behaviour, R-18)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  // port: 80\n  port: 81')
+
+        assert "Hint: comments must start at column 0; an indented '#' line is text." in exc_info.value.message
+
+    def test_form_1_also_gets_the_hint(self) -> None:
+        """Unlike hint (c), (d) is not gated to form 2 — an odd-column comment still names the real problem."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n # comment\n  port: 81')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2. '
+            "Hint: comments must start at column 0; an indented '#' line is text."
+        )
+
+    def test_hint_d_wins_over_hint_a_when_the_comment_has_no_space(self) -> None:
+        """`#port: 80` matches hint (a)'s `RUN:` pattern too, but (d) is checked first (a `#`-led line is a comment)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  #port: 80\n  port: 81')
+
+        assert "Hint: comments must start at column 0; an indented '#' line is text." in exc_info.value.message
+        assert 'is not a key' not in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorHintE:
+    """Contract 03 §Hints (e) (D27): document-marker hint, on the failing line only."""
+
+    def test_mid_file_triple_dash_gets_the_hint(self) -> None:
+        """The repro from `syml-cjk2.11`: a YAML document separator is just text in SYML."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k: v\n---\nj: w')
+
+        assert exc_info.value.message == (
+            'Line 2, at column 0, is a text line, but the open block at column 0 holds keys; '
+            'open blocks are at column 0. Hint: SYML has no document markers.'
+        )
+
+    def test_end_marker_gets_the_hint_too(self) -> None:
+        """`...` is YAML's end-of-document marker; SYML has no equivalent either."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  v\n...\n')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 0, is a text line, but the open block at column 0 holds keys; '
+            'open blocks are at column 0; the open value continues at column 2. '
+            'Hint: SYML has no document markers.'
+        )
+
+    def test_double_dash_does_not_get_the_hint(self) -> None:
+        """`--x` is not a document marker (only `---` and `...` are, per `is_document_marker`'s truth table)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  --x\n  port: 81')
+
+        assert 'Hint' not in exc_info.value.message
 
 
 class TestOutOfContextNodeErrorPosition:
@@ -668,3 +741,46 @@ class TestNeedsSpaceAfterMarker:
     )
     def test_needs_space_after_marker(self, line_text: str, *, expected: bool) -> None:
         assert needs_space_after_marker(line_text) is expected
+
+
+class TestIsCommentShaped:
+    """Contract 03 §Hints (d): the standalone `is_comment_shaped` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('# comment', True, id='hash_at_column_0'),
+            pytest.param('  # comment', True, id='indented_hash'),
+            pytest.param('  // comment', True, id='indented_slash_slash'),
+            pytest.param('  #port: 80', True, id='indented_hash_no_space'),
+            pytest.param('key: value', False, id='ordinary_key'),
+            pytest.param('  key: value', False, id='indented_ordinary_key'),
+            pytest.param('- item', False, id='list_item'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+            pytest.param(' /path', False, id='single_slash_not_a_comment'),
+        ],
+    )
+    def test_is_comment_shaped(self, line_text: str, *, expected: bool) -> None:
+        assert is_comment_shaped(line_text) is expected
+
+
+class TestIsDocumentMarker:
+    """Contract 03 §Hints (e): the standalone `is_document_marker` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('---', True, id='triple_dash'),
+            pytest.param('  ---', True, id='indented_triple_dash'),
+            pytest.param('...', True, id='end_marker'),
+            pytest.param('  ...', True, id='indented_end_marker'),
+            pytest.param('--- ', True, id='trailing_space'),
+            pytest.param('--- x', False, id='trailing_content'),
+            pytest.param('--x', False, id='double_dash_only'),
+            pytest.param('----', False, id='four_dashes'),
+            pytest.param('....', False, id='four_dots'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+        ],
+    )
+    def test_is_document_marker(self, line_text: str, *, expected: bool) -> None:
+        assert is_document_marker(line_text) is expected

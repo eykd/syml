@@ -51,7 +51,7 @@ def would_be_key(line_text: str) -> str | None:
 #: leading indentation) rather than D26's bare `^[a-z][a-z0-9_-]*:\S` /
 #: `^-\S`, since the lines this hint fires on are always indented. The list
 #: pattern excludes a second leading `-` (`--`, `---`) so this hint never
-#: fires on a document-marker-shaped line; `.11` owns that hint.
+#: fires on a document-marker-shaped line; hint (e) owns that.
 _MISSING_SPACE_KEY_RE = re.compile(r'^[ \t]*[a-z][a-z0-9_-]*:\S')
 _MISSING_SPACE_LIST_RE = re.compile(r'^[ \t]*-(?!-)\S')
 
@@ -59,6 +59,30 @@ _MISSING_SPACE_LIST_RE = re.compile(r'^[ \t]*-(?!-)\S')
 def needs_space_after_marker(line_text: str) -> bool:
     """Return whether `line_text` looks like a key or list marker missing its trailing space (Contract 03 §Hints (c))."""
     return _MISSING_SPACE_KEY_RE.match(line_text) is not None or _MISSING_SPACE_LIST_RE.match(line_text) is not None
+
+
+#: Hint (d) candidate (Contract 03 §Hints (d), D27): a comment-shaped line
+#: — after its indentation, `#` or `//` — reaching a raise site at all. A
+#: column-0 comment never reaches here (the visitor drops it before the
+#: builder sees it, D23); only an *indented* `#`/`//` line, which lexes as
+#: text, can fail to incorporate and land here.
+_COMMENT_SHAPED_RE = re.compile(r'^[ \t]*(#|//)')
+
+
+def is_comment_shaped(line_text: str) -> bool:
+    """Return whether `line_text`, after its indentation, starts with `#` or `//` (Contract 03 §Hints (d))."""
+    return _COMMENT_SHAPED_RE.match(line_text) is not None
+
+
+#: Hint (e) candidate (Contract 03 §Hints (e), D27): a line whose entire
+#: content, after indentation and trailing whitespace, is exactly `---` or
+#: `...` — a YAML document marker, which SYML has no equivalent of (D23).
+_DOCUMENT_MARKER_RE = re.compile(r'^[ \t]*(---|\.\.\.)[ \t]*$')
+
+
+def is_document_marker(line_text: str) -> bool:
+    """Return whether `line_text`, after indentation, is exactly `---` or `...` (Contract 03 §Hints (e))."""
+    return _DOCUMENT_MARKER_RE.match(line_text) is not None
 
 
 def _columns_phrase(columns: Sequence[int]) -> str:
@@ -81,6 +105,8 @@ def out_of_context_description(
     list_under_key: bool,
     would_be_key_name: str | None,
     missing_space_after_marker: bool = False,
+    comment_shaped: bool = False,
+    document_marker: bool = False,
 ) -> str:
     """Build `OutOfContextNodeError`'s description (Contract 03 §Messages).
 
@@ -93,8 +119,13 @@ def out_of_context_description(
     through `_printable` so an unprintable would-be key does not leak raw
     control characters into `.message` (§Surface); otherwise
     `missing_space_after_marker` (already gated by the caller, D26) selects
-    hint (c). Hint (c)'s text has no interpolated content, so it needs no
-    `_printable`/`_truncated_window` bounding.
+    hint (c); otherwise `comment_shaped` (D27) selects hint (d); otherwise
+    `document_marker` (D27) selects hint (e). Hints (c), (d), and (e) have no
+    interpolated content, so none needs `_printable`/`_truncated_window`
+    bounding. The caller (`nodes._hint_candidates`) guarantees at most one of
+    `would_be_key_name`/`missing_space_after_marker`/`comment_shaped`/
+    `document_marker` is ever truthy at once, so this `elif` chain's order
+    only documents precedence — it never has to arbitrate a real conflict.
     """
     cols_phrase = _columns_phrase(open_columns)
     if other_kind is None:
@@ -116,6 +147,10 @@ def out_of_context_description(
         hint = f"Hint: '{escaped}' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter."
     elif missing_space_after_marker:
         hint = 'Hint: a key or list marker needs a space after it.'
+    elif comment_shaped:
+        hint = "Hint: comments must start at column 0; an indented '#' line is text."
+    elif document_marker:
+        hint = 'Hint: SYML has no document markers.'
     if hint is not None:
         sentence = f'{sentence} {hint}'
     return sentence

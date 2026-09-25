@@ -13,6 +13,8 @@ from .exceptions import (
     DuplicateKeyError,
     OutOfContextNodeError,
     duplicate_key_description,
+    is_comment_shaped,
+    is_document_marker,
     needs_space_after_marker,
     out_of_context_description,
     would_be_key,
@@ -248,8 +250,10 @@ class Root(ContainerNode):
             and not terminal.children
             and terminal.level == column
         )
-        candidate, missing_space = (
-            (None, False) if list_under_key else _hint_candidates(node, pnode, pos, line, open_blocks, terminal)
+        candidate, missing_space, comment_shaped, document_marker = (
+            (None, False, False, False)
+            if list_under_key
+            else _hint_candidates(node, pnode, pos, line, open_blocks, terminal)
         )
 
         description = out_of_context_description(
@@ -262,6 +266,8 @@ class Root(ContainerNode):
             list_under_key=list_under_key,
             would_be_key_name=candidate,
             missing_space_after_marker=missing_space,
+            comment_shaped=comment_shaped,
+            document_marker=document_marker,
         )
         raise OutOfContextNodeError(description, pos, line, filename=self.filename)
 
@@ -300,11 +306,11 @@ def _hint_candidates(
     line: str,
     open_blocks: dict[int, str],
     terminal: SymlNode,
-) -> tuple[str | None, bool]:
-    """Return hint (a)'s `RUN` and hint (c)'s missing-space flag (Contract 03 §Hints).
+) -> tuple[str | None, bool, bool, bool]:
+    """Return hint (a)'s `RUN`, hint (c)'s missing-space flag, and hints (d)/(e)'s flags (Contract 03 §Hints).
 
-    Both hints share the same two candidate lines, checked in the same
-    order: the failing line first, then the line above (D26 — hint (c)
+    Hints (a) and (c) share the same two candidate lines, checked in the
+    same order: the failing line first, then the line above (D26 — hint (c)
     reuses hint (a)'s look-back). Hint (a)'s failing-line gate stays
     `'keys'`-only (a would-be key only makes sense under an open `Mapping`);
     hint (c)'s failing-line gate is any open column (`'keys'` or `'list
@@ -314,14 +320,49 @@ def _hint_candidates(
     requires whitespace/EOL after the colon, hint (c)'s requires a
     non-space character there, so the two are mutually exclusive on any
     single line.
+
+    Hints (d) and (e) (D27) are checked first, on the failing line only —
+    no look-back, since a comment-shaped or document-marker-shaped line is
+    never the value's first line for a `KeyValue`/`ListItem` failing node
+    (that shape always lexes as text). Neither is gated on `open_blocks`
+    (unlike (c)): the problem they name is a property of the line's
+    content, not of its indentation, so it applies to form 1 and form 2
+    alike. They are checked *before* (a)/(c) on the failing line, not
+    after: an indented `#port: 80` (no space after `#`) would otherwise
+    match hint (a)'s `RUN:` pattern (`RUN` = `#port`) and wrongly suggest
+    renaming a key, when the real problem is the leading `#` — comments
+    only start at column 0. `---`/`...` cannot collide with (a) (no colon)
+    or (c) (`_MISSING_SPACE_LIST_RE` excludes a second leading `-`), so
+    that ordering costs it nothing.
     """
+    if is_comment_shaped(line):
+        return None, False, True, False
+    if is_document_marker(line):
+        return None, False, False, True
     if pos.column in open_blocks:
         if open_blocks[pos.column] == 'keys':
             candidate = would_be_key(line)
             if candidate is not None:
-                return candidate, False
+                return candidate, False, False, False
         if needs_space_after_marker(line):
-            return None, True
+            return None, True, False, False
+    candidate, missing_space = _look_back_hint(node, pnode, pos, terminal)
+    return candidate, missing_space, False, False
+
+
+def _look_back_hint(
+    node: SymlNode,
+    pnode: PNode,
+    pos: Pos,
+    terminal: SymlNode,
+) -> tuple[str | None, bool]:
+    """Return hints (a)/(c) as found on the line above (D26's look-back), or `(None, False)`.
+
+    Only consulted when the failing line itself named no hint. Gated to the
+    open value's own first line (`terminal.source.start.line`), for a
+    failing `KeyValue`/`ListItem` node only, per Contract 03 §Hints (a)'s
+    gating (which hint (c) reuses verbatim, D26).
+    """
     if isinstance(terminal, TextLeafNode) and not terminal.inline and isinstance(node, KeyValue | ListItem):
         above_line = _line_above(pnode.full_text, pos.line)
         if above_line == terminal.source.start.line:

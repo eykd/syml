@@ -162,14 +162,15 @@ succeeds but `.as_data()` raises.
    1. Comments only at column 0: a line that starts with `#` or `//`, with
       no indentation, is a comment, anywhere in the file. An indented
       `# note` is text: as the first line of a block it makes that block one
-      string, with no error, and after a block's first entry it raises. A
-      trailing comment is text too (`port: 80 # default` keeps `# default`),
-      and after a key it takes in the block under it (`server: # prod` makes
-      the block under it part of `server`'s string).
+      string, with no error, and after a block's first entry it raises (with
+      a hint, D27). A trailing comment is text too (`port: 80 # default`
+      keeps `# default`), and after a key it takes in the block under it
+      (`server: # prod` makes the block under it part of `server`'s string).
    2. No block-scalar indicators: `|` and `>` are literal; indent the lines
       under the key instead.
    3. No document markers: `---` and `...` are text (a document starting with
-      one is a single string).
+      one is a single string; mid-file, a raise there also gets a hint,
+      D27).
    4. No quoting: `"x"` keeps its quotation marks.
    5. `null`, `true`, `123`, `~`, `[a, b]`, `{a: 1}` are plain strings.
    6. Keys are `[a-z][a-z0-9_-]*`: `Name:`, `firstName:`, `URL:` are text, and

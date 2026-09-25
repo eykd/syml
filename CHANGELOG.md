@@ -7,8 +7,8 @@ Migration notes for a 0.6.2 user upgrading to 1.0.0. Every user-visible
 change from 0.6.2 is listed below, numbered to match Contract 06's audit
 (`specs/002-syml-language-revision/contracts/06-release-text.md` § FR-016
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
-§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, item
-25 the 2026-09-25 D26 break-testing-round-2 hint addition (see
+§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
+25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions (see
 `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in this one
 1.0.0 release.
 
@@ -246,6 +246,17 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     `port:8080` alone (no sibling to raise against) still silently parses as
     text (item 5, D21); the hint only fires where an `OutOfContextNodeError`
     already raises for another reason.
+26. **Two more new hints (D27).** `OutOfContextNodeError` gains a fourth and
+    fifth hint. When the failing line, after its indentation, starts with
+    `#` or `//`, the message ends "Hint: comments must start at column 0;
+    an indented '#' line is text." — the most common trigger is commenting
+    out a key in place (item 1 already documents that an indented comment
+    is text, silently, until a later line collides with it). When the
+    failing line is exactly `---` or `...`, the message ends "Hint: SYML has
+    no document markers." (item 3). Both hints fire on the failing line
+    only (no look-back), on any open-column form, and are checked ahead of
+    the D26/US1-8 hints so a spaceless comment (`#port: 80`) is never
+    misread as a bad key.
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

@@ -57,15 +57,16 @@ Skimming a YAML file into SYML? Watch for these, in order:
 1. **Comments only at column 0.** A line that starts with `#` or `//`, with
    no indentation, is a comment, anywhere in the file. An indented `# note`
    is text: as the first line of a block it makes that block one string,
-   with no error, and after a block's first entry it raises. A trailing
-   comment is text too (`port: 80 # default` keeps `# default`), and after
-   a key it takes in the block under it (`server: # prod` makes the block
-   under it part of `server`'s string).
+   with no error, and after a block's first entry it raises, with a hint. A
+   trailing comment is text too (`port: 80 # default` keeps `# default`),
+   and after a key it takes in the block under it (`server: # prod` makes
+   the block under it part of `server`'s string).
 2. **No block-scalar indicators.** `|` and `>` are literal characters, not
    YAML's literal/folded block markers; indent the lines under the key
    instead.
 3. **No document markers.** `---` and `...` are text, not YAML's document
-   separators (a document starting with one is a single string).
+   separators (a document starting with one is a single string; mid-file,
+   a raise there gets a hint too).
 4. **No quoting.** `"x"` is the three-character string `"x"`, quotation
    marks included.
 5. **Bare scalars are plain strings.** `null`, `true`, `123`, `~`,

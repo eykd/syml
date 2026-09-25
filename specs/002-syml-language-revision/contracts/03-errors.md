@@ -119,7 +119,10 @@ column a prose author most likely meant; without the clause
 continuation yet (baseline unset) gets no clause: its anchor column is
 already in `{COLS}` (US2-9 keeps its exact text).
 
-Hints (at most one; checked in the order (b), (a), (c)):
+Hints (at most one; checked in the order (b), (d), (e), (a), (c) — (d)/(e)
+sit ahead of (a)/(c) so a comment or document-marker line never gets a
+misleading "not a key"/"needs a space" hint about its own shape, §"(d)"
+below):
 
 - **(b) list at its key's column**: the failing node is a `ListItem` and the
   spine ends in a childless `KeyValue` at the same level →
@@ -150,8 +153,8 @@ Hints (at most one; checked in the order (b), (a), (c)):
   `KeyValue`/`ListItem`), after its indentation spaces, matches
   `[a-z][a-z0-9_-]*:\S` (a key immediately followed by a non-space
   character) or `-(?!-)\S` (a list marker immediately followed by a
-  non-space character, `--`/`---`/`...` excluded — those are `.11`'s
-  document-marker hint's territory, not this one's) →
+  non-space character, `--`/`---`/`...` excluded — those are hint (e)'s
+  document-marker territory, not this one's) →
   `Hint: a key or list marker needs a space after it.` **Failing-line
   gating** differs from (a): (c) fires on either open-column kind (`{COLS}`
   holding `keys` *or* `list items`, i.e. form 2 of the message), never on
@@ -160,6 +163,21 @@ Hints (at most one; checked in the order (b), (a), (c)):
   port:8080`, column 1 not open, gets no hint). (a) and (c) never both match
   the same candidate line: (a)'s pattern requires whitespace or end-of-line
   after the colon, (c)'s requires a non-space character there.
+- **(d) indented comment** (D27, `syml-cjk2.11`): the **failing line only**
+  (no look-back), after its indentation spaces, starts with `#` or `//` →
+  `Hint: comments must start at column 0; an indented '#' line is text.`
+  Not gated on `{COLS}`: the problem is a property of the line's content,
+  not its indentation, so it fires on form 1 and form 2 alike. Checked
+  *before* (a)/(c) on the failing line (that ordering is why the overall
+  hint order is (b), (d), (e), (a), (c)): `#port: 80` (no space after `#`)
+  would otherwise also match (a)'s `RUN:` pattern (`RUN` = `#port`) and
+  wrongly suggest renaming a key, when the real problem is the leading `#`.
+- **(e) mid-file document marker** (D27, `syml-cjk2.11`): the **failing
+  line only** (no look-back), after its indentation spaces and before any
+  trailing spaces/tabs, is exactly `---` or `...` →
+  `Hint: SYML has no document markers.` Also not gated on `{COLS}`, for the
+  same reason as (d). `--x`/`--` never match (only an exact `---` or `...`
+  line does); those get no hint at all, same as before D27.
 
 ## Behaviour
 
@@ -188,7 +206,14 @@ Hints (at most one; checked in the order (b), (a), (c)):
 | hint (c), `syml-cjk2.10` | `l:\n  - a\n  -b` | description `Line 3, at column 2, is a text line, but the open block at column 2 holds list items; open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.` |
 | hint (c), `syml-cjk2.10` | `k:\n  port:8080\n- x` | hint (c) fires from the line above (D26's look-back), naming no run — description ends `Hint: a key or list marker needs a space after it.` |
 | hint (c) gate, `syml-cjk2.10` | `server:\n  host: x\n port:8080` | no hint (column 1 is not an open block — form 1 — even though the line is missing its space; the real problem is indentation) |
-| hint (c) gate, `syml-cjk2.10` | `needs_space_after_marker('---')` / `'--x'` | both `False` — a document-marker-shaped line never gets hint (c); `.11` owns that hint |
+| hint (c) gate, `syml-cjk2.10` | `needs_space_after_marker('---')` / `'--x'` | both `False` — a document-marker-shaped line never gets hint (c); hint (e) owns that |
+| hint (d), `syml-cjk2.11` | `server:\n  host: a\n  # port: 80\n  port: 81` | `OutOfContextNodeError`; description `Line 3, at column 2, is a text line, but the open block at column 2 holds keys; open blocks are at columns 0 and 2. Hint: comments must start at column 0; an indented '#' line is text.` |
+| hint (d), `syml-cjk2.11` | `server:\n  host: a\n // c\n  port: 81` | hint (d) fires for `//` too |
+| hint (d) form 1, `syml-cjk2.11` | `server:\n  host: a\n # comment\n  port: 81` | hint (d) fires even though column 1 is not an open block (form 1) — unlike (c), (d) is not gated on `{COLS}` |
+| hint (d) precedence, `syml-cjk2.11` | `server:\n  host: a\n  #port: 80\n  port: 81` | hint (d) wins over (a): message contains "comments must start at column 0", not "is not a key" |
+| hint (e), `syml-cjk2.11` | `k: v\n---\nj: w` | `OutOfContextNodeError`; description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: SYML has no document markers.` |
+| hint (e), `syml-cjk2.11` | `k:\n  v\n...\n` | description ends `; the open value continues at column 2. Hint: SYML has no document markers.` |
+| hint (e) gate, `syml-cjk2.11` | `server:\n  host: a\n  --x\n  port: 81` | no hint (`--x` is not `---` or `...` exactly) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
 | escape | `a: 1\na: 2`, `filename="x\n\x1b[2J\udcff.syml"` | `str(e)` is exactly two lines; its first begins `x\\n\\x1b[2J\\udcff.syml:2:0: ` (escaped); `str(e).encode("utf-8")` does not raise; `e.message` begins with the raw filename |
