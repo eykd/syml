@@ -37,10 +37,6 @@ PENDING: dict[tuple[str, str], str] = {
         'key: value1\nkey: value2\n',
         "ERROR: DuplicateKeyError: Duplicate key 'key'",
     ): 'FR-011 (Contract 03: exact exception message text)',
-    (
-        'k:\n- a\n',
-        'ERROR: OutOfContextNodeError',
-    ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
 }
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')

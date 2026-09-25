@@ -281,18 +281,6 @@ class KeyValue(ContainerNode):
 
     key: KeyLeafNode
 
-    def can_add_node(self, node: SymlNode) -> bool:
-        """Check if this key-value item can add a child node.
-
-        A block value must be strictly deeper than its own key's column
-        (R-11) — except a nested list (the YAML-style "indentless
-        sequence"), whose items conventionally align with the key that
-        introduces them rather than sitting a column deeper.
-        """
-        if isinstance(node, ListItem | List):
-            return not self.children and (node.level is None or (self.level is not None and node.level >= self.level))
-        return super().can_add_node(node)
-
 
 @dataclass(kw_only=True)
 class TextLeafNode(SymlNode):

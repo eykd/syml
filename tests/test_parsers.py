@@ -239,7 +239,13 @@ class TestSymlParser:
             Source.from_text(text, 'blah'): Source.from_text(text, 'boo'),
         }
 
-    def test_it_should_parse_a_nested_list_with_mapping(self, parser: parsers.SymlParser) -> None:
+    def test_it_should_reject_an_indentless_list_under_a_key(self, parser: parsers.SymlParser) -> None:
+        """A list under a key must be strictly deeper than the key's column (R-11, FR-010, D25).
+
+        `- bar`/`- baz` sit at the same column as `foo:` (the YAML-style
+        "indentless sequence"), so they are out of context rather than
+        `foo`'s value.
+        """
         text = textwrap.dedent(
             """
             - foo:
@@ -248,20 +254,8 @@ class TestSymlParser:
             - blah: boo
             """
         )
-        result = parser.parse(text)
-        expected = [
-            {'foo': ['bar', 'baz']},
-            {'blah': 'boo'},
-        ]
-        assert result.as_data() == expected
-        assert result.as_source() == [
-            {
-                Source.from_text(text, 'foo'): [Source.from_text(text, 'bar'), Source.from_text(text, 'baz')],
-            },
-            {
-                Source.from_text(text, 'blah'): Source.from_text(text, 'boo'),
-            },
-        ]
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            parser.parse(text)
 
     def test_it_should_parse_comments_and_blanks(self, parser: parsers.SymlParser) -> None:
         """A column-0 comment is dropped; blank lines are dropped (principal ruling 2026-09-24, xreq.21).
@@ -277,8 +271,8 @@ class TestSymlParser:
             # A comment
             - foo:
 
-              - bar
-              - baz
+                - bar
+                - baz
 
             - blah: boo # not a comment!
 
