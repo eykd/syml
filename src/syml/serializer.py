@@ -6,7 +6,7 @@ import re
 from typing import IO, TYPE_CHECKING, Literal
 
 from . import nodes, parsers
-from .basetypes import Source
+from .basetypes import KEY_PATTERN, Source
 from .exceptions import UnrepresentableValueError
 
 if TYPE_CHECKING:  # pragma: nocover
@@ -19,9 +19,6 @@ _CONTROL_CHAR_PATTERN = re.compile('[\x00-\x08\x0b-\x1f\x7f-\x9f]')
 _BOM = '﻿'
 
 _COMMENT_MARKERS = ('#', '//')
-
-#: Mirrors the grammar's `key` rule (§4.5): ASCII, lowercase, leading letter.
-_KEY_PATTERN = re.compile(r'[a-z][a-z0-9_-]*')
 
 #: A leading run of `- ` (or `-\t`) markers, with an optional trailing bare
 #: `-`, matched against a later block line after its leading spaces (§11.2.1
@@ -91,10 +88,11 @@ def dump(data: SymlInput, file_obj: IO[str]) -> None:
 def key_is_representable(k: str) -> bool:
     """Return whether `k` can be written as a SYML mapping key (§11.2.3, §4.5).
 
-    The key grammar rule is `[a-z][a-z0-9_-]*` (ASCII, lowercase, leading
-    letter), so this is a straight `re.fullmatch` against that pattern.
+    The key grammar rule (basetypes.KEY_PATTERN, the single source of truth
+    per syml-s9p9.11) is `[a-z][a-z0-9_-]*` (ASCII, lowercase, leading
+    letter), so this is a straight `fullmatch` against that pattern.
     """
-    return re.fullmatch(_KEY_PATTERN, k) is not None
+    return KEY_PATTERN.fullmatch(k) is not None
 
 
 def _scalar_text(value: object) -> str | None:

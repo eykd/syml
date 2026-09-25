@@ -24,6 +24,15 @@ StrPath = str | Path
 type SymlData = str | list[SymlData] | dict[str, SymlData]
 SymlInput = str | list[Any] | dict[str, Any]
 
+#: The single source of truth for the grammar's `key` rule (§4.5, D20):
+#: exactly `[a-z][a-z0-9_-]*` — ASCII, lowercase, leading letter. Interpolated
+#: directly into the Parsimonious grammar in `parsers.py`, and reused as a
+#: compiled `re.Pattern` by `exceptions.would_be_key` and
+#: `serializer.key_is_representable` so all three sites share one definition
+#: (sp:code-quality-review, syml-s9p9.11).
+KEY_PATTERN_SOURCE = r'[a-z][a-z0-9_-]*'
+KEY_PATTERN = re.compile(KEY_PATTERN_SOURCE)
+
 # Scoped, per-parse cache for `_line_start_offsets` (see below): `None` outside
 # a `line_offset_cache_scope()` block, and a fresh `dict` for the duration of
 # one `parsers.parse()` call otherwise. Keyed by `id(text)` rather than `text`

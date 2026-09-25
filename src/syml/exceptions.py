@@ -6,6 +6,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
+from .basetypes import KEY_PATTERN
+
 if TYPE_CHECKING:  # pragma: nocover
     from collections.abc import Sequence
 
@@ -24,9 +26,6 @@ def error_message(description: str, filename: StrPath | None) -> str:
 #: end of line (Contract 03 §Hints (a)).
 _WOULD_BE_KEY_RE = re.compile(r'^[ \t]*([^\s:]+):(?=[ \t]|$)')
 
-#: The grammar's own key rule (§4.5, D20): exactly `[a-z][a-z0-9_-]*`.
-_KEY_PATTERN = re.compile(r'[a-z][a-z0-9_-]*')
-
 
 def would_be_key(line_text: str) -> str | None:
     """Return the `RUN` would-be-key candidate in `line_text`, or `None` if there isn't one.
@@ -40,7 +39,7 @@ def would_be_key(line_text: str) -> str | None:
     if match is None:
         return None
     run = match.group(1)
-    if _KEY_PATTERN.fullmatch(run) is not None:
+    if KEY_PATTERN.fullmatch(run) is not None:
         return None
     return run
 

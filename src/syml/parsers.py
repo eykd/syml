@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 from parsimonious import Grammar, NodeVisitor
 
 from . import nodes
-from .basetypes import line_offset_cache_scope
+from .basetypes import KEY_PATTERN_SOURCE, line_offset_cache_scope
 from .exceptions import ParseError
 from .preprocess import is_blank, preprocess
 
@@ -54,7 +54,7 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
 
     grammar = Grammar(
         textwrap.dedent(
-            r"""
+            rf"""
             document        = (line "\n")* line?
             # Every physical line lexes independently as a comment or as one of
             # the three structure shapes / bare data. Values are literal text
@@ -75,8 +75,9 @@ class SymlParser(NodeVisitor):  # type: ignore[type-arg]
             key_value       = key_colon ws data
             section         = key_colon &eol
             key_colon       = key ":"
-            # Exactly this pattern (§4.5); ASCII, leading letter.
-            key             = ~"[a-z][a-z0-9_-]*"
+            # Exactly `KEY_PATTERN_SOURCE` (§4.5, D20; basetypes.py is the
+            # single source of truth, syml-s9p9.11); ASCII, leading letter.
+            key             = ~"{KEY_PATTERN_SOURCE}"
 
             eol             = &"\n" / ~r"\Z"
             ws              = ~"[ \t]+"   # Required whitespace (space or tab; §7.5)
