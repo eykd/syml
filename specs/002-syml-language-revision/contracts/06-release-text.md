@@ -15,7 +15,7 @@ ERROR must be true of the shipped code at the end of the feature (SC-005);
 `tests/test_spec_examples.py` enforces it. The spec leaf moves
 `MINIMUM_EXAMPLE_COUNT` to the post-edit count and lists every example whose
 output the code does not yet produce in a `PENDING` table
-(`xfail(strict=True)`, keyed by example source, value = the FR that fixes it);
+(`xfail(strict=True)`, keyed by `(source, stated output)`, value = the FR that fixes it);
 later leaves delete their entries and the release leaf deletes the table
 (plan.md § Leaf Ordering).
 

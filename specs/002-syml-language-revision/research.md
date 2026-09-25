@@ -391,7 +391,8 @@ failure, on `Root`, with no builder plumbing:
 
 Message shape (exact wording pinned in Contract 03; "does not fit" rather
 than "matches no column", because a list item at an open mapping's column is
-at an open column but still has no place):
+at an open column but still has no place; that case gets its own sentence
+naming the kind mismatch, see Contract 03):
 
 ```text
 Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2.

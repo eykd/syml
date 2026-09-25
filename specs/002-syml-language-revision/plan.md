@@ -263,7 +263,8 @@ independent.
    `SYML-SPEC-REVIEW.md` (D20–D25, supersession notes), fully revised before
    any code. To keep every commit green under the pre-commit `pytest` hook,
    the same leaf adds a `PENDING: dict[str, str]` table to
-   `tests/test_spec_examples.py`, keyed by example source text, naming the FR
+   `tests/test_spec_examples.py`, keyed by `(source, stated output)` (the spec
+   repeats some inputs, so source alone is ambiguous), naming the FR
    that will make each changed example true; those examples run as
    `xfail(strict=True)`. Each later leaf deletes the entries it satisfies (a
    strict XPASS fails the run if it forgets), and the release leaf deletes the
@@ -365,7 +366,11 @@ red team should look hardest at these, and the principal may overrule any:
    says "exactly the values that have no spelling at all".
 4. **`k: \tv` changes value (R-11, D24).** The ruling said nothing valid
    changes meaning; this one does (`"\tv"` → `"v"`).
-5. **Closed-handle `TypeError` (R-10).** The spec's Edge Cases ask for
+5. **Constitution IV's decision range.** It still reads "D1–D17" (D18/D19 were
+   cited without amending it). Every change here also cites an FR, so the gate
+   passes; the release leaf could PATCH the range to "D-numbered decisions"
+   alongside CLAUDE.md's "D1–D25". Suggested, not planned.
+6. **Closed-handle `TypeError` (R-10).** The spec's Edge Cases ask for
    `TypeError`; an `OSError` subclass would also escape `except ValueError`.
 
 ## Complexity Tracking

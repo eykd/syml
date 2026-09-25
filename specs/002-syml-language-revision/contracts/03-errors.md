@@ -42,7 +42,7 @@ The `<filename>:` part is omitted when there is none. `<line>` is 1-indexed,
 
 | Class | Description (the part after any filename prefix) |
 | --- | --- |
-| `OutOfContextNodeError` | `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` optionally followed by one space and a hint |
+| `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by one space and a hint |
 | `DuplicateKeyError` | `Duplicate key '{key}'` (unchanged attributes `key`, `first_position`) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
 | `EncodingError` | `Invalid encoding` (unchanged) |
@@ -68,7 +68,7 @@ Hints (at most one; (b) is checked first):
 
 | # | Input (`filename`) | Result |
 | --- | --- | --- |
-| US2-1 | `k:\n- a\n- b` | `OutOfContextNodeError`; description `Line 2, at column 0, does not fit any open block; open blocks are at column 0. Hint: a list under a key must be indented past the key's column.` |
+| US2-1 | `k:\n- a\n- b` | `OutOfContextNodeError`; description `Line 2, at column 0, is a list item, but the open block at column 0 holds keys; open blocks are at column 0. Hint: a list under a key must be indented past the key's column.` |
 | US2-9 | `k:\n  a: 1\n b: 2` | `str(e) == "3:1: Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2.\n b: 2"` |
 | US2-10 | same, `"f.syml"` | `str(e)` begins `f.syml:3:1: `; `e.message` begins `f.syml: ` |
 | US2-11 | `a: 1\n- x` and `a:\n\tb`, `"f.syml"` | both `.message` begin `f.syml: ` |
@@ -100,7 +100,9 @@ Hints (at most one; (b) is checked first):
    filename, and with `filename=""`.
 3. `pickle.loads(pickle.dumps(e))` preserves `str(e)`, `.message`, `.args`,
    and (for `DuplicateKeyError`) `.key` / `.first_position`.
-4. The column list formatter: one, two, and three columns.
+4. The column list formatter: one, two, and three columns; both message forms
+   (column not open; open column of the other kind, incl. `- item\nkey: value`
+   and `a:\n  b: 1\n  plain`).
 5. Hint (a) fires on the failing line and on the line above; does not fire for
    `a: 1\nb` or for a line whose colon is followed by a non-space; hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.

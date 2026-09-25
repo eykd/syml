@@ -52,7 +52,8 @@ try:
     syml.loads('k:\n- a', filename='f.syml')
 except syml.OutOfContextNodeError as e:
     print(e)
-# f.syml:2:0: Line 2, at column 0, does not fit any open block; open blocks are at column 0. Hint: a list under a key must be indented past the key's column.
+# f.syml:2:0: Line 2, at column 0, is a list item, but the open block at column 0 holds keys;
+#   open blocks are at column 0. Hint: a list under a key must be indented past the key's column.
 # - a
 
 try:
