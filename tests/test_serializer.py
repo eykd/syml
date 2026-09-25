@@ -318,6 +318,11 @@ class TestDumpsResidualUnrepresentableSet:
         with pytest.raises(UnrepresentableValueError):
             serializer.dumps({'k': 'a\n  ' + '- ' * 32 + '-'})
 
+    def test_it_should_not_count_a_dash_before_non_whitespace_as_a_marker(self) -> None:
+        """syml-cjk2.9: `-42` is text (§7.6), not a 33rd marker, so 32 markers round-trip."""
+        value = {'k': 'a\n' + '- ' * 32 + '-42'}
+        assert loads(serializer.dumps(value)) == value
+
     def test_it_should_round_trip_a_long_chain_after_an_inline_key(self) -> None:
         """A chain after `k: ` is inline `data`, not a later block line, so it never recurses."""
         value = {'k': 'a\nk: ' + '- ' * 100 + 'x'}

@@ -275,6 +275,15 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     and until this fix, `load()` on such an object raised a bare
     `AttributeError` (e.g. `'NoneType' object has no attribute 'read'`)
     instead (syml-cjk2.6, break-testing round 2 lane 3).
+29. **Bug fix: `dumps`'s 32-marker guard (item 12) no longer over-refuses a
+    trailing dash followed by text.** A later line whose leading `- `
+    marker chain holds exactly 32 markers, followed by a dash that is
+    itself followed by non-whitespace text (e.g. `-42`), now writes and
+    round-trips: `- ` is a marker only before whitespace or end of line
+    (§7.6), so that trailing `-42` is text, not a 33rd marker. Until this
+    fix, the guard's regex let its own trailing `-?` match that dash and
+    counted it as a marker, wrongly refusing the value (syml-cjk2.9,
+    break-testing round 2 lane 5).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

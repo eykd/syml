@@ -23,7 +23,7 @@ _COMMENT_MARKERS = ('#', '//')
 #: A leading run of `- ` (or `-\t`) markers, with an optional trailing bare
 #: `-`, matched against a later block line after its leading spaces (§11.2.1
 #: item 2, R-05, R-17). Always matches (possibly the empty string at index 0).
-_MARKER_CHAIN_PATTERN = re.compile(r'(?:-[ \t]+)*-?')
+_MARKER_CHAIN_PATTERN = re.compile(r'(?:-[ \t]+)*(?:-(?=[ \t]*$))?')
 
 #: The recursion guard for a later block line's leading marker chain: a fixed
 #: count, never a parse, because the lex cliff moves with the caller's own

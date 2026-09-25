@@ -170,6 +170,13 @@ received type instead of letting a bare `AttributeError` escape, matching
 No README change — the README's `load()` example already shows only the
 happy path.
 
+Bug-fix item, no D-number (`syml-cjk2.9`, break-testing round 2 lane 5):
+item 29, Contract 04 item 2's 32-marker guard no longer counts a trailing
+dash followed by non-whitespace text (e.g. `-42`) as a marker, so exactly
+32 real markers followed by such a dash writes and round-trips instead of
+raising `UnrepresentableValueError`. No README change — the README does
+not document the 32-marker bound.
+
 ## D. `README.md` (release leaf)
 
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling
