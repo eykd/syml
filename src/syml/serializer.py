@@ -6,6 +6,7 @@ import re
 from typing import IO, TYPE_CHECKING, Literal
 
 from . import nodes, parsers
+from .basetypes import Source
 from .exceptions import UnrepresentableValueError
 
 if TYPE_CHECKING:  # pragma: nocover
@@ -55,12 +56,13 @@ def dumps(data: SymlInput) -> str:
     to the empty document ''.
     If the output would begin with U+FEFF, one extra U+FEFF is prepended,
     because loads strips exactly one leading mark. A str subclass, such as
-    a (str, Enum) member, is written as its string value.
+    a (str, Enum) member, is written as its string value. A `Source` (as
+    returned by `as_source()`) is accepted anywhere a `str` key or scalar
+    is, read via its `.text` before any type check (FR-014), so
+    `dumps(parse(t).as_source())` round-trips like `dumps(parse(t).as_data())`.
     """
-    if isinstance(data, str):
-        rendered_lines = _render_scalar_lines(str.__str__(data), 0, 'root')
-    else:
-        rendered_lines = _render_value_lines(data, 0)
+    text = _scalar_text(data)
+    rendered_lines = _render_scalar_lines(text, 0, 'root') if text is not None else _render_value_lines(data, 0)
     rendered = '\n'.join(rendered_lines) + '\n'
     if rendered.startswith(_BOM):
         rendered = _BOM + rendered
@@ -90,6 +92,22 @@ def key_is_representable(k: str) -> bool:
     letter), so this is a straight `re.fullmatch` against that pattern.
     """
     return re.fullmatch(_KEY_PATTERN, k) is not None
+
+
+def _scalar_text(value: object) -> str | None:
+    r"""Return `value`'s text if it is a `str` or a `Source`, else None (FR-014).
+
+    Reads a `Source`'s `.text` before any type check, so a `Source` mapping
+    key or scalar value round-trips exactly like the `str` it carries
+    (US3-8): `dumps(parse('k: v').as_source())` == `'k: v\n'`. A `str`
+    subclass is read through `str.__str__` so an overridden `__str__` (e.g.
+    a `(str, Enum)` member) never substitutes its own text.
+    """
+    if isinstance(value, Source):
+        return value.text
+    if isinstance(value, str):
+        return str.__str__(value)
+    return None
 
 
 def _not_representable(value: object) -> TypeError:
@@ -131,15 +149,16 @@ def _render_mapping_lines(mapping: dict[object, object], indent: int) -> list[st
     pad = ' ' * indent
     lines: list[str] = []
     for key, value in mapping.items():
-        if not isinstance(key, str):
+        key_str = _scalar_text(key)
+        if key_str is None:
             message = f'{key!r} is not a valid SYML mapping key (must be str)'
             raise TypeError(message, key)
-        key_str = str.__str__(key)
         if not key_is_representable(key_str):
             message = f'{key_str!r} is not representable as a SYML mapping key (§11.2.3)'
             raise UnrepresentableValueError(message, key_str)
-        if isinstance(value, str):
-            lines.extend(_with_marker(f'{pad}{key_str}:', _render_scalar_lines(value, indent + 2, 'mapping')))
+        value_text = _scalar_text(value)
+        if value_text is not None:
+            lines.extend(_with_marker(f'{pad}{key_str}:', _render_scalar_lines(value_text, indent + 2, 'mapping')))
         else:
             lines.append(f'{pad}{key_str}:')
             lines.extend(_render_value_lines(value, indent + 2))
@@ -151,8 +170,9 @@ def _render_list_lines(items: list[object], indent: int) -> list[str]:
     pad = ' ' * indent
     lines: list[str] = []
     for item in items:
-        if isinstance(item, str):
-            lines.extend(_with_marker(f'{pad}-', _render_scalar_lines(item, indent + 2, 'list')))
+        item_text = _scalar_text(item)
+        if item_text is not None:
+            lines.extend(_with_marker(f'{pad}-', _render_scalar_lines(item_text, indent + 2, 'list')))
         else:
             item_lines = _render_value_lines(item, indent + 2)
             # Rule G: exactly one space between `-` and an inline mapping's key.

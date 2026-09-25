@@ -7,7 +7,7 @@ from enum import Enum
 import pytest
 from serialization_corpus import CORPUS, UNREPRESENTABLE
 
-from syml import loads, serializer
+from syml import loads, parsers, serializer
 from syml.exceptions import UnrepresentableValueError
 
 
@@ -381,6 +381,30 @@ class TestDumpsTypeContract:
     def test_it_should_raise_type_error_for_non_str_mapping_keys(self, key: object) -> None:
         with pytest.raises(TypeError):
             serializer.dumps({key: 'v'})  # type: ignore[dict-item]
+
+
+class TestDumpsAcceptsSource:
+    """A `Source` is accepted anywhere a `str` key or scalar is (FR-014, US3-8).
+
+    `as_source()` reads keys and scalars as their `.text` before any type
+    check, so `dumps(parse(t).as_source())` round-trips like
+    `dumps(parse(t).as_data())`.
+    """
+
+    def test_it_should_round_trip_a_source_mapping_key_and_scalar_value(self) -> None:
+        text = 'k: v\n'
+        source = parsers.parse(text).as_source()
+        assert serializer.dumps(source) == text == serializer.dumps(loads(text))
+
+    def test_it_should_round_trip_a_source_list_item(self) -> None:
+        text = '- a\n- b\n'
+        source = parsers.parse(text).as_source()
+        assert serializer.dumps(source) == text
+
+    def test_it_should_round_trip_a_root_source_scalar(self) -> None:
+        text = 'hello\n'
+        source = parsers.parse(text).as_source()
+        assert serializer.dumps(source) == text
 
 
 class TestDumpsUnrepresentableKeys:
