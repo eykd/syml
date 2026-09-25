@@ -491,6 +491,50 @@ class TestP8LoadFirstEitherWritesBackOrProvablyRefuses:
         _check_load_first(t, record_events=False)
 
 
+class TestP9CommentsAreAsIfAbsent:
+    r"""P9: deleting every column-0 comment line before loading changes nothing (R-18).
+
+    `u` is `t` after §9.0's index-0 BOM strip; `u'` is `u` with every line
+    that begins with `#` or `//` deleted outright (not blanked). `loads(t)`
+    must equal `loads('﻿' + u')` (the prefixed BOM keeps a BOM that
+    `u'` itself starts with from being stripped a second time), and when one
+    raises the other must raise the same class.
+    """
+
+    @given(text_that_may_load)
+    def test_it_should_treat_column_0_comments_as_absent(self, t: str) -> None:
+        u = t[1:] if t.startswith('﻿') else t
+        # "Line" here follows §9.0 step 2's own line-ending recognition
+        # (CRLF/CR/LF all terminate a line), not a bare `'\n'`-split: a
+        # column-0 `#` line ended by a lone `\r` is still a comment line that
+        # normalization will later split off, and must be deleted here too.
+        u_prime = '\n'.join(line for line in re.split(r'\r\n|\r|\n', u) if not line.startswith(('#', '//')))
+        exc_type: type[ParseError] | None = None
+        data: SymlData | None = None
+        try:
+            data = syml.loads(t)
+        except ParseError as exc:
+            exc_type = type(exc)
+        if exc_type is not None:
+            with pytest.raises(ParseError) as exc_info:
+                syml.loads('﻿' + u_prime)
+            assert (
+                exc_info.type is exc_type
+            ), f'exception class mismatch: t={exc_type} vs stripped={exc_info.type}\nt={t!r}'
+            event('parseerror')
+            return
+        other = syml.loads('﻿' + u_prime)
+        assert other == data, f'stripping comments changed the result\nt={t!r}\ndata={data!r}\nother={other!r}'
+        event('ok')
+
+    def test_it_should_hold_for_the_ruling_row(self) -> None:
+        # Contract 04 §Test obligations #2's own example: `a\n\n# note\n\nb`
+        # (a blank paragraph break, then a column-0 comment, then another
+        # blank line) loads the same as `a\n\n\nb` with the comment line gone.
+        t = 'a\n\n# note\n\nb'
+        assert syml.loads(t) == syml.loads('﻿' + 'a\n\n\nb')
+
+
 class TestP6FixturesRoundTripOrAreProvablyLoadOnly:
     """P6: every fixture in `tests/fixtures/` satisfies the same P8 oracle."""
 
