@@ -9,7 +9,7 @@ if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
 from .basetypes import Pos, Source, StrPath, get_line_text
-from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
+from .exceptions import DuplicateKeyError, OutOfContextNodeError
 from .preprocess import PositionMap, is_blank
 
 
@@ -97,7 +97,7 @@ class SymlNode:
         pnode = node.pnode
         pos = PositionMap.map(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
         line = get_line_text(pnode.full_text, pos.line)
-        raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
+        raise OutOfContextNodeError('Failed to incorporate a node', pos, line, filename=self.filename)
 
 
 SymlNodes = list[SymlNode]
@@ -250,12 +250,15 @@ class Mapping(ParentNode):
             return False
         first = self.keys.get(node.key.as_data())
         if first is not None:
+            key = node.key.as_data()
+            message = f'Duplicate key {key!r}'
             raise DuplicateKeyError(
-                error_message('Duplicate key', node.filename),
+                message,
                 node.source.start,
                 get_line_text(node.pnode.full_text, node.source.start.line),
-                key=node.key.as_data(),
+                key=key,
                 first_position=first.source.start,
+                filename=node.filename,
             )
         return True
 

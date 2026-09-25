@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .basetypes import Pos
-from .exceptions import EncodingError, TabIndentationError, error_message
+from .exceptions import EncodingError, TabIndentationError
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import Source, StrPath
@@ -79,7 +79,7 @@ def is_blank(text: str) -> bool:
     return all(ch in ' \t' for ch in text)
 
 
-def _scan_for_tab_indentation(normalized: str) -> None:
+def _scan_for_tab_indentation(normalized: str, filename: StrPath | None = None) -> None:
     """Raise `TabIndentationError` if any non-blank line has a tab in its leading-whitespace run.
 
     See §9.0.3, D14.
@@ -96,6 +96,7 @@ def _scan_for_tab_indentation(normalized: str) -> None:
                 "A tab character was found in a line's leading whitespace",
                 Pos(index=offset + column, line=line_number, column=column),
                 line,
+                filename=filename,
             )
         offset += len(line) + 1
 
@@ -142,9 +143,10 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     column = index - last_break_end
     line_text = prefix[last_break_end:]
     return EncodingError(
-        error_message('Invalid encoding', filename),
+        'Invalid encoding',
         Pos(index=index, line=line, column=column),
         line_text,
+        filename=filename,
     )
 
 
@@ -153,7 +155,7 @@ def preprocess(text: str, filename: StrPath | None = None) -> Document:
     bom_offset = 1 if text.startswith(_BOM) else 0
     stripped = text[bom_offset:]
     normalized, crlf_indices = _normalize_line_endings(stripped)
-    _scan_for_tab_indentation(normalized)
+    _scan_for_tab_indentation(normalized, filename)
     return Document(
         original=text,
         normalized=normalized,

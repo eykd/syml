@@ -32,12 +32,7 @@ MINIMUM_EXAMPLE_COUNT = 69
 #: the code that satisfies them (principle IV), and a later Green leaf
 #: deletes its own entries. A strict XPASS fails the run if a leaf forgets
 #: to delete its entry once its FR lands.
-PENDING: dict[tuple[str, str], str] = {
-    (
-        'key: value1\nkey: value2\n',
-        "ERROR: DuplicateKeyError: Duplicate key 'key'",
-    ): 'FR-011 (Contract 03: exact exception message text)',
-}
+PENDING: dict[tuple[str, str], str] = {}
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
 _INLINE_CODE_RE = re.compile(r'`([^`]*)`')
