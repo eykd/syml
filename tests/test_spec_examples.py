@@ -22,10 +22,86 @@ import syml
 
 SPEC_PATH = Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
 
-#: SC-001's documented count (54) as of the 2026-09-24 D18/D19 spec amendment;
-#: guards against the extractor's regexes silently matching zero blocks and
-#: passing vacuously.
-MINIMUM_EXAMPLE_COUNT = 54
+#: SC-001's documented count as of the 2026-09-24 D20-D25 spec amendment
+#: (US4 scenario 1); guards against the extractor's regexes silently
+#: matching zero blocks and passing vacuously.
+MINIMUM_EXAMPLE_COUNT = 69
+
+#: (source, stated output) -> the FR that will make the example true. Each
+#: entry is xfail(strict=True): the spec leaf states these examples ahead of
+#: the code that satisfies them (principle IV), and a later Green leaf
+#: deletes its own entries. A strict XPASS fails the run if a leaf forgets
+#: to delete its entry once its FR lands.
+PENDING: dict[tuple[str, str], str] = {
+    (
+        'key: value1\nkey: value2\n',
+        "ERROR: DuplicateKeyError: Duplicate key 'key'",
+    ): 'FR-011 (Contract 03: exact exception message text)',
+    (
+        'parent:\n  child1: value\n   child2: value\n',
+        '{"parent": {"child1": "value\\n child2: value"}}',
+    ): 'FR-003 (text context, D21)',
+    (
+        'k:\n  a\n  # note\n  b\n',
+        '{"k": "a\\n# note\\nb"}',
+    ): 'FR-007 (indented comment is text, D23)',
+    (
+        'server: # prod\n  host: x\n',
+        '{"server": "# prod\\nhost: x"}',
+    ): 'FR-007 (trailing "comment" after key is text, D23)',
+    (
+        'k:\n  a\n\n  b\n',
+        '{"k": "a\\n\\nb"}',
+    ): 'FR-004 (paragraph breaks, D22)',
+    (
+        'a:\n  b: 1\n   c: 2\n',
+        '{"a": {"b": "1\\nc: 2"}}',
+    ): 'FR-003 (text context, D21)',
+    (
+        'Name: app\nport: 80\n',
+        '"Name: app\\nport: 80"',
+    ): 'FR-001 (key pattern, D20)',
+    (
+        'note: hello\n  more: text\n',
+        '{"note": "hello\\nmore: text"}',
+    ): 'FR-003 (text context, D21)',
+    (
+        'k:\n- a\n',
+        'ERROR: OutOfContextNodeError',
+    ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
+    (
+        '-\tk: v\n  j: w\n',
+        '[{"k": "v", "j": "w"}]',
+    ): 'FR-008 (tab as separator, one-column, D24)',
+    (
+        'a:\n  b: 1\n  # note\n',
+        'ERROR: OutOfContextNodeError',
+    ): 'FR-007 (indented comment is text, not skipped, D23)',
+    (
+        '# one\n  # two\n',
+        '"  # two"',
+    ): 'FR-007 (indented comment is text, D23)',
+    (
+        'key:\tvalue\n',
+        '{"key": "value"}',
+    ): 'FR-008 (tab as separator, D24)',
+    (
+        '-\tvalue\n',
+        '["value"]',
+    ): 'FR-008 (tab as separator, D24)',
+    (
+        'key:\tv\n',
+        '{"key": "v"}',
+    ): 'FR-008 (tab as separator, D24)',
+    (
+        'key: \tv\n',
+        '{"key": "v"}',
+    ): 'FR-008 (tab as separator, D24)',
+    (
+        'a: Note\n  warning: do not touch\n',
+        '{"a": "Note\\nwarning: do not touch"}',
+    ): 'FR-003 (text context, D21)',
+}
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
 _INLINE_CODE_RE = re.compile(r'`([^`]*)`')
@@ -39,6 +115,7 @@ class SpecExample:
     source: str
     expected_json: str | None
     expected_exception_name: str | None
+    expected_exception_text: str | None = None
 
 
 def _find_stated_output(lines: list[str], after_fence: int) -> str | None:
@@ -80,12 +157,16 @@ def _find_stated_output(lines: list[str], after_fence: int) -> str | None:
 def _example_from_content(line_number: int, source: str, content: str) -> SpecExample:
     """Build a `SpecExample`, distinguishing an ``ERROR:``-shaped content from JSON."""
     if content.startswith('ERROR:'):
-        exception_name = content[len('ERROR:') :].strip().split(':')[0].strip()
+        rest = content[len('ERROR:') :].strip()
+        exception_name = rest.split(':')[0].strip()
+        exception_text = rest[len(exception_name) :].lstrip()
+        exception_text = exception_text[1:].strip() if exception_text.startswith(':') else ''
         return SpecExample(
             line_number=line_number,
             source=source,
             expected_json=None,
             expected_exception_name=exception_name,
+            expected_exception_text=exception_text or None,
         )
     return SpecExample(
         line_number=line_number,
@@ -137,17 +218,37 @@ def test_at_least_the_documented_minimum_of_spec_examples_were_found() -> None:
     assert len(SPEC_EXAMPLES) >= MINIMUM_EXAMPLE_COUNT
 
 
-@pytest.mark.parametrize(
-    'example',
-    SPEC_EXAMPLES,
-    ids=[f'L{example.line_number}' for example in SPEC_EXAMPLES],
-)
+def _stated_output(example: SpecExample) -> str:
+    """Reconstruct the ``(source, stated output)`` key's output half for `PENDING`."""
+    if example.expected_exception_name is not None:
+        if example.expected_exception_text:
+            return f'ERROR: {example.expected_exception_name}: {example.expected_exception_text}'
+        return f'ERROR: {example.expected_exception_name}'
+    assert example.expected_json is not None
+    return example.expected_json
+
+
+def _spec_example_params() -> list[object]:
+    """Wrap each `SpecExample` in `pytest.param`, xfail-marking `PENDING` entries."""
+    params: list[object] = []
+    for example in SPEC_EXAMPLES:
+        key = (example.source, _stated_output(example))
+        reason = PENDING.get(key)
+        marks = [pytest.mark.xfail(strict=True, reason=reason)] if reason is not None else []
+        params.append(pytest.param(example, marks=marks, id=f'L{example.line_number}'))
+    return params
+
+
+@pytest.mark.parametrize('example', _spec_example_params())
 def test_spec_example_produces_its_stated_output(example: SpecExample) -> None:
     """Every fenced example's stated Output/ERROR is exactly what `loads()` produces."""
     if example.expected_exception_name is not None:
         exception_type: type[BaseException] = getattr(syml, example.expected_exception_name)
-        with pytest.raises(exception_type):
+        with pytest.raises(exception_type) as exc_info:
             syml.loads(example.source)
+        assert type(exc_info.value) is exception_type
+        if example.expected_exception_text is not None:
+            assert exc_info.value.message == example.expected_exception_text  # type: ignore[attr-defined]
     else:
         assert example.expected_json is not None
         expected = json.loads(example.expected_json)
