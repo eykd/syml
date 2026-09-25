@@ -118,8 +118,8 @@ Mappings are collections of key-value pairs. Implementations MUST preserve
 insertion (source) order: keys MUST appear in the returned mapping in the
 same order they first appear in the document. Consumers MAY rely on this
 ordering when iterating a mapping returned by `loads`. Keys are separated
-from values by a colon (`:`); at least one space MUST follow the colon
-before an inline value (see §7.5).
+from values by a colon (`:`); one or more spaces or tabs MUST follow the
+colon before an inline value (§7.5, §4.2 rule 3, D24).
 
 ```syml
 name: Alice
@@ -169,10 +169,15 @@ newline, and its final `line` is optional so a document may or may not
 end in a newline (§4.7). `eol` is used only as a zero-width lookahead
 *inside* a line (after a bare `-` in `list_item`, or after `key:` in
 `section`), to check that nothing else follows on the current line — it
-is never itself consumed. There is no separate `blank` rule: a blank line
-(§4.4) is simply a line whose `comment` alternative fails (it does not
-start with `#`/`//`) and whose `indent (structure / data)` alternative
-lexes an empty `data` (`structure` also fails).
+is never itself consumed. There is no separate `blank` rule in the
+grammar: a blank line (§4.4) is recognized outside the PEG grammar, by
+`preprocess.is_blank` (a line containing only spaces and/or tabs), and is
+dropped after `line` has matched, not by `data` lexing empty. `indent`
+matches only U+0020, so a line such as `  \t ` does not have its tab
+consumed by `indent`; `data` (`~"[^\n]*"`) then matches it as the
+non-empty text `"\t "`, and it is this later `is_blank` check — not an
+empty `data` match — that still classifies the line as blank (§4.4,
+§9.0).
 
 `line`'s two alternatives are tried in order: `comment` first, so a line
 is a comment if and only if its very first character (no indentation
@@ -1171,13 +1176,14 @@ key2: value2
 ### 8.3 Duplicate Keys
 
 Two keys are considered "the same key" if and only if they are equal as
-sequences of Unicode code points (ordinal/code-point equality). Keys are
-compared with NO Unicode normalization (NFC/NFD/NFKC/NFKD are all treated
-as distinct unless already code-point-identical) and with NO case
-folding (a key never contains an uppercase or titlecase letter, §4.5, but
-lowercase letters with distinct code points, such as `ı` and `i`, are
-distinct). Implementations MUST NOT apply locale-, platform-, or
-collation-aware comparison.
+sequences of Unicode code points (ordinal/code-point equality), with no
+Unicode normalization (NFC/NFD/NFKC/NFKD are all treated as distinct
+unless already code-point-identical). In practice this reduces to plain
+string equality: a key matches exactly `[a-z][a-z0-9_-]*` (§4.5), so it
+never contains an uppercase, titlecase, or non-ASCII letter, and case
+folding and normalization never come into play for a valid key.
+Implementations MUST NOT apply locale-, platform-, or collation-aware
+comparison.
 
 When the same key (by this definition) appears multiple times in a
 mapping, implementations MUST raise `DuplicateKeyError` (§11.3):
@@ -1431,7 +1437,10 @@ For each parsed value, track:
 - **filename**: Source file path (if applicable)
 - **start**: Starting position (line, column, character index)
 - **end**: Ending position (line, column, character index)
-- **text**: Original source text
+- **text**: The value's text as `as_data()` would return it. For a
+  multi-line value this is the *dedented* value — indentation past the
+  baseline preserved, indentation up to the baseline stripped — not a raw
+  slice of the source between `start` and `end` (§9.3, §5.1)
 
 ### 10.2 Line/Column Numbering
 
@@ -1441,16 +1450,24 @@ For each parsed value, track:
 
 > **Rationale:** This convention matches typical text editor displays, where the first line is shown as "Line 1" but cursor positions are often 0-indexed within lines.
 
-A document's leading BOM, once stripped (§9.0 step 1), does not shift
-position numbering: the first character after the stripped BOM is index
-0, line 1, column 0, as if the BOM had never been present.
+Positions are reported in the caller's **original-text** coordinates,
+including a leading BOM: a document's leading BOM (§9.0 step 1) is
+stripped before parsing, but the position map re-anchors every reported
+position onto the original, un-stripped document, so the BOM still
+counts as one character. The first character after a leading BOM is
+therefore index 1, line 1, column 1 — not index 0, line 1, column 0 — as
+if the BOM occupied index 0 (Contract 03 §Placement, Contract 06 §A,
+FR-013). A document with no BOM is unaffected: its first character is
+index 0, line 1, column 0, as before. `ParseError.line_text` reflects the
+*normalized* (BOM-stripped) line, so on line 1 of a BOM-led document its
+`column` is one greater than its index into `line_text`.
 
-`str(error)` on a `ParseError` renders as `file:line:col: message`
-followed by the offending line's text, where `file` is the `filename`
-passed to `loads`/`load` (or omitted, with no leading colon, if none was
-given). The rendered filename and line text escape non-printable
-characters (`\xa0`, `\x1b`, `\t`, `\n`, and lone surrogates) so the
-rendered error is always a single printable line; `.message` and
+`str(error)` on a `ParseError` renders as two lines:
+`file:line:col: message` followed by the offending line's text, where
+`file` is the `filename` passed to `loads`/`load` (or omitted, with no
+leading colon, if none was given). The rendered filename and line text
+escape non-printable characters (`\xa0`, `\x1b`, `\t`, `\n`, and lone
+surrogates) so each of the two lines is printable; `.message` and
 `.line_text` themselves are left raw, unescaped.
 
 ### 10.3 Source-Preserving Mode
@@ -1625,8 +1642,9 @@ never emits; and a later continuation line with more than 32 leading
 #### 11.2.2 Unrepresentable Values: Empty Containers
 
 The empty list and the empty mapping have no SYML encoding in this
-version (v1.1 is a consistency release — see §14 — and adds no new
-syntax). A conforming `dumps` MUST raise `UnrepresentableValueError`
+version; no syntax addition is planned within 1.0 (see the v1.2
+candidate below for a possible future extension). A conforming `dumps`
+MUST raise `UnrepresentableValueError`
 (§11.3) when asked to serialize a structure containing an empty list or
 empty mapping at any depth, rather than silently substituting an empty
 string or omitting the key that held it.
@@ -1825,7 +1843,8 @@ The Python implementation (§15) uses a PEG (Parsing Expression Grammar) parser 
 
 SYML documents MUST be valid UTF-8; there is no "platform-native
 encoding" fallback (see §11.1's `load()` decoding rule). Implementations should:
-- Accept any valid Unicode in keys and values
+- Accept any valid Unicode in values (keys are restricted to
+  `[a-z][a-z0-9_-]*`, §4.5 — an ASCII-only pattern)
 - Count columns by characters (code points), not bytes
 - Treat a line boundary as exactly one U+000A (LF), and only after the
   §9.0 CR/CRLF normalization pass has run. No other Unicode line- or
@@ -1897,7 +1916,7 @@ lower than the block-nesting cliff.
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2026-09 | Initial specification formalizing SYML syntax, released as the conforming reference implementation. There are no quoted strings and no escape sequences: every value is the literal text on the page and a `'` or `"` is ordinary content at every position, as in 0.6.2 (D18, which supersedes the draft's inline-quoting rules D2, D3, and D17). A mapping key contains no uppercase or titlecase letter (Unicode General_Category `Lu`/`Lt`), so a line such as `Name: x` or `Listen: here` is text, not a mapping (D19; §4.1, §4.5 — breaking vs 0.6.2). Includes tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. Clarifies that malformed structural lines parse as scalars rather than raising, and that whitespace after `:` is required before an inline value. §4.1 grammar corrected to load in Parsimonious and to consume line endings (fixes alternation stranding and `&eol`-only lines that stopped parsing after one line). New §9.0 pre-processing step formalizes BOM stripping, CRLF/CR normalization, and a leading-tab scan that raises `TabIndentationError`. §9.3 sibling acceptance changed from `>=` to `==` for List/Mapping, enforcing §4.2 rule 6 and §6.4's homogeneity rule. Duplicate-key detection added at incorporation time, raising `DuplicateKeyError`; key equality is code-point equality, with no Unicode normalization and no case folding (§8.3). §5.3's TextLeaf baseline/termination rules made concrete: the baseline is the level of the first line of the value that occupies a line of its own — for an inline value, its first continuation line; for a block value, its first block line (unlike the inline case, this sets the baseline immediately); for a root scalar, a fixed 0 — and a below-baseline line terminates the value and is re-offered to the owning container rather than silently joining or vanishing. Comment and blank/whitespace-only lines inside a continuation block are always skipped and never terminate or affect the baseline, and a value containing a literal blank line (a paragraph break) cannot be written at all and is unrepresentable by `dumps` (§5.1 rules 4-5, §11.2.1). §7.2 clarified: a mapping's inline value is always literal, but a list item's inline value is parsed structurally (`- - x` nests; `key: - x` does not), so a structure-shaped string is unrepresentable by `dumps` at a list position; a root scalar is parsed structurally line by line and is always written in block form (§11.2.1). Every physical line is now lexed independently of its position in the document: a continuation-position line that itself lexes as `key_value`/`list_item`/`section` is that structure, not literal text, and — once its owning node is closed — raises `OutOfContextNodeError`; plain text at a container's own level (alongside sibling key-value pairs) is likewise an error (§5.1 rule 6, §6.4, §7.6). A key written inline after a list marker (`- name: v`) sets its sibling column to the key's own column, not the marker's, regardless of spacing after `-` (§6.2); `dumps` MUST emit exactly one space after `-` for this reason (§11.2.1 rule G). The key pattern's `\s` is now defined as exactly the Unicode `White_Space` code points, not a host regex engine's default `\s` (§4.5). The formal grammar's top rule is now `document = (line "\n")* line?` with `eol` as a lookahead-only rule anchored on absolute end-of-input, replacing the nullable-repetition-prone `lines = line*`/`~"$"` pair; there is no separate `blank` rule (§4.1, §4.4). Every example in §4.2 and §8.1-§8.5 had its trailing `# Level N`/`# ERROR: ...` annotation removed in favor of prose or an **Output:** line, since those annotations were themselves invalid SYML content that would otherwise become part of the parsed value. §4.5: a key may not begin with `#` or `//` (the comment rule makes it unreachable); keys with whitespace, a colon, an uppercase or titlecase letter, or no encoding are documented as unrepresentable (§11.2.3). §3.3: mapping insertion order is now a MUST, replacing the earlier disclaimer that consumers must not depend on it. A zero-length inline value (`key: `, `- `) is now normalized to the same as no value at all (`key:`, `-`); `key: ""` is the two-character value `""` (§9.3). §7.3's empty-value rule extended explicitly to list items. §11.1 clarifies that an empty or comment-only document is the scalar case (`""`), not a fourth return shape; `load()` now MUST decode strictly as UTF-8, raising rather than silently repairing invalid bytes. New §11.2.1-§11.2.3 give `dumps` normative serialization rules — a single-line string is written inline, a multi-line string or any root scalar in block form, and a string with no literal encoding (a control character other than LF/TAB, a leading space or tab, a blank, tab-initial, comment-shaped, or structure-shaped line in block form, or a structure-shaped list item value) is `UnrepresentableValueError` — and require `UnrepresentableValueError` for empty containers and keys with no encoding. §11.3's exception list expanded to `DuplicateKeyError`, `TabIndentationError`, `DocumentLimitError`, and `UnrepresentableValueError`; there is no `InconsistentIndentationError` — §8.1 and §8.2 both raise `OutOfContextNodeError`. §13.2's tab bullet corrected: there is no tab normalization, only rejection. §13.3 defines a line boundary as exactly one LF (not the general Unicode line-separator set a naive `splitlines()` would use) and fully specifies BOM scope (index 0 only, exactly one, ordinary content everywhere else). New §13.4 recommends default limits (500 levels of nesting, 1 MiB lines, 10 MiB documents). New §4.6.1 states that control characters other than LF, including NUL, are permitted verbatim in values. §9.2 specifies that `add_child` returns the tip of the added subtree and that inline structural values (`- key: v`, `- - x`) are incorporated through the same algorithm. §11.3: `ParseError` derives from the host's `ValueError`-equivalent, `UnrepresentableValueError` is a `ValueError` raised by `dumps`, and the exception class names are normative. Header status line now names `syml` 1.0.0 as the conforming reference implementation. **Amended 2026-09-24 (still "Version 1.0", FR-018; see SYML-SPEC-REVIEW.md D20-D25):** the key pattern narrows to exactly `[a-z][a-z0-9_-]*`, superseding the General_Category `Lu`/`Lt` check above (D20, supersedes D15/D19); a value is text by position, not by re-lexing every line independently — once a value's baseline is fixed, every later line at or past it is that value's text whatever it lexes as (D21, supersedes D13); a blank line inside an open value is a paragraph break, one empty joined line per physical blank line, not discarded (D22, supersedes D12); a comment is column-0 only (a line with no indentation starting `#`/`//`) and an indented `#`/`//` line is now text, not always a comment (D23, supersedes the paragraph above); a tab is separator whitespace after `key:`/`-`, counting as one column (D24, supersedes D5); and children must be strictly deeper than their parent with list items included, restoring §4.2 rule 5 and adding a KeyValue row to §9.3 over an earlier undocumented `>=` carve-out (D25). |
+| 1.0 | 2026-09 | Initial specification formalizing SYML syntax, released as the conforming reference implementation. There are no quoted strings and no escape sequences: every value is the literal text on the page and a `'` or `"` is ordinary content at every position, as in 0.6.2 (D18, which supersedes the draft's inline-quoting rules D2, D3, and D17). A mapping key contains no uppercase or titlecase letter (Unicode General_Category `Lu`/`Lt`), so a line such as `Name: x` or `Listen: here` is text, not a mapping (D19; §4.1, §4.5 — breaking vs 0.6.2). Includes tabs-in-indentation error, duplicate key error, empty values produce empty strings, line ending normalization. Breaks compatibility with Python reference implementation v0.6.2. Clarifies that malformed structural lines parse as scalars rather than raising, and that whitespace after `:` is required before an inline value. §4.1 grammar corrected to load in Parsimonious and to consume line endings (fixes alternation stranding and `&eol`-only lines that stopped parsing after one line). New §9.0 pre-processing step formalizes BOM stripping, CRLF/CR normalization, and a leading-tab scan that raises `TabIndentationError`. §9.3 sibling acceptance changed from `>=` to `==` for List/Mapping, enforcing §4.2 rule 6 and §6.4's homogeneity rule. Duplicate-key detection added at incorporation time, raising `DuplicateKeyError`; key equality is code-point equality, with no Unicode normalization and no case folding (§8.3). §5.3's TextLeaf baseline/termination rules made concrete: the baseline is the level of the first line of the value that occupies a line of its own — for an inline value, its first continuation line; for a block value, its first block line (unlike the inline case, this sets the baseline immediately); for a root scalar, a fixed 0 — and a below-baseline line terminates the value and is re-offered to the owning container rather than silently joining or vanishing. Comment and blank/whitespace-only lines inside a continuation block are always skipped and never terminate or affect the baseline, and a value containing a literal blank line (a paragraph break) was unrepresentable by `dumps` (§5.1 rules 4-5, §11.2.1) — **superseded by D22 (2026-09-24, see the amendment below): a paragraph break is now a writable, round-tripping part of a multi-line value.** §7.2 clarified: a mapping's inline value is always literal, but a list item's inline value is parsed structurally (`- - x` nests; `key: - x` does not), so a structure-shaped string is unrepresentable by `dumps` at a list position; a root scalar is parsed structurally line by line and is always written in block form (§11.2.1). Every physical line was lexed independently of its position in the document: a continuation-position line that itself lexed as `key_value`/`list_item`/`section` was that structure, not literal text, and — once its owning node was closed — raised `OutOfContextNodeError`; plain text at a container's own level (alongside sibling key-value pairs) was likewise an error (§5.1 rule 6, §6.4, §7.6) — **superseded by D21 (2026-09-24, see the amendment below): a line at or past an open value's baseline is now that value's text whatever it lexes as (the text-context rule).** A key written inline after a list marker (`- name: v`) sets its sibling column to the key's own column, not the marker's, regardless of spacing after `-` (§6.2); `dumps` MUST emit exactly one space after `-` for this reason (§11.2.1 rule G). The key pattern's `\s` was defined as exactly the Unicode `White_Space` code points, not a host regex engine's default `\s` (§4.5) — **superseded by D20 (2026-09-24, see the amendment below): the key pattern narrows to exactly `[a-z][a-z0-9_-]*`, an ASCII-only pattern with no `\s`-class reference at all.** The formal grammar's top rule is now `document = (line "\n")* line?` with `eol` as a lookahead-only rule anchored on absolute end-of-input, replacing the nullable-repetition-prone `lines = line*`/`~"$"` pair; there is no separate `blank` rule (§4.1, §4.4). Every example in §4.2 and §8.1-§8.5 had its trailing `# Level N`/`# ERROR: ...` annotation removed in favor of prose or an **Output:** line, since those annotations were themselves invalid SYML content that would otherwise become part of the parsed value. §4.5: a key may not begin with `#` or `//` (the comment rule makes it unreachable); keys with whitespace, a colon, an uppercase or titlecase letter, or no encoding are documented as unrepresentable (§11.2.3). §3.3: mapping insertion order is now a MUST, replacing the earlier disclaimer that consumers must not depend on it. A zero-length inline value (`key: `, `- `) is now normalized to the same as no value at all (`key:`, `-`); `key: ""` is the two-character value `""` (§9.3). §7.3's empty-value rule extended explicitly to list items. §11.1 clarifies that an empty or comment-only document is the scalar case (`""`), not a fourth return shape; `load()` now MUST decode strictly as UTF-8, raising rather than silently repairing invalid bytes. New §11.2.1-§11.2.3 give `dumps` normative serialization rules — a single-line string is written inline, a multi-line string or any root scalar in block form, and a string with no literal encoding (a control character other than LF/TAB, a leading space or tab, a blank, tab-initial, comment-shaped, or structure-shaped line in block form, or a structure-shaped list item value) is `UnrepresentableValueError` — and require `UnrepresentableValueError` for empty containers and keys with no encoding. §11.3's exception list expanded to `DuplicateKeyError`, `TabIndentationError`, `DocumentLimitError`, and `UnrepresentableValueError`; there is no `InconsistentIndentationError` — §8.1 and §8.2 both raise `OutOfContextNodeError`. §13.2's tab bullet corrected: there is no tab normalization, only rejection. §13.3 defines a line boundary as exactly one LF (not the general Unicode line-separator set a naive `splitlines()` would use) and fully specifies BOM scope (index 0 only, exactly one, ordinary content everywhere else). New §13.4 recommends default limits (500 levels of nesting, 1 MiB lines, 10 MiB documents). New §4.6.1 states that control characters other than LF, including NUL, are permitted verbatim in values. §9.2 specifies that `add_child` returns the tip of the added subtree and that inline structural values (`- key: v`, `- - x`) are incorporated through the same algorithm. §11.3: `ParseError` derives from the host's `ValueError`-equivalent, `UnrepresentableValueError` is a `ValueError` raised by `dumps`, and the exception class names are normative. Header status line now names `syml` 1.0.0 as the conforming reference implementation. **Amended 2026-09-24 (still "Version 1.0", FR-018; see SYML-SPEC-REVIEW.md D20-D25):** the key pattern narrows to exactly `[a-z][a-z0-9_-]*`, superseding the General_Category `Lu`/`Lt` check above (D20, supersedes D15/D19); a value is text by position, not by re-lexing every line independently — once a value's baseline is fixed, every later line at or past it is that value's text whatever it lexes as (D21, supersedes D13); a blank line inside an open value is a paragraph break, one empty joined line per physical blank line, not discarded (D22, supersedes D12); a comment is column-0 only (a line with no indentation starting `#`/`//`), skipped as if absent anywhere it appears, and an indented `#`/`//` line is now text, not always a comment (D23, revising §4.3's earlier any-indentation comment rule); a tab is separator whitespace after `key:`/`-`, counting as one column (D24, supersedes D5); and children must be strictly deeper than their parent with list items included, restoring §4.2 rule 5 and adding a KeyValue row to §9.3 over an earlier undocumented `>=` carve-out (D25). |
 
 ---
 
