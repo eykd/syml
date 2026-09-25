@@ -614,8 +614,9 @@ consequences for the release text (Contract 06):
   passes for `server: # production\n  host: x`, whose top level is still a
   `dict`. The CHANGELOG D23 item instead tells the user to search the file:
   every line whose first non-space characters are `#` or `//`, and every
-  `key:` or `-` followed by separator whitespace and `#` or `//`, changes
-  meaning. D23's breaking-change note (Contract 06 §B) and README item 1
+  `key:` or `-` followed by separator whitespace and `#` or `//` with a
+  deeper block under it, changes meaning (`k: # x` alone was already the
+  string `"# x"` in 1.0, US1-5; red team outer iteration 5 pass 2). D23's breaking-change note (Contract 06 §B) and README item 1
   (§D) name the trailing-comment shape (`server: # prod` makes the block
   under it part of the string).
 - **The key rule is asymmetric inside a list item.** A non-pattern first key

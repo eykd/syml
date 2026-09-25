@@ -106,7 +106,10 @@ turns that file or block into one string, and a `#`/`//` after `key:` or `-`
 (`server: # prod`) silently makes the block under it part of that key's
 string. The item says how to check: search the file for every line whose
 first non-space characters are `#` or `//`, and every `key:` or `-` followed
-by separator whitespace and `#` or `//`; each hit changes meaning. A
+by separator whitespace and `#` or `//`. A hit of the first kind changes
+meaning; a hit of the second kind changes meaning only when a deeper block
+follows it (`k: # x` alone was already the string `"# x"` in 1.0), so the
+item says to check what that key loads to. A
 top-level `isinstance(loads(text), dict)` check is **not** the advice (red
 team outer iteration 5): it passes for `server: # prod\n  host: x`, whose
 damage is one level down. The "loud" wording of the ruling is not
