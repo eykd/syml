@@ -51,3 +51,12 @@ disables the exclusion of the families that were known-broken on `27a3e9a`.
 The success criterion for this feature is that it passes with
 `FILTER_KNOWN=0` once its strategies are updated for the revised language
 (key pattern, no comments, paragraph breaks, text context).
+
+## planning-spike/
+
+The throwaway spike that `/sp:03-plan` used as evidence (research.md, opening
+section): a copy of `src/syml` with R-01/R-02/R-03 applied and the serializer
+cut to the R-05 residual set, plus the check scripts (`check.py`, `check2.py`,
+`fuzz.py`) that ran the US1/US2 scenarios, fixtures, lane-4 documents, and the
+Hypothesis round trip. It is reference material for `/sp:07-implement`, not a
+deliverable: the contracts govern, and the spike was never linted or type-checked.
