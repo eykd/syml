@@ -47,6 +47,7 @@ later leaves delete their entries and the release leaf deletes the table
 | §10.2 | Add R-09's BOM sentence. |
 | §11.1 | "an empty document or a document containing only blank lines". |
 | §11.2.1 | Rewrite to Contract 04's eight items; B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). |
+| US3 narrative (spec.md, not §11.2.1) | The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. |
 | §11.2.3 | Keys: exactly `[a-z][a-z0-9_-]*`; everything else raises. Delete the quoted-key/`#` v1.2 note or reduce it to the quoted-key candidate. |
 | §11.3 | Contract 05 wording: add `EncodingError`; `DocumentLimitError` reserved. |
 | §12.1 | Remove the `# Application configuration` line. |

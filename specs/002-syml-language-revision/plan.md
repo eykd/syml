@@ -77,7 +77,7 @@ walk-up stays recursive; the recursion cliff is measured and documented
 - Hints over new API (R12): message text only; no `reason` code or
   `expected_columns` attribute.
 
-**No NEEDS CLARIFICATION remains.** The four deferred items are settled in
+**No open clarification remains.** The four deferred items are settled in
 research.md R-01–R-05 (with R-04 settling a sub-question of item c), and
 R-06–R-12 settle seven more questions that planning surfaced.
 
@@ -348,6 +348,11 @@ Clarifications:
 3. **FR-010** names both same-column lists in `bar.syml` (lines 23–24 and
    35–36, R-13).
 4. `reference/README.md`: `doc05c` and `doc05d` now load as text (R-06).
+5. User Story 3's closing sentence ("the residual unrepresentable set is
+   exactly the values that have no spelling at all") is corrected: R-05 found
+   one family that keeps a spelling (`k: a: 1\n  b` for `{"k": "a: 1\nb"}`) and
+   `dumps` still refuses it. Contract 06 §A pins the reworded sentence as a
+   spec-leaf obligation.
 
 ## Open Questions for the Principal
 
