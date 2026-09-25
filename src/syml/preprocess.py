@@ -151,8 +151,9 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     last_break_end = breaks[-1].end() if breaks else 0
     column = index - last_break_end
     line_text = prefix[last_break_end:]
+    bad_byte = err.object[err.start]
     return EncodingError(
-        'Invalid encoding',
+        f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8',
         Pos(index=index, line=line, column=column),
         line_text,
         filename=filename,

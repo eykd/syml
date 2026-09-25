@@ -98,7 +98,7 @@ the full, untruncated key.
 | `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by the text-value clause (below), then by one space and a hint |
 | `DuplicateKeyError` | `Duplicate key '{key}'`, `key` windowed through `_truncated_window(key, center=0)` (unchanged attributes `key`, `first_position`, both carrying the full key) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
-| `EncodingError` | `Invalid encoding` (unchanged) |
+| `EncodingError` | `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`, `{XX}` the first offending byte in lowercase two-digit hex (D31) |
 
 `{COLS}` is `column 0` for one column, `columns 0 and 2` for two,
 `columns 0, 2 and 4` for more: the sorted distinct levels of the `List` and

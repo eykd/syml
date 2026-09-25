@@ -299,6 +299,14 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     mapping key is pathed to its parent mapping. The `dumps` `TypeError`
     stays a plain builtin `TypeError`, message only — no `.path`, no new
     subclass (D30, syml-cjk2.14, break-testing round 2 lane 4).
+31. **Bug fix: `EncodingError`'s message now names the bad byte and says
+    UTF-8.** Until this fix, an invalid-UTF-8 file raised with the message
+    `Invalid encoding`, which never named the expected encoding or the
+    offending byte, and whose shown line stopped just before that byte — so
+    the typical Latin-1/Windows file gave no clue what was wrong. The
+    message is now `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`,
+    `{XX}` the first offending byte in lowercase two-digit hex (D31,
+    syml-cjk2.15, break-testing round 2 lane 4).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

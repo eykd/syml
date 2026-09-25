@@ -106,7 +106,7 @@ class TestEncodingErrorPositionDerivation:
 
         assert result.position == Pos(index=10, line=2, column=3)
         assert result.line_text == 'x: '
-        assert result.message == 'Invalid encoding'
+        assert result.message == 'Invalid UTF-8 (byte 0xff); save the file as UTF-8'
 
 
 class TestWhichErrorForWhichConditionMapping:
