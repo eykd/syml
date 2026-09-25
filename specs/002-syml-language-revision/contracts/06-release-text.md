@@ -22,7 +22,7 @@ later leaves delete their entries and the release leaf deletes the table
 | Section | Change |
 | --- | --- |
 | §2 | Drop "A **comment**" from the line kinds. §2.1's unlabelled block uses `#` labels: replace them with prose labels outside the block (or three blocks). |
-| §4.1 | Print Contract 01's grammar. Rewrite the "Values are literal text" paragraph: every line lexes as `structure` or `data` on its own characters, but a line inside an open text value is that value's text whatever it lexes as (§5.1). Delete the no-uppercase-key paragraph. State that `indent` is U+0020 only and that a line consisting only of spaces and tabs is blank (§4.4). |
+| §4.1 | Print Contract 01's grammar, with `eol`'s regex as the raw literal `~r"\Z"` (the current §4.1 prints `~"\Z"`, which does not load under the repository's `error::SyntaxWarning` policy; Contract 01) and `document` as the first rule. Rewrite the "Values are literal text" paragraph: every line lexes as `structure` or `data` on its own characters, but a line inside an open text value is that value's text whatever it lexes as (§5.1). Delete the no-uppercase-key paragraph. State that `indent` is U+0020 only and that a line consisting only of spaces and tabs is blank (§4.4). |
 | §4.2 | Rule 3: drop the `key: \tv` sentence; a value cannot begin with a tab (the separator absorbs it; in block form it would be a tab in indentation). Rule 4: "number of leading U+0020 characters; no other character is indentation". Rule 5: "list items included". Replace the three-space invalid example with the one-space dedent and show the three-space line as a text continuation (R-06). |
 | §4.3 | **Delete.** Renumber nothing (keep §4.4 onward) or leave "§4.3 (removed in 1.0: SYML has no comments; see D23)" so external references resolve. Choose the stub. |
 | §4.4 | Blank = only spaces and tabs (a NBSP-only line is text). Blank lines between structure are inert; inside a value they are paragraph breaks (§5.1). Keep the example. |
@@ -32,11 +32,11 @@ later leaves delete their entries and the release leaf deletes the table
 | §5.1 | Rule 4 (comments) deleted. Rule 5 rewritten: a blank line between two lines of the same value is an empty line of the value, one per physical line; an inline value's text counts as its first line (R-04); blank lines before a block value's first line or after its last are inert. Rule 6 rewritten: structure is lexed only at a block's first line and inline; once a value is text, every line at or past its baseline is text; a root document whose first line is text is text throughout. Add the US1 1, 3, 14, 16 examples. |
 | §5.3 | Keep the baseline text. Replace "a line that syntactically parses as its own structure is never a TextLeaf continuation" and the `note: hello\n  more: text` ERROR example with its new output `{"note": "hello\nmore: text"}`. Keep `key: a\nb` (ERROR). Add the root `  hello` examples if not already Output-bearing. |
 | §6 intro / §6.1 | Add the indentless-sequence ERROR example (`k:\n- a`) with its hint. |
-| §6.2 | Unchanged rule; add the nested-vs-sibling pair (`- server:\n    host: x` vs `- server:\n  host: x`). |
+| §6.2 | Unchanged rule; add the nested-vs-sibling pair (`- server:\n    host: x` vs `- server:\n  host: x`). State that a column is a count of code points, so a tab after `-` counts as one column: `-\tk: v\n  j: w` is two siblings, and `-\tk: v\n        j: w` joins `v` (Output-bearing examples for both). |
 | §6.4 | Keep; add that a `#`/`//` line at a container's level is text and errors like `plain`. |
 | §7.2 | Keep the mapping/list asymmetry. Add: at a continuation position a `- ` line is text (§5.1). |
 | §7.4 | "An empty document, or one with only blank lines, is `""`." A document of former comment lines is a root scalar. |
-| §7.5 | `ws` is spaces or tabs. `key:\tvalue` → `{"key": "value"}`; `-\tvalue` → `["value"]`; `key: \tv` → `{"key": "v"}`; a bare marker followed only by spaces or tabs is the bare marker (R-11). |
+| §7.5 | `ws` is spaces or tabs. `key:\tvalue` → `{"key": "value"}`; `-\tvalue` → `["value"]`; `key: \tv` → `{"key": "v"}`; a bare marker followed only by spaces or tabs is the bare marker (R-11). A separator tab counts as one column (§6.2). |
 | §7.6 | Table: `Invalid: value`, `key:\tv`, `key:value` rows updated (`key:\tv` is now a mapping). Replace the "every line is lexed independently" subsection with the text-context rule: `a: Note\n  warning: do not touch` → `{"a": "Note\nwarning: do not touch"}` (was ERROR). |
 | §8.1 | Unchanged example; it still raises. |
 | §8.3 | Output line matches the code: `ERROR: DuplicateKeyError: Duplicate key 'key'` (Contract 03 makes the code produce it). |
@@ -44,10 +44,11 @@ later leaves delete their entries and the release leaf deletes the table
 | §8.5, §13.4 | Limits are recommendations; `DocumentLimitError` is the name for an implementation that enforces them; `syml` enforces none (FR-017). |
 | §9.1 | Step 3: drop comment classification; blank lines are skipped by the builder, and paragraph breaks are recovered from line positions (§5.1). |
 | §9.3 | KeyValue row unchanged in text (`level > keyvalue.level`), now true of the code. TextLeaf paragraph: add the text-context rule (a candidate at or past the threshold is accepted as text whatever it lexed as). Delete "`key: \t` has the one-character value `\t`" (R-11). |
-| §10.2 | Add R-09's BOM sentence. |
+| §10.2 | Add R-09's BOM sentence. State the `str(error)` form (FR-011) and that its rendered line escapes non-printable characters (`\xa0`, `\x1b`, `\t`) while `line_text` stays raw (Contract 03). |
 | §11.1 | "an empty document or a document containing only blank lines". |
 | §11.2.1 | Rewrite to Contract 04's eight items; B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). |
-| US3 narrative (spec.md, not §11.2.1) | The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. |
+| US3 narrative (spec.md, not §11.2.1) | The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. The rewording must also not claim that every value `loads` returns can be written: name both load-only families (Contract 04 L1 and L2, the second being rule D's control characters that §4.6.1 reads verbatim). Record the red team's verdict (plan open question 3) in spec.md's Clarifications. |
+| FR-016, US4 scenario 4 (spec.md) | Both say the comments item warns that files with `#` lines are "loud"/"change meaning". Reword so the obligation matches the behaviour: a `#`/`//` line that is the first line of a document or block makes that document or block one string, silently; a later one at a container's level raises. Record the correction in spec.md's Clarifications (red team pass 1, plan open question 7). |
 | §11.2.3 | Keys: exactly `[a-z][a-z0-9_-]*`; everything else raises. Delete the quoted-key/`#` v1.2 note or reduce it to the quoted-key candidate. |
 | §11.3 | Contract 05 wording: add `EncodingError`; `DocumentLimitError` reserved. |
 | §12.1 | Remove the `# Application configuration` line. |
@@ -66,8 +67,8 @@ breaking-change note (FR-016):
 | D20 | A key is exactly `[a-z][a-z0-9_-]*`, preceded only by indentation spaces; any other would-be key line is text; `dumps` refuses other keys. | Keep D19's "no `Lu`/`Lt`" rule plus a leading-bracket/quote exclusion (`syml-xreq.16` option b). | D15, D19 | `Name:`, `firstName:`, `URL:`, `1:`, `e.mail:`, `名前:` stop being keys. |
 | D21 | Values are just text: structure is lexed at a block's first line and inline only; once a value is text, every line at or past its baseline is text until a line below it; a root document whose first line is text is text throughout. | Keep per-line lexing and add an error hint (`syml-xreq.22` option a). | D13 | Deeper structure-shaped lines after a text value join it; a line indented past a sibling that holds an inline value is absorbed silently (R-06). |
 | D22 | A blank line between two lines of the same value is an empty line of that value, one per physical line; blank lines before a value's first line, after its last, or between items/keys are inert; `dumps` writes paragraph breaks. | An explicit paragraph marker line (`syml-xreq.15` option c). | D12 | `k:\n  a\n\n  b` was `"a\nb"`, is `"a\n\nb"`. |
-| D23 | SYML has no comments; `#` and `//` are text everywhere. | Keep whole-line comments and document the continuation case (`syml-xreq.21` option a). | §4.3, M6's fix, B9's exception | Any `#`/`//` line changes meaning: text in a value, `OutOfContextNodeError` at a container's level, a root scalar alone. |
-| D24 | A tab is separator whitespace after `key:` and `-` (`ws = [ \t]+`); a marker followed only by spaces/tabs is bare; a tab in indentation still raises. | Make a post-marker tab an error (v1.2 candidate 4). | D5 | `k:\tv` was `"k:\tv"`, is `{"k": "v"}`; `k: \tv` was `{"k": "\tv"}`, is `{"k": "v"}`. |
+| D23 | SYML has no comments; `#` and `//` are text everywhere. | Keep whole-line comments and document the continuation case (`syml-xreq.21` option a). | §4.3, M6's fix, B9's exception | Any `#`/`//` line changes meaning: text inside a value; `OutOfContextNodeError` at a container's level after its first entry; and, **silently**, a first line of the document or of a block makes that whole document or block one string (`# header\nk: v` → `"# header\nk: v"`; `a:\n  # s\n  b: 1` → `{"a": "# s\nb: 1"}`). The ruling's "all loud" premise holds only for the middle case. |
+| D24 | A tab is separator whitespace after `key:` and `-` (`ws = [ \t]+`); a marker followed only by spaces/tabs is bare; a tab in indentation still raises. A separator tab counts as one column for §6.2's sibling column. | Make a post-marker tab an error (v1.2 candidate 4). | D5 | `k:\tv` was `"k:\tv"`, is `{"k": "v"}`; `k: \tv` was `{"k": "\tv"}`, is `{"k": "v"}`. After `-\tk: v`, a sibling key goes at column 2; a line an editor shows aligned under `k` at a tab stop joins `v` silently. |
 | D25 | Children are strictly deeper than their parent, list items included; the YAML indentless sequence is an error with a hint. §6.2's `- key:` sibling-column rule stands. | Keep the undocumented carve-out and add a KeyValue row to §9.3 (`syml-xreq.3` recommendation). | — (restores §4.2 rule 5 / §9.3 over code) | `k:\n- a` was `{"k": ["a"]}`, is `OutOfContextNodeError`. |
 
 Annotate in place (the D18 precedent: a bold "Superseded by Dnn (2026-09-24)"
@@ -95,8 +96,12 @@ The 1.0.0 entry stays one entry. Corrections (FR-016):
 
 New breaking-change items, one per decision (FR-016): D20 keys; D21 values
 are text throughout (with the silent-absorption note); D22 paragraph breaks
-kept; D23 comments removed, **loud for any third-party `.syml` file with `#`
-lines**; D24 tab as separator (`k:\tv`, `k: \tv`); D25 indentless sequences
+kept; D23 comments removed, stating **both** halves for any third-party
+`.syml` file with `#` lines: a `#` line after a container's first entry now
+raises, and a `#` header line at the top of the file or of a block silently
+turns that file or block into one string (the item says how to check:
+`isinstance(loads(text), dict)`); the "loud" wording of the ruling is not
+used; D24 tab as separator (with the one-column note) (`k:\tv`, `k: \tv`); D25 indentless sequences
 rejected. One more item for the only-U+0020-indentation fix (`\xa0k: v` is
 text; NBSP, VT, FF, NEL, U+2028 at a line start are content).
 
@@ -111,6 +116,8 @@ succeeds but `.as_data()` raises.
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling
    beside it (FR-015, US4 scenario 5):
    1. No comments: `# note` is text; keep notes in a value or outside the file.
+      A `#` header line at the top of a file or block makes that whole file
+      or block one string, with no error.
    2. No block-scalar indicators: `|` and `>` are literal; indent the lines
       under the key instead.
    3. No document markers: `---` and `...` are text (a document starting with
@@ -118,9 +125,11 @@ succeeds but `.as_data()` raises.
    4. No quoting: `"x"` keeps its quotation marks.
    5. `null`, `true`, `123`, `~`, `[a, b]`, `{a: 1}` are plain strings.
    6. Keys are `[a-z][a-z0-9_-]*`: `Name:`, `firstName:`, `URL:` are text, and
-      a block of them (`env:\n  HOME: /h`) is one text value.
+      a block of them (`env:\n  HOME: /h`) is one text value; so is a whole
+      file whose first line is one (`Name: app\nport: 80` is a string).
    7. `- key:` sets a sibling column: `- server:\n  host: x` is two siblings;
-      `- server:\n    host: x` nests (show both).
+      `- server:\n    host: x` nests (show both). Use a space after `-`:
+      a tab there counts as one column.
    8. A blank line inside a value is a paragraph break.
 2. A **`Source`** paragraph with Contract 05's three facts (FR-014).
 3. Any README example that uses a comment line, an uppercase key, or an

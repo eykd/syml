@@ -22,7 +22,7 @@ key_value       = key_colon ws data
 section         = key_colon &eol
 key_colon       = key ":"
 key             = ~"[a-z][a-z0-9_-]*"
-eol             = &"\n" / ~"\Z"
+eol             = &"\n" / ~r"\Z"
 ws              = ~"[ \t]+"
 text            = ~"[^\n]*"
 value           = structure / data
@@ -31,6 +31,15 @@ data            = text
 
 The §4.1 block may add comments and column alignment; rule content must be
 identical. There is no `comment` rule and no `blank` rule.
+
+`eol`'s regex is a **raw** literal (`~r"\Z"`). Parsimonious evaluates rule
+literals as Python string literals, and `~"\Z"` emits
+`SyntaxWarning: invalid escape sequence '\Z'`, which `pyproject.toml`'s
+`filterwarnings = ["error::SyntaxWarning"]` turns into an import-time failure
+of `SymlParser` (red team pass 1; the planning spike fails this way). Both
+spellings give the same `as_rule()` text (`~'\\Z'u`), so the identity test
+is unaffected. `document` stays the first rule in both places: Parsimonious's
+default rule is the first one.
 
 ### Visitor signatures (`src/syml/parsers.py`)
 
@@ -78,6 +87,8 @@ Separator whitespace (FR-008):
 | `a:\t` + newline + `  b: 1` | `{"a": {"b": "1"}}` |
 | `- a` + newline + `-\tx` | `["a", "x"]` |
 | `k: a\tb` | `{"k": "a\tb"}` (a tab after the value's first character is unchanged) |
+| `-\tk: v` + newline + `  j: w` | `[{"k": "v", "j": "w"}]`: a column is a code-point count, so the tab is one column and `k` sits at column 2 (§6.2) |
+| `-\tk: v` + newline + `        j: w` | `[{"k": "v\nj: w"}]`: eight spaces is past `k`'s column 2, so the line joins the inline value (D21), even where an editor shows it aligned under `k` |
 
 Indentation (FR-009):
 
@@ -99,7 +110,10 @@ Document shape: `k: v` and `k: v\n` both → `{"k": "v"}`; `""`, `"\n"`,
 
 1. **Grammar identity**: a test loads §4.1's fenced `peg` block with
    `parsimonious.Grammar` and asserts `{name: rule.as_rule()}` equals the same
-   map over `SymlParser.grammar` (SC-005, US4 scenario 2).
+   map over `SymlParser.grammar` (SC-005, US4 scenario 2). It also asserts
+   both grammars' `default_rule.name == 'document'`, and it runs under the
+   repository's `error::SyntaxWarning` policy, so a non-raw escape in either
+   grammar fails it.
 2. One parametrized test per table above.
 3. `visit_line` returns `None` for `""`, `"   "`, `"\t"`, `" \t "` content
    spans and not for `"\xa0"`.

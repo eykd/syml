@@ -83,6 +83,9 @@ class Root(ContainerNode):
 | R-06 | `- eggs\n - bread` | `["eggs\n- bread"]` |
 | edge | `hello\nk: v` / `---\nk: v` | `"hello\nk: v"` / `"---\nk: v"` |
 | edge | `k: v\nhello` | `OutOfContextNodeError` |
+| silent | `# Application config\nname: app\nport: 80` | `"# Application config\nname: app\nport: 80"` (a text first line makes the root text; no error, red team pass 1) |
+| silent | `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` (a text first block line makes the block text) |
+| silent | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` (the tab is one column; Contract 01) |
 | US2-1 | `k:\n- a\n- b` | `OutOfContextNodeError` (hint, Contract 03) |
 | US2-2 | `a:\n- x\n- y\nb: z` / `- key:\n  - x` | `OutOfContextNodeError` |
 | edge | `- key:\n    - x` | `[{"key": ["x"]}]` |
@@ -111,3 +114,6 @@ unchanged. `stranger.syml` is unchanged.
    ruled values.
 4. The existing D11 baseline tests stay green unchanged (FR-003: "D11's
    baseline rule stands").
+5. The three `silent` rows are pinned as unit tests (US1's 18 acceptance
+   scenarios stay as the spec writes them), so the release text's description of them (Contract 06 §B–§D)
+   is checked against behaviour rather than asserted.

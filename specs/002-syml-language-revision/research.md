@@ -97,7 +97,7 @@ key_value       = key_colon ws data
 section         = key_colon &eol
 key_colon       = key ":"
 key             = ~"[a-z][a-z0-9_-]*"
-eol             = &"\n" / ~"\Z"
+eol             = &"\n" / ~r"\Z"
 ws              = ~"[ \t]+"
 text            = ~"[^\n]*"
 value           = structure / data
@@ -479,7 +479,7 @@ value:
 The ruling on `syml-xreq.19` said "nothing valid today changes meaning"; that
 is true of the tab directly after the marker but not of a tab after a
 separator space. D24 records the `key: \tv` change as part of its
-breaking-change note. Contract 07 lists every flipped example so the
+breaking-change note. Contract 06 §A lists every flipped example so the
 spec-example oracle (SC-005) is updated in the same leaf.
 
 ---

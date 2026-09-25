@@ -66,6 +66,16 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 | R-05 | `{"k": "a\n \nb"}`, `{"k": "a\n  \tb"}`, `{"k": "\ta"}`, `"x\n"` | `UnrepresentableValueError` (items 5, 4, 4, 6) | — |
 | R-05 | `{"k": "# x"}`, `"# x\n// y"`, `{"k": "a\n# b"}` | `k: # x\n`, `# x\n// y\n`, `k:\n  a\n  # b\n` | yes |
 | R-05 | `{"k": "a: 1\nb"}` | `UnrepresentableValueError` (item 2; see R-05 "one family refused despite having a spelling") | — |
+| load-only | `dumps(loads("k: note: the door\n  is locked"))`, `dumps(loads("notes: - milk\n  - eggs"))` | `UnrepresentableValueError` (item 2): values `loads` returns that `dumps` refuses (red team pass 1; kept, plan open question 3) | — |
+| load-only | `dumps(loads("\x0bx"))`, `dumps(loads("k: a\x1cb"))` | `UnrepresentableValueError` (item 1): §4.6.1 reads controls verbatim, rule D still refuses them (US3 scenario 10) | — |
+
+### Load-only families
+
+Exactly two families of values can come out of `loads` and be refused by
+`dumps`: (L1) a multi-line value at a mapping position whose first line is
+structure-shaped (item 2 at a mapping position), and (L2) a value containing a
+character rule D refuses (item 1). Every other value `loads` returns is
+written by `dumps` and round-trips. P8 below pins this.
 
 ## Test obligations
 
@@ -74,6 +84,19 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
    generated value `x`, either `dumps(x)` raises `UnrepresentableValueError`
    or `TypeError`, or `loads(dumps(x)) == x` and `dumps(loads(dumps(x))) == dumps(x)`;
    no excluded input family. Plus P3, P4, P5, P7 from the lane-1 probe.
+   **P8 (load first, red team pass 1):** for every generated *document* `t`
+   (the P3 strategy: lines built from indentation, markers, keys, `#`, `//`,
+   NBSP, BOM, tabs, controls, and text) for which `loads(t)` returns `x`,
+   either `loads(dumps(x)) == x`, or `dumps(x)` raises
+   `UnrepresentableValueError` and `x` contains a value in family L1 or L2
+   (checked by a predicate written against the definitions above, not by
+   calling `dumps`). A third load-only family fails P8.
+   **Hypothesis settings** (plan § Performance Considerations): a `gate`
+   profile (`deadline=None`, `derandomize=True`, a few hundred examples per
+   property) registered in `tests/conftest.py` and loaded by default, a
+   `fuzz` profile selected by `HYPOTHESIS_PROFILE=fuzz`, a `just fuzz`
+   recipe, and `.hypothesis/` in `.gitignore`, all in the leaf that adds the
+   property file. No `src/` branch may be covered only by generated inputs.
 3. `key_is_representable` agrees with `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`
    (P7) and with the grammar: a key it accepts round-trips as a key.
 4. `_lexes_as_structure` does not strip a BOM or NBSP and treats a

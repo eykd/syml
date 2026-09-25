@@ -67,8 +67,9 @@ walk-up stays recursive; the recursion cliff is measured and documented
 ### Constraints carried from the brainstorm (Key Decisions)
 
 - Values are just text (R3): position-based text context over per-line
-  structural lexing, accepting one piece of reintroduced state (here: none new,
-  R-01).
+  structural lexing, accepting one piece of reintroduced state (here: no
+  builder-loop state; two new per-node fields, `content_pnode` and
+  `line_pnode`, R-01).
 - Strict indentation (R10): the spec as written over the YAML habit; the
   fixture is edited.
 - Comments removed (R7): delete the feature rather than rule on its edges.
@@ -270,7 +271,7 @@ independent.
    strict XPASS fails the run if it forgets), and the release leaf deletes the
    empty table. `MINIMUM_EXAMPLE_COUNT` moves to the new count here.
 2. **Grammar leaf** (Contract 01), atomic: top rule, `indent`, `ws`, `key`,
-   `eol`, comment removal, D19 removal, `IndentNode`/`Comment` removal, grammar
+   `eol` (written `~r"\Z"`, Security Considerations), comment removal, D19 removal, `IndentNode`/`Comment` removal, grammar
    identity test, and the rewrite of existing tests that pinned D5, D15, D19,
    or comments.
 3. **Tree-builder leaves** (Contract 02), in order: strict depth + `bar.syml`
@@ -280,7 +281,9 @@ independent.
    positions; out-of-context message and hints (needs 3 for the new shapes).
 5. **Serializer leaves** (Contract 04), after 2–3: key regex; structure match
    without pre-processing; residual set; `Source`; `dumps('')`; then the
-   round-trip property test (lands RED on anything still missing).
+   round-trip property test (lands RED on anything still missing), with the
+   load-first property P8, the Hypothesis `gate`/`fuzz` profiles, `just fuzz`,
+   and `.gitignore`'s `.hypothesis/` in the same leaf (Contract 04).
 6. **API tail leaves** (Contract 05): independent of 2–5.
 7. **Release leaf** (Contract 06 §C–§F), last: README, CHANGELOG (with R-17's
    measurement after 2), CLAUDE.md, tag after merge.
@@ -349,34 +352,174 @@ Clarifications:
    35–36, R-13).
 4. `reference/README.md`: `doc05c` and `doc05d` now load as text (R-06).
 5. User Story 3's closing sentence ("the residual unrepresentable set is
-   exactly the values that have no spelling at all") is corrected: R-05 found
-   one family that keeps a spelling (`k: a: 1\n  b` for `{"k": "a: 1\nb"}`) and
-   `dumps` still refuses it. Contract 06 §A pins the reworded sentence as a
-   spec-leaf obligation.
+   exactly the values that have no spelling at all") is **not yet** corrected
+   in `spec.md`: it is deferred to the spec leaf, which Contract 06 §A binds to
+   reword it. R-05 found one family that keeps a spelling (`k: a: 1\n  b` for
+   `{"k": "a: 1\nb"}`) and `dumps` still refuses it; rule D also refuses
+   control characters that §4.6.1 lets `loads` read verbatim (red team,
+   below). The rewording must name both load-only families.
+6. **Deferred to the spec leaf (red team):** FR-016's and US4 scenario 4's
+   phrase "loud for third-party files with `#` lines" is false for a `#`/`//`
+   line that is the first line of a document or of a block (it silently makes
+   the document or block one string, see Edge Cases & Error Handling). The
+   spec leaf rewords both; Contract 06 §A pins it.
 
 ## Open Questions for the Principal
 
-None blocks planning; each is settled in research.md with a stated reason. The
-red team should look hardest at these, and the principal may overrule any:
+The red team (pass 1) returned a verdict on each of the planner's questions;
+the principal may still overrule any. Question 7 is new and is the one that
+most deserves the principal's eye, because it corrects a fact a ruling rested
+on.
 
 1. **Silent absorption (R-06, D21).** `parent:\n  child1: a\n   child2: b`
-   now loads `child2: b` as part of `child1`'s value instead of raising. This
-   follows directly from the ruling on `syml-xreq.22` and US1 scenario 16, but
-   it is the one place the revision is quieter than 1.0.
+   now loads `child2: b` as part of `child1`'s value instead of raising.
+   **Verdict: keep.** No parser-side mitigation exists that does not
+   contradict the ruling on `syml-xreq.22` and US1 scenario 16; the cost is
+   recorded in D21's breaking-change note and the CHANGELOG D21 item, not the
+   README list (FR-015 fixes it at eight items). The tab-separator variant of
+   the same hazard is in Edge Cases & Error Handling.
 2. **Inline-value blank line (R-04).** `k: first\n\n  second` keeps the blank
    (`"first\n\nsecond"`), reading FR-004's "continuation lines" as "lines of
-   the value".
+   the value". **Verdict: keep** (consistent with the root case and needs no
+   special case).
 3. **One refused family with a spelling (R-05).** `{"k": "a: 1\nb"}` could be
    written `k: a: 1\n  b` but `dumps` refuses it, per FR-006; US3's narrative
-   says "exactly the values that have no spelling at all".
+   says "exactly the values that have no spelling at all". **Verdict: the
+   narrative moves, FR-006 stands.** Accepting the family later is additive
+   (non-breaking in 1.x); refusing it later would be breaking. The
+   inline-first layout has its own baseline restriction the spike already
+   tripped on (`{"a": "k: \n a"}`), and it makes the layout depend on the
+   value's shape. The load-then-dump gap this leaves is pinned, not hidden:
+   Contract 04's P8 property allows exactly two load-only families (this one
+   and rule D's control characters) and fails on any third.
 4. **`k: \tv` changes value (R-11, D24).** The ruling said nothing valid
-   changes meaning; this one does (`"\tv"` → `"v"`).
+   changes meaning; this one does (`"\tv"` → `"v"`). **Verdict: keep**,
+   recorded in D24.
 5. **Constitution IV's decision range.** It still reads "D1–D17" (D18/D19 were
    cited without amending it). Every change here also cites an FR, so the gate
    passes; the release leaf could PATCH the range to "D-numbered decisions"
    alongside CLAUDE.md's "D1–D25". Suggested, not planned.
 6. **Closed-handle `TypeError` (R-10).** The spec's Edge Cases ask for
    `TypeError`; an `OSError` subclass would also escape `except ValueError`.
+   **Verdict: keep `TypeError`** (the spec asks for it; either escapes
+   `except ParseError`).
+7. **"Loud" was the premise of the comments ruling, and it is false for the
+   common case (new, red team).** The ruling on `syml-xreq.21` records
+   "Consequences (all loud)". Under D21 a `#`/`//` line is loud only when it
+   sits at a container's level *after* that container's first entry. When it
+   is the **first line of the document** (a file header comment) the whole
+   document silently loads as one `str`; when it is the **first line of a
+   block** (`a:\n  # section\n  b: 1`) the whole block silently loads as one
+   string (`{"a": "# section\nb: 1"}`). The same is true of a leading `---`,
+   a leading uppercase or dotted would-be key (`Name: app`), and any other
+   text first line. Nothing raises; a consumer fails later on `data["x"]`.
+   **Plan position: the parser ruling stands** (changing it would reopen
+   D21), and the release text is corrected (Contract 06 §A, §B, §C, §D).
+   **Ask the principal** to confirm D23 with the corrected consequence before
+   the spec leaf lands, since the tag makes it a 1.0 promise.
+
+## Security Considerations
+
+`syml` parses documents that may come from third parties. Red team pass 1
+(`.specify/solutions/` holds no prior security or clean-architecture entries,
+so no carried-over finding applies).
+
+### Input Validation: the grammar must load under the repository's warning policy
+
+- `pyproject.toml` sets `filterwarnings = ["error::SyntaxWarning"]`.
+  Parsimonious evaluates rule literals as Python string literals, so the
+  `eol = &"\n" / ~"\Z"` rule that Contract 01 and research.md R-02 printed
+  before this pass (and that the current §4.1 still prints) emits `SyntaxWarning: invalid escape sequence '\Z'`
+  while `Grammar(...)` is built. Under the repository's policy that is an
+  exception at `SymlParser`'s class body, so `import syml` fails and every
+  test errors (verified: the planning spike does not import under
+  `python -W error::SyntaxWarning`). The rule is written `~r"\Z"` in the code,
+  in Contract 01, and in the §4.1 block the spec leaf prints; `as_rule()` is
+  the same for both spellings, so the grammar-identity test is unaffected.
+  The identity test loads §4.1's block under the same warning policy, so a
+  future non-raw escape in the printed grammar fails it too.
+
+### Data Protection: error text is rendered, not echoed
+
+- FR-011 makes `str(ParseError)` print the offending line. In 1.0, `str(e)`
+  was the args tuple, whose `repr` escaped control characters; the new form
+  would copy an attacker's raw bytes (ANSI escape sequences, `\x07`, bidi
+  overrides such as U+202E, NUL) into a terminal or log line. `__str__`
+  therefore renders the line text and the would-be key in hint (a) with every
+  character for which `str.isprintable()` is false (this includes a tab;
+  U+0020 is printable and stays) replaced by its Python escape
+  (`\t`, `\x1b`, `\xa0`, `\u202e`). `.line_text`, `.message`, and `.args` stay
+  raw, so programmatic callers lose nothing. This also helps the whitespace
+  errors this feature adds: `k:\n  a\n\xa0\n  b` shows `\xa0` on the second
+  line instead of an invisible character (Contract 03).
+
+### Resource Limits
+
+- Unchanged by this feature: no limit is enforced (Scope Boundaries). The new
+  per-line work is O(1) plus an O(gap) newline count per continuation, and the
+  failure path's "previous non-blank line" scan is O(n) once per raised error,
+  so no new super-linear path is added. The recursion cliff is measured after
+  the grammar leaf (R-17).
+
+## Edge Cases & Error Handling
+
+### Silent cases the release text must name (red team pass 1)
+
+Verified against the planning spike; each follows from the rulings and is
+kept, but no document may call it loud:
+
+| Input | Result | Why silent |
+| --- | --- | --- |
+| `# Application config\nname: app\nport: 80` | the `str` `"# Application config\nname: app\nport: 80"` | the first line is text, so the root is text throughout (D21, D23) |
+| `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` | the block's first line is text (D21, D23) |
+| `Name: app\nport: 80`, `---\nname: app` | one `str` each | same, via D20 and the no-document-markers rule |
+| `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` | a tab after `-` counts as **one** column, so `k` is at column 2 and a line an editor shows aligned under `k` (tab stop 8) is past it and joins the inline value (D24 × §6.2 × D21) |
+| `parent:\n  child1: a\n   child2: b` | `{"parent": {"child1": "a\nchild2: b"}}` | R-06 |
+
+Consequences for the text leaves (Contract 06): D23's breaking-change note,
+the CHANGELOG D23 item, and README "Coming from YAML" item 1 state that a
+`#`/`//` first line of a document or block makes that document or block one
+string, and that a later `#` line at a container's level raises; the
+"loud for third-party files" wording is replaced. D24's note and §6.2/§7.5
+state that columns are code-point counts, so a tab counts as one column. The
+README list stays at eight items in order (FR-015); the silent cases go into
+the wording of items 1, 3, 6, and 7, not a ninth item.
+
+### Load-then-dump
+
+US3's persona loads a file and writes it back. `dumps` refuses exactly two
+families of values that `loads` can return: a multi-line mapping value whose
+first line is structure-shaped (R-05; `k: note: the door\n  is locked`,
+`notes: - milk\n  - eggs`), and a value containing a control character that
+§4.6.1 reads verbatim but rule D refuses (`\x0bx`, `a\x1cb`). Both stay refused
+(open question 3). A load-first property (Contract 04, P8) pins them: for
+generated documents that load, `dumps` either round-trips the result or raises
+`UnrepresentableValueError` for a value in one of these two families, so any
+third load-only family fails the suite.
+
+## Performance Considerations
+
+### Test-gate cost and determinism (Hypothesis)
+
+- The pre-commit hook runs the whole unit suite under coverage on every
+  commit. Hypothesis's default 200 ms `deadline` flakes under coverage
+  instrumentation, and a random run that finds a new counterexample would
+  block an unrelated commit. `tests/conftest.py` registers a settings profile
+  with `deadline=None` and `derandomize=True` for the gate (loaded by
+  default), and a `fuzz` profile (random, more examples) selected with
+  `HYPOTHESIS_PROFILE=fuzz` for hardening runs; a `just fuzz` recipe runs it.
+- `.hypothesis/` joins `.gitignore` in the same leaf that adds the property
+  tests, because `/sp-commit` stages every change and would otherwise commit
+  the example database.
+- 100% branch coverage of `src/` must be reachable from the example tables
+  alone; no branch may be covered only by generated inputs, or coverage would
+  depend on the Hypothesis seed.
+
+## Accessibility Requirements
+
+Not applicable: `syml` is a library with no user interface. The only
+human-facing output is error text, covered above (escaped rendering, a
+`file:line:col` first line).
 
 ## Complexity Tracking
 

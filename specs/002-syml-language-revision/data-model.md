@@ -17,8 +17,8 @@ exception surface. Entities below follow the spec's Key Entities list.
 | **Indentation** | revised | The run of U+0020 at the start of a line (`indent = ~" *"`). Nothing else is indentation. A line's level is the length of that run. | FR-009, D14 affirmed |
 | **Blank line** | revised | A line consisting only of U+0020 and U+0009 (or empty). Classified by the line visitor, not a grammar rule. A NBSP-only line is **not** blank. | §4.4, §9.0 step 3, FR-009 |
 | **Key** | revised | Exactly `[a-z][a-z0-9_-]*`, preceded by nothing but indentation, followed by `:`. The whole rule; no out-of-PEG check. | FR-001, D20 |
-| **Separator whitespace** | revised | `ws = ~"[ \t]+"`: the run of spaces or tabs after `key:` or `-`. A marker followed only by separator whitespace is bare (D6). | FR-008, D24 |
-| **Text context** | new | The state a value is in once its first own line is text. While the value's `TextLeafNode` is the tip, every non-blank line at or past its threshold (baseline, or `> anchor_level` before a baseline exists) is that value's text, whatever it lexes as. A line below the threshold closes it and is re-offered (§5.3). | FR-003, D21 |
+| **Separator whitespace** | revised | `ws = ~"[ \t]+"`: the run of spaces or tabs after `key:` or `-`. A marker followed only by separator whitespace is bare (D6). A column is a code-point count, so a separator tab is one column: after `-\tk: v`, `k`'s sibling column is 2 (§6.2). | FR-008, D24 |
+| **Text context** | new | The state a value is in once its first own line is text (for a root or a block, that includes a first line shaped like a former comment, `---`, or a would-be key outside the key pattern, so the whole root or block is one string, with no error). While the value's `TextLeafNode` is the tip, every non-blank line at or past its threshold (baseline, or `> anchor_level` before a baseline exists) is that value's text, whatever it lexes as. A line below the threshold closes it and is re-offered (§5.3). | FR-003, D21 |
 | **Paragraph break** | new | An empty line inside a multi-line value, one per physical blank line between two lines of the same value (an inline value's text counts as its first line, R-04). | FR-004, D22 |
 | **Comment** | removed | No line is a comment. `#` and `//` are text everywhere. | FR-007, D23 |
 | **Strict child depth** | revised | Every child is strictly deeper than its parent, list items included; the indentless-sequence carve-out is gone. `- key:`'s sibling-column rule (§6.2) is unchanged. | FR-010, D25 |
@@ -96,7 +96,7 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 
 | Element | Change |
 | --- | --- |
-| `SymlParser.grammar` | Replaced by research.md R-02's rule set (Contract 01). |
+| `SymlParser.grammar` | Replaced by research.md R-02's rule set (Contract 01), with `eol`'s regex as the raw literal `~r"\Z"` (a non-raw `\Z` is a `SyntaxWarning`, an error under the repository's pytest policy). |
 | `visit_line` | Returns `None` for a blank content span; otherwise returns the lexed node with `content_pnode`/`line_pnode` set. |
 | `visit_document` | Replaces `visit_lines`: flattens the visited children and incorporates each line into the tip, starting at a new `Root`. |
 | `visit_key_value`, `visit_section` | Lose the D19 text fallthrough. |
@@ -119,11 +119,12 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 
 | Class | Change |
 | --- | --- |
-| `ParseError` | Constructor gains keyword-only `filename: StrPath \| None = None`; stores private `_description`, `_filename`; public `.message` is the prefixed text; new `__str__` → `<loc>: <description>\n<line_text>` (R-07). |
+| `ParseError` | Constructor gains keyword-only `filename: StrPath \| None = None`; stores private `_description`, `_filename`; public `.message` is the prefixed text; new `__str__` → `<loc>: <description>\n<rendered line_text>` (R-07), where the rendered line escapes every non-printable character (`_printable`, Contract 03); `.line_text` stays raw. |
 | `OutOfContextNodeError`, `TabIndentationError`, `EncodingError`, `DuplicateKeyError` | Unchanged classes; every raise passes `filename=`. `DuplicateKeyError` keeps `key` and `first_position`. |
 | `UnrepresentableValueError` | Unchanged (a `ValueError`, not a `ParseError`). |
 | `DocumentLimitError` | Not added. §11.3 reserves the name (FR-017). |
 | `error_message(description, filename)` | Treats `""` like `None`. |
+| `_printable(text)` | **New**, private: each character with `str.isprintable()` false becomes `repr(ch)[1:-1]`. Used by `ParseError.__str__` and hint (a). |
 
 ---
 

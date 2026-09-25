@@ -38,6 +38,15 @@ normalizes to `None`). No new public attribute. `.args` is
 The `<filename>:` part is omitted when there is none. `<line>` is 1-indexed,
 `<column>` 0-indexed (§10.2), both from `self.position`.
 
+**Rendered, not echoed** (red team pass 1, plan § Security Considerations):
+`__str__` passes `<line_text>` through a private `_printable(text)` helper
+that replaces each character for which `str.isprintable()` is false with its
+Python escape (`repr(ch)[1:-1]`: `\t`, `\x1b`, `\xa0`, `\u202e`, `\x00`).
+Hint (a) interpolates its would-be key through the same helper. `.line_text`,
+`.message`, and `.args` stay raw. `<column>` still counts code points of the
+raw line, so it is not a caret offset into the rendered text (there is no
+caret).
+
 ## Messages
 
 | Class | Description (the part after any filename prefix) |
@@ -78,6 +87,8 @@ Hints (at most one; (b) is checked first):
 | US2-13 | `\ufeffa: b\r\n\tc: d` | `TabIndentationError`, `position == Pos(7, 2, 0)` |
 | FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a'"` (no `": "` prefix) |
 | SC-007 | a plain context error (`a: 1\nb`) | `str(e)` line 1 is `2:0: …` with no hint; line 2 is `b` |
+| escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
+| escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
 
 ## Placement
 
@@ -107,3 +118,6 @@ Hints (at most one; (b) is checked first):
    `a: 1\nb` or for a line whose colon is followed by a non-space; hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.
 6. SC-007's three cases as acceptance scenarios (US11).
+7. `_printable`: `str(e)` contains no character outside `str.isprintable()`
+   except the one `\n` between its two lines, for every raised error in the
+   SC-002/P3 property run (the property asserts it on each `ParseError`).
