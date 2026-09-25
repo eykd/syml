@@ -195,6 +195,14 @@ class TestErrorMessage:
         """`f'{filename}: {description}'` when `filename` is given."""
         assert error_message('Invalid encoding', 'doc.syml') == 'doc.syml: Invalid encoding'
 
+    def test_error_message_windows_a_hostile_filename(self) -> None:
+        """A multi-megabyte `filename` is windowed to 80 chars plus an ellipsis marker (syml-cjk2.5)."""
+        huge_filename = 'F' * 2_000_000
+
+        result = error_message('Invalid encoding', huge_filename)
+
+        assert result == f'{'F' * 80}…: Invalid encoding'
+
 
 class TestParseErrorFilenameNormalization:
     """Contract 03 §Surface: `filename` is normalized with `os.fspath`; `''` behaves as `None`."""
@@ -257,6 +265,15 @@ class TestParseErrorStr:
 
         assert str(without_filename) == '1:1: boom\nx'
         assert str(with_filename) == 'f.syml:1:1: boom\nx'
+
+    def test_str_and_message_are_bounded_for_a_hostile_filename(self) -> None:
+        """A multi-megabyte `filename` is windowed to 80 chars plus an ellipsis in both renderings (syml-cjk2.5)."""
+        huge_filename = 'F' * 2_000_000
+        windowed = f'{'F' * 80}…'
+        error = ParseError('boom', Pos(1, 1, 1), 'x', filename=huge_filename)
+
+        assert error.message == f'{windowed}: boom'
+        assert str(error) == f'{windowed}:1:1: boom\nx'
 
     def test_str_renders_for_duplicate_key_error_with_and_without_a_filename(self) -> None:
         """`DuplicateKeyError` renders the same two-line `__str__` shape."""

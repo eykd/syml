@@ -72,6 +72,16 @@ windowed — so a 1 MB hostile line (e.g. a run of `\x00` before a bare `:`)
 still yields a bounded `.message` and `str(e)` instead of the unbounded,
 multi-megabyte rendering this caps.
 
+The `<filename>` segment gets the same treatment (`syml-cjk2.5`, break-testing
+round 2): `filename` is caller-controlled and normally short, but its length
+is not otherwise bounded (e.g. an archive entry path or a hostile CLI
+argument), so both `error_message(description, filename)` (which builds
+`.message`'s prefix) and `__str__`'s `<filename>:` segment window it through
+`_truncated_window(filename, center=0)` before quoting/escaping it — the
+same call shape as `DuplicateKeyError`'s treatment above. A 2 MB `filename`
+now yields a bounded `.message` and `str(e)` instead of scaling with the
+filename's length.
+
 `DuplicateKeyError`'s description gets the same treatment (`syml-s9p9.14`):
 the grammar's key pattern (`[a-z][a-z0-9_-]*`) has no length bound, so a
 document that repeats a 1 MB key used to yield a multi-megabyte `.message`
@@ -275,4 +285,8 @@ below):
    untruncated line. Bounded rendering also covers `DuplicateKeyError`
    (`syml-s9p9.14`): a document repeating a 1 MB key yields a `.message` and
    `str(e)` well under the input's size, while `.key` still carries the
-   full, untruncated key.
+   full, untruncated key. Bounded rendering also covers a hostile `filename`
+   (`syml-cjk2.5`): a caller- or attacker-supplied filename of a million-plus
+   characters yields a `.message` and `str(e)` that both stay well under the
+   filename's size, for both a raise reached through the builder (e.g.
+   `OutOfContextNodeError`) and through `EncodingError`.

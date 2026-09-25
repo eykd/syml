@@ -155,6 +155,12 @@ outer iteration 8 measured 121 / 58 and 248 / 123 on the planning spike,
 against 496 / 246 for nested dicts); also record the depth where `parse()`
 succeeds but `.as_data()` raises.
 
+Bug-fix item, no D-number (`syml-cjk2.5`, break-testing round 2 lane 3):
+item 27, extending Contract 03 §Bounded rendering (`syml-s9p9.9`/`.14`,
+already itemized above under recursion measurement's neighbor obligations)
+to a hostile `filename`. No README change — the README never documented
+the bounded-rendering length cap itself, only the hints it now covers.
+
 ## D. `README.md` (release leaf)
 
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling

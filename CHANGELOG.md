@@ -257,6 +257,16 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     only (no look-back), on any open-column form, and are checked ahead of
     the D26/US1-8 hints so a spaceless comment (`#port: 80`) is never
     misread as a bad key.
+27. **Bug fix: `filename` is now bounded in error rendering.** `.message`'s
+    filename prefix and `str(e)`'s `<filename>:` segment are windowed
+    through `_truncated_window(filename, center=0)`, the same treatment
+    Contract 03 §Bounded rendering (`syml-s9p9.9`/`.14`) already documents
+    for a hostile `line_text` or repeated key — this closes the one case
+    that treatment missed. In 0.6.2 there was no such bound at all; a
+    caller- or attacker-supplied filename of unbounded length (e.g. an
+    archive entry path) makes `.message`/`str(e)` scale with the filename's
+    own length instead of staying proportional to the fixed 80-code-point
+    window (syml-cjk2.5, break-testing round 2 lane 3).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

@@ -15,10 +15,16 @@ if TYPE_CHECKING:  # pragma: nocover
 
 
 def error_message(description: str, filename: StrPath | None) -> str:
-    """`description` alone when filename is None, else f'{filename}: {description}'."""
+    """`description` alone when filename is None, else f'{filename}: {description}'.
+
+    `filename` is rendered through `_truncated_window(filename, center=0)`
+    before being interpolated, so a hostile multi-megabyte filename still
+    yields a bounded result (Contract 03 §Bounded rendering, syml-cjk2.5) —
+    mirroring `duplicate_key_description`'s treatment of a hostile key.
+    """
     if filename is None:
         return description
-    return f'{filename}: {description}'
+    return f'{_truncated_window(os.fspath(filename), center=0)}: {description}'
 
 
 #: A would-be key candidate: leading indentation, then a non-empty run of
@@ -249,14 +255,16 @@ class ParseError(ValueError):
         (§10.2). The filename and line text are rendered through
         `_printable` so no non-printable character (including a stray
         newline in a caller-supplied filename) escapes into the two-line
-        shape this format promises. The rendered line text is first
-        windowed through `_truncated_window`, centered on `self.position.column`,
-        so a hostile multi-megabyte `line_text` (unbounded, per `.line_text`'s
-        own attribute contract) still yields a bounded `str(e)`
-        (Contract 03 §Surface, syml-s9p9.9); `self.line_text` itself is
-        untouched.
+        shape this format promises. The filename is first windowed through
+        `_truncated_window(self._filename, center=0)` and the line text
+        through `_truncated_window(self.line_text, center=self.position.column)`,
+        so a hostile multi-megabyte filename or `line_text` (both unbounded,
+        per `.line_text`'s own attribute contract, and `filename` normally
+        being caller-controlled) still yields a bounded `str(e)`
+        (Contract 03 §Surface, syml-s9p9.9, syml-cjk2.5); `self.line_text`
+        itself is untouched.
         """
-        prefix = f'{_printable(self._filename)}:' if self._filename else ''
+        prefix = f'{_printable(_truncated_window(self._filename, center=0))}:' if self._filename else ''
         windowed_line_text = _truncated_window(self.line_text, center=self.position.column)
         return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(windowed_line_text)}'
 
