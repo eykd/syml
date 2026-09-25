@@ -279,7 +279,7 @@ def _lexes_as_structure(line: str) -> bool:
     Parses `line` with the real grammar directly (`parsers.SymlParser`), not
     `parsers.parse`, so §9.0 pre-processing never runs on the isolated line:
     a leading U+FEFF is judged as the line's own content, not stripped as a
-    document-level BOM (US3-5, FR-006). D19's no-uppercase key rule is still
+    document-level BOM (US3-5, FR-006). D20's ASCII-lowercase key rule is still
     honoured (`Listen: here` is text, `listen: here` is structure). A
     `- `-led run deep enough to exhaust the parser's recursion is treated
     as structure, since it cannot be re-read at all.
