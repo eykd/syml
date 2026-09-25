@@ -53,7 +53,9 @@ in the unit suite, mypy strict over `src/`, `tests/`, `tools/`, ruff preview
 with pydocstyle.
 **Target Platform**: library consumers on CPython 3.12+; PyPI (upload out of scope).
 **Project Type**: library (`src/` layout, hatchling, `uv`).
-**Performance Goals**: no regression beyond noise. The parse is still one
+**Performance Goals**: parsing stays linear, with a bounded constant-factor
+cost on some document shapes (measured on the planning spike, red team outer
+iteration 6; see Performance Considerations). The parse is still one
 whole-document Parsimonious parse; the new work per line is O(1) (a level test
 on the tip, a newline count over the gap since the previous line of the value).
 Not an acceptance criterion.
@@ -511,6 +513,14 @@ on. Question 8 was added by red team outer iteration 2.
    **Plan position: not added** (the CHANGELOG D23 item carries the warning,
    and the principal owns nothing with comment lines). **Ask the principal**
    whether third-party migration justifies it; adding it later is non-breaking.
+   A companion case for the same decision (red team outer iteration 6): prose
+   written flush under its key (`scene:\nThe cellar is dark.`) raises "is a
+   text line, but the open block at column 0 holds keys" with no hint, though
+   hint (b)'s test (the spine ends in a childless `KeyValue` at the failing
+   line's column) already identifies it. Widening hint (b) to any non-key line
+   ("a value under a key must be indented past the key's column") is message
+   text only; **not added** (FR-012's list is closed), for the principal to
+   decide with this question.
 
 ## Security Considerations
 
@@ -591,6 +601,7 @@ kept, but no document may call it loud:
 | `name:\xa0app\nport: 80` | the `str` `"name:\xa0app\nport: 80"` | a NBSP (or any character other than space or tab) after `key:` is not separator whitespace (D24), so the line is text; as a first line it makes the root (or block) text. In 1.0 this raised at line 2; it is now silent (red team outer iteration 3; macOS Option-Space and pasted web text produce it) |
 | `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` | a `#` after `key:` is that key's inline text value (US1-5), so every deeper line is its continuation (D21 × D23). YAML's trailing comment on a section key. In 1.0 this raised at line 2 (D13); it is now silent (red team outer iteration 5) |
 | `- # item note\n  name: x` | `["# item note\nname: x"]` | the same shape after `-`: the item's inline value is text anchored at the `-` column, so the record under it joins it (red team outer iteration 5) |
+| `x: 1\nserver: \xa0\n  host: a\n  port: 80` | `{"x": "1", "server": "\xa0\nhost: a\nport: 80"}` | a trailing invisible character after `key: ` (NBSP, U+200B, U+3000, U+FEFF; any character other than space or tab) is a non-empty inline text value (FR-009), so the block under it joins it (D21). The same after `- ` (`- \xa0\n  name: x` → `["\xa0\nname: x"]`). In 1.0 all of these raised at the first block line; now silent, and the value is invisible in an editor, so the `#`-only search in the D23 item cannot find it (red team outer iteration 6) |
 | `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` | the item's **first** key is outside D20's pattern, so `containerPort: 80` is the item's inline text value, anchored at the `-` column; the conforming sibling keys at the `-`+2 column are past that anchor and join it. In 1.0 this raised at line 3; it is now silent. A non-pattern **later** key (`- name: x\n  Age: 3`) still raises, with hint (a), because it sits at the open mapping's column (red team outer iteration 5) |
 
 Consequences for the text leaves (Contract 06): D23's breaking-change note,
@@ -604,7 +615,8 @@ the wording of items 1, 3, 6, and 7, not a ninth item.
 
 ### Silent one level down (red team outer iteration 5)
 
-The three rows added by this pass differ from the earlier ones in where the
+The rows added by this pass (and the trailing-invisible-character row added
+by outer iteration 6) differ from the earlier ones in where the
 damage lands: the document still loads as a `dict` or `list`, and only one
 value inside it is a string that should have been a mapping. Two
 consequences for the release text (Contract 06):
@@ -619,6 +631,20 @@ consequences for the release text (Contract 06):
   string `"# x"` in 1.0, US1-5; red team outer iteration 5 pass 2). D23's breaking-change note (Contract 06 §B) and README item 1
   (§D) name the trailing-comment shape (`server: # prod` makes the block
   under it part of the string).
+- **The `#` search is one instance of a general D21 check (red team outer
+  iteration 6).** The mechanism behind `server: # production` is any
+  `key:` or `-` with a **non-empty** inline value followed by a deeper line
+  that 1.0 lexed as structure: 1.0 raised on that line (D13), and D21 joins
+  it to the inline value. When the inline value is an invisible character
+  (`server: \xa0` with a block under it; the `\xa0` row above) the file looks
+  exactly like a bare `server:` section, and the D23 item's search for `#`
+  and `//` misses it. The CHANGELOG D21 item therefore states the general
+  check (every `key:` or `-` followed by separator whitespace and anything
+  else, with a deeper block under it whose first line 1.0 lexed as a key or
+  list item, now loads that block as part of its text; the `#` search in the D23 item is the commonest case) and gives the
+  trailing-NBSP example; the only-U+0020-indentation item names it beside
+  the NBSP-led first line (Contract 06 §C). No parser mitigation: FR-009
+  makes the NBSP content, and nothing raises for a hint to attach to.
 - **The key rule is asymmetric inside a list item.** A non-pattern first key
   of a list item silently turns the whole record into one string; a
   non-pattern later key raises with hint (a). D20's breaking-change note,
@@ -628,7 +654,7 @@ consequences for the release text (Contract 06):
 No parser mitigation is taken: nothing raises, so Contract 03's hints have
 no line to attach to, and making either shape raise would reopen D21 (US1-5
 and US1-16 already pin the mechanism). The three rows are Contract 02
-`silent` rows, pinned as unit tests (Contract 02 obligation 5), so the text
+`silent` rows (four with the iteration-6 row), pinned as unit tests (Contract 02 obligation 5), so the text
 that describes them is checked against behaviour.
 
 ### Error text for prose values (red team outer iteration 2)
@@ -654,6 +680,19 @@ text value's baseline. Two gaps, both fixed in Contract 03 and FR-012:
   column (US1-8's `firstName` still qualifies), or the line above when it is
   the first line of the open text value (the line whose text-ness opened the
   context, `config:\n  Host: x\n port: 1`), never a later continuation.
+
+- **The spine stops at the text value, not its last continuation (red team
+  outer iteration 6).** A text value's continuation lines are its
+  `TextLeafNode` children, and `SymlNode.get_tip()` descends into them, so
+  `Root.get_tip()` returns the **last continuation line**, while the builder's
+  tip is the value itself (`TextLeafNode.add_node` returns `self`). A
+  failure path that finds "the value at the tip" with `get_tip()`, or walks
+  `children[-1]` to a leaf, lands on `Carol: yo` in the dialogue example,
+  treats it as the value's first line, and fires the wrong hint. Contract 03
+  now says the spine walk stops at the first `TextLeafNode` it reaches, and
+  that the "line above" and "first line" tests use `preprocess.is_blank` for
+  blankness (so a NBSP-only continuation counts as a line, FR-009), not
+  `str.strip()`.
 
 Neither change adds API: both stay in the message string (the ruling on
 `syml-xreq.18`). The planning spike never implemented the message (it still
@@ -765,6 +804,30 @@ generated documents that load, `dumps` either round-trips the result or raises
 third load-only family fails the suite.
 
 ## Performance Considerations
+
+### Parse cost of the grammar swap and text context (red team outer iteration 6)
+
+Measured on the planning spike against `master` with `gc.disable()` (the
+campaign found the 1.0 timings GC-bound), `parsers.parse` only, one run each:
+
+| Document | 20k lines | 80k lines | vs `master` |
+| --- | --- | --- | --- |
+| `k:` + plain prose lines | 0.36 s | 1.53 s | about 0.8x (faster) |
+| `k:` + prose lines each followed by a blank line | 0.75 s | 3.01 s | about 1.7x |
+| `k:` + one prose line + `keyN: v` continuation lines | 0.75 s | 2.84 s | about 1.9x the prose case |
+
+All three stay linear. The blank-line cost is R-02's: `indent = ~r"\s*"`
+used to swallow a blank line into the next line's indentation for free; now
+each blank line is its own `line` match, and `visit_text` builds a
+`TextLeafNode` (with its `Source` and position mapping) that `visit_line`
+then discards. The structure-shaped continuation cost is R-01's accepted
+wasted lex (a `KeyValue`, `KeyLeafNode`, and `TextLeafNode` built and
+discarded per line). Neither is an acceptance criterion and neither needs a
+leaf; an implementer who wants the blank-line cost back can skip building the
+leaf in `visit_text` for a span that `preprocess.is_blank` classifies as
+blank, provided the empty inline values after `k: ` and `- ` (which also
+reach `visit_text` with an empty span) still come out as bare markers and
+100% branch coverage still holds without a pragma.
 
 ### Test-gate cost and determinism (Hypothesis)
 

@@ -42,7 +42,9 @@ exception surface. Entities below follow the spec's Key Entities list.
 
 `fail_to_incorporate_node` moves its message construction to `Root` (the only
 node that reaches it, since the walk-up always ends at `Root`): it reads the
-open columns off the rightmost spine, the tip text value's `baseline` (when
+open columns off the rightmost spine (which stops at the first
+`TextLeafNode`, never descending into its continuation children; Contract
+03), the tip text value's `baseline` (when
 set, for the text-value clause) and that value's first line (for hint (a)'s
 line-above gate), and the line above from `full_text` (R-08), and raises `OutOfContextNodeError(description, pos, line_text, filename=...)`.
 

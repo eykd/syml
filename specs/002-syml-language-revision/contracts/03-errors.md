@@ -67,7 +67,14 @@ caret).
 
 `{COLS}` is `column 0` for one column, `columns 0 and 2` for two,
 `columns 0, 2 and 4` for more: the sorted distinct levels of the `List` and
-`Mapping` nodes on `Root`'s rightmost spine at the time of failure (R-08). The
+`Mapping` nodes on `Root`'s rightmost spine at the time of failure (R-08). The spine walk follows `children[-1]` from `Root` and **stops at the first
+`TextLeafNode`** (the open value, the builder's tip): a text value's
+continuation lines are its `TextLeafNode` children, and `get_tip()` would
+descend into them and return the last continuation, which the gate below
+must not mistake for the value's first line (red team outer iteration 6).
+"Previous non-blank line" and every other blankness test on the failure path
+use `preprocess.is_blank` (spaces and tabs only), never `str.strip()`, so a
+NBSP-only continuation counts as a line (FR-009). The
 list is never empty: `Root` can only fail once its first child is a `List` or
 `Mapping` (a root scalar absorbs every later line).
 

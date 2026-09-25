@@ -98,7 +98,14 @@ The 1.0.0 entry stays one entry. Corrections (FR-016):
 New breaking-change items, one per decision (FR-016): D20 keys (with the
 list-item asymmetry: a non-pattern first key silently makes the record one
 string, a non-pattern later key raises with a hint); D21 values
-are text throughout (with the silent-absorption note); D22 paragraph breaks
+are text throughout (with the silent-absorption note, and the general
+migration check: every `key:` or `-` followed by separator whitespace and a
+non-empty inline value, with a deeper block under it whose first line 1.0
+lexed as a key or list item, now loads that block as part of the inline
+value's string where 1.0 raised; the D23 item's `#`
+search is the commonest instance, and an invisible inline value is the
+hardest: `server: \xa0` over a `host:` block reads as a bare section but
+loads as `{"server": "\xa0\nhost: a"}`, red team outer iteration 6); D22 paragraph breaks
 kept; D23 comments removed, stating **both** halves for any third-party
 `.syml` file with `#` lines: a `#` line after a container's first entry now
 raises, and a `#` header line at the top of the file or of a block silently
@@ -117,7 +124,9 @@ used; D24 tab as separator (with the one-column note) (`k:\tv`, `k: \tv`); D25 i
 rejected. One more item for the only-U+0020-indentation fix (`\xa0k: v` is
 text; NBSP, VT, FF, NEL, U+2028 at a line start are content; a document or
 block whose first line starts with a NBSP, as indentation pasted from a web
-page does, silently loads as one string, red team outer iteration 2). The D24
+page does, silently loads as one string, red team outer iteration 2; and a
+NBSP, U+200B, or U+3000 left after `key: ` or `- ` is an inline value that
+silently takes in the block under it, red team outer iteration 6). The D24
 item states the converse edge: only a space or a tab separates; a NBSP after
 `key:` (macOS Option-Space, pasted text) makes the line text, so
 `name:\xa0app\nport: 80` is one string where 1.0 raised at line 2 (red team

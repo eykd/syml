@@ -117,6 +117,7 @@ class Root(ContainerNode):
 | silent | `name:\xa0app\nport: 80` | `"name:\xa0app\nport: 80"` (a NBSP after `key:` is not separator whitespace, so the first line is text and the root is text; raised at line 2 in 1.0; red team outer iteration 3) |
 | silent | `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` (a `#` after `key:` is the inline text value, so the block under it joins it; raised in 1.0; red team outer iteration 5) |
 | silent | `- # item note\n  name: x` | `["# item note\nname: x"]` (the same after `-`) |
+| silent | `x: 1\nserver: \xa0\n  host: a\n  port: 80` / `- \xa0\n  name: x` | `{"x": "1", "server": "\xa0\nhost: a\nport: 80"}` / `["\xa0\nname: x"]` (a trailing invisible character after `key: ` or `- ` is a non-empty inline text value, FR-009, so the block under it joins it; raised in 1.0; red team outer iteration 6) |
 | silent | `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` (a non-pattern **first** key makes the item's inline value text, anchored at the `-` column; raised in 1.0) |
 | edge | `- name: x\n  Age: 3` | `OutOfContextNodeError` at line 2 with hint (a) (a non-pattern **later** key sits at the open mapping's column; the contrast the README states, Contract 06 §D item 6) |
 | recursion | `k:\n  a\n  ` + `"- " * 1000` + `x` | `RecursionError` (the per-line lex recurses before the text context applies; documented, not fixed; plan § Edge Cases) |
@@ -164,6 +165,6 @@ unchanged. `stranger.syml` is unchanged.
    iteration 4).
 4. The existing D11 baseline tests stay green unchanged (FR-003: "D11's
    baseline rule stands").
-5. The seven `silent` rows are pinned as unit tests (US1's 18 acceptance
+5. The eight `silent` rows are pinned as unit tests (US1's 18 acceptance
    scenarios stay as the spec writes them), so the release text's description of them (Contract 06 §B–§D)
    is checked against behaviour rather than asserted.
