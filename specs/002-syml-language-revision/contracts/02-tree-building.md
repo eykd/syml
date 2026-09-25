@@ -105,7 +105,19 @@ unchanged. `stranger.syml` is unchanged.
 ## Test obligations
 
 1. Every row above, as unit tests in `tests/test_nodes.py` /
-   `tests/test_parsers.py` and as US10/US11 acceptance scenarios.
+   `tests/test_parsers.py`. The `US1-N` and `US2-N` rows are already the
+   numbered acceptance scenarios in `spec.md` (18 for US1, 14 for US2 —
+   `sp:05-tasks` binds them 1:1, no new scenario is added for them). The
+   `R-03`, `R-04`, `R-06`, `silent`, and `edge` rows are **not** separately
+   numbered in `spec.md` and stay unit-test-only pins in `tests/test_nodes.py`
+   / `tests/test_parsers.py`; they are not additional US10/US11 Gherkin
+   scenarios, so the 18/14 counts in the Acceptance Test Strategy table do
+   not change. `R-04` in particular (`k: first\n\n  second` →
+   `{"k": "first\n\nsecond"}`) is covered only here and by the SC-002
+   round-trip property (Contract 04); it has no `spec.md` acceptance scenario
+   of its own because FR-004's continuation-line wording already reads that
+   the inline value's text counts as the value's first line (R-04's ruling),
+   so no example was added there.
 2. `accepts_level` truth table: `None`; unset baseline at, above, below
    `anchor_level`; set baseline at, above, below.
 3. SC-004: the four lane-4 documents (`doc01_scene_cellar`,
