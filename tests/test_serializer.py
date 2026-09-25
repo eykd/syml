@@ -473,6 +473,74 @@ class TestDumpsUnrepresentableRootScalars:
         assert loads(serializer.dumps(value)) == value
 
 
+class TestDumpsErrorDataPath:
+    """D30: `dumps` errors name the offending value's data path.
+
+    `UnrepresentableValueError.path` and both errors' `str(e)` carry the
+    path in Python subscript form (e.g. `['a']['b'][1]`); a root value's
+    message has no path clause.
+    """
+
+    def test_it_should_have_no_path_clause_for_a_root_unrepresentable_scalar(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps('# comment')
+        assert excinfo.value.path == ()
+        assert ' at ' not in str(excinfo.value)
+
+    def test_it_should_path_a_mapping_valued_unrepresentable_scalar_by_its_key(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'k': '\tlead'})
+        assert excinfo.value.path == ('k',)
+        assert str(excinfo.value).endswith(" at ['k']")
+
+    def test_it_should_path_a_list_item_unrepresentable_scalar_by_its_index(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps(['- x'])
+        assert excinfo.value.path == (0,)
+        assert str(excinfo.value).endswith(' at [0]')
+
+    def test_it_should_path_a_deeply_nested_unrepresentable_scalar(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', '\tlead']}})
+        assert excinfo.value.path == ('a', 'b', 1)
+        assert str(excinfo.value).endswith(" at ['a']['b'][1]")
+
+    def test_it_should_path_an_empty_container_by_its_key(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {}})
+        assert excinfo.value.path == ('a',)
+
+    def test_it_should_have_no_path_clause_for_a_root_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps(1)  # type: ignore[arg-type]
+        assert not hasattr(excinfo.value, 'path')
+        assert len(excinfo.value.args) == 1
+        assert ' at ' not in str(excinfo.value)
+
+    def test_it_should_path_a_deeply_nested_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', 1]}})
+        assert not hasattr(excinfo.value, 'path')
+        assert len(excinfo.value.args) == 1
+        assert str(excinfo.value).endswith(" at ['a']['b'][1]")
+
+    def test_it_should_not_render_a_tuple_repr_for_the_nested_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', 1]}})
+        assert str(excinfo.value) != str((f'{1!r} is not representable in SYML (not str, list, or dict)', 1))
+
+    def test_it_should_path_a_non_str_key_type_error_by_its_parent_mapping(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {1: 'v'}})
+        assert str(excinfo.value).endswith(" at ['a']")
+
+    def test_it_should_path_an_unrepresentable_key_by_its_parent_mapping(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {'Name': 'v'}})
+        assert excinfo.value.path == ('a',)
+        assert str(excinfo.value).endswith(" at ['a']")
+
+
 class TestDumpsLeadingFeffProtectiveDoubling:
     """A leading U+FEFF gets one extra U+FEFF prepended, since loads strips one (§9.0)."""
 

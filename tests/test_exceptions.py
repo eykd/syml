@@ -14,6 +14,7 @@ from syml.exceptions import (
     DuplicateKeyError,
     OutOfContextNodeError,
     ParseError,
+    UnrepresentableValueError,
     error_message,
     is_comment_shaped,
     is_document_marker,
@@ -801,3 +802,27 @@ class TestIsDocumentMarker:
     )
     def test_is_document_marker(self, line_text: str, *, expected: bool) -> None:
         assert is_document_marker(line_text) is expected
+
+
+class TestUnrepresentableValueErrorPathAndStr:
+    """D30: `.path` defaults to `()`; `str(e)` is the message alone, plus a path clause."""
+
+    def test_it_should_default_path_to_the_empty_tuple(self) -> None:
+        error = UnrepresentableValueError('boom')
+        assert error.path == ()
+
+    def test_it_should_render_str_as_the_message_alone_at_the_root(self) -> None:
+        error = UnrepresentableValueError('boom')
+        assert str(error) == 'boom'
+
+    def test_it_should_store_the_given_path(self) -> None:
+        error = UnrepresentableValueError('boom', ('a', 'b', 1))
+        assert error.path == ('a', 'b', 1)
+
+    def test_it_should_append_the_path_as_a_subscript_clause(self) -> None:
+        error = UnrepresentableValueError('boom', ('a', 'b', 1))
+        assert str(error) == "boom at ['a']['b'][1]"
+
+    def test_it_should_not_render_a_tuple_repr_of_args(self) -> None:
+        error = UnrepresentableValueError('boom', ('a',))
+        assert str(error) != str(('boom', ('a',)))

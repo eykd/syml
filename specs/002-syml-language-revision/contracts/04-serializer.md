@@ -65,6 +65,25 @@ starts with a BOM and then `#` is still written: the output's extra BOM
 `TypeError` for anything that is not `str`, `Source`, `list`, or `dict`, and for
 a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 
+### Error text and the data path (D30)
+
+`str(e)` for both `UnrepresentableValueError` and the `dumps` `TypeError` is
+the message alone — never a tuple repr of `.args` (the pre-fix bug,
+`syml-cjk2.14`) — with the offending value's data path appended as a Python
+subscript clause when it is not the root value, e.g.
+`... is not representable in SYML (not str, list, or dict) at ['a']['b'][1]`
+for `dumps({'a': {'b': ['x', 1]}})`. A root value's message has no path
+clause.
+
+`UnrepresentableValueError` gains a public `.path` attribute: a `tuple[str |
+int, ...]` of mapping keys and list indexes tracing the value from the
+root, `()` for the root. A bad mapping key (not `str`/`Source`, or not
+`key_is_representable`) is pathed to its *parent* mapping, since the key
+itself has no subscript position of its own. The `dumps` `TypeError` stays
+a plain builtin `TypeError`, constructed with the message alone: no
+`.path` attribute, no subclass, so no new class name under §11.3 (option B
+of `syml-cjk2.14`'s judgment, taken in full rather than deferred).
+
 ## Behaviour
 
 | # | Input | `dumps` output | round trip |

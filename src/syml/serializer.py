@@ -7,7 +7,7 @@ from typing import IO, TYPE_CHECKING, Literal
 
 from . import nodes, parsers
 from .basetypes import KEY_PATTERN, Source
-from .exceptions import UnrepresentableValueError
+from .exceptions import UnrepresentableValueError, format_data_path
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import SymlInput
@@ -44,7 +44,11 @@ def dumps(data: SymlInput) -> str:
     its key or list marker (§5.1, §5.3). Raises UnrepresentableValueError
     for a value with no encoding under those rules (§11.2.1-.3) and
     TypeError for anything that is not str, list, or dict, including a
-    non-str mapping key.
+    non-str mapping key. Both errors' `str(e)` is the message alone (D30),
+    naming the offending value's data path in Python subscript form when
+    it is not the root value, e.g. `... at ['a']['b'][1]`;
+    UnrepresentableValueError also exposes that path as `.path`
+    (`tuple[str | int, ...]`, `()` at the root).
 
     Output format (an implementation choice, not conformance): two-space
     indentation, keys in insertion order, exactly one trailing newline for
@@ -60,7 +64,7 @@ def dumps(data: SymlInput) -> str:
     `dumps(parse(t).as_source())` round-trips like `dumps(parse(t).as_data())`.
     """
     text = _scalar_text(data)
-    rendered_lines = _render_scalar_lines(text, 0, 'root') if text is not None else _render_value_lines(data, 0)
+    rendered_lines = _render_scalar_lines(text, 0, 'root', ()) if text is not None else _render_value_lines(data, 0, ())
     if not rendered_lines:
         return ''
     rendered = '\n'.join(rendered_lines) + '\n'
@@ -111,71 +115,86 @@ def _scalar_text(value: object) -> str | None:
     return None
 
 
-def _not_representable(value: object) -> TypeError:
-    """Build the TypeError raised for a value that is not str, list, or dict."""
-    message = f'{value!r} is not representable in SYML (not str, list, or dict)'
-    return TypeError(message, value)
+#: A data path tracing a value from the root of a `dumps` call: mapping
+#: keys (`str`) and list indexes (`int`), `()` for the root value itself
+#: (D30).
+DataPath = tuple[str | int, ...]
 
 
-def _unrepresentable(text: str, why: str) -> UnrepresentableValueError:
+def _not_representable(value: object, path: DataPath) -> TypeError:
+    """Build the TypeError raised for a value that is not str, list, or dict.
+
+    A plain builtin `TypeError`, constructed with the message alone (no
+    second positional `value` argument, no `.path` attribute, no subclass)
+    so `str(e)` is never a tuple repr (D30).
+    """
+    message = f'{value!r} is not representable in SYML (not str, list, or dict){format_data_path(path)}'
+    return TypeError(message)
+
+
+def _unrepresentable(text: str, why: str, path: DataPath) -> UnrepresentableValueError:
     """Build the UnrepresentableValueError for a scalar `text` (§11.2.1)."""
     message = f'{text!r} is not representable in SYML ({why}, §11.2.1)'
-    return UnrepresentableValueError(message, text)
+    return UnrepresentableValueError(message, path)
 
 
-def _render_value_lines(value: object, indent: int) -> list[str]:
+def _render_value_lines(value: object, indent: int, path: DataPath) -> list[str]:
     """Dispatch a container `value` to its type's line renderer, or raise TypeError.
 
     Scalars are rendered by the container renderers themselves, through
     `_render_scalar_lines`, because their layout depends on the position.
     """
     if isinstance(value, dict):
-        _require_nonempty_container(value, 'mapping')
-        return _render_mapping_lines(value, indent)
+        _require_nonempty_container(value, 'mapping', path)
+        return _render_mapping_lines(value, indent, path)
     if isinstance(value, list):
-        _require_nonempty_container(value, 'list')
-        return _render_list_lines(value, indent)
-    raise _not_representable(value)
+        _require_nonempty_container(value, 'list', path)
+        return _render_list_lines(value, indent, path)
+    raise _not_representable(value, path)
 
 
-def _require_nonempty_container(value: dict[object, object] | list[object], kind: str) -> None:
+def _require_nonempty_container(value: dict[object, object] | list[object], kind: str, path: DataPath) -> None:
     """Raise UnrepresentableValueError (§11.2.2) if `value` is an empty container."""
     if not value:
         message = f'{value!r} is not representable in SYML (empty {kind}, §11.2.2)'
-        raise UnrepresentableValueError(message, value)
+        raise UnrepresentableValueError(message, path)
 
 
-def _render_mapping_lines(mapping: dict[object, object], indent: int) -> list[str]:
+def _render_mapping_lines(mapping: dict[object, object], indent: int, path: DataPath) -> list[str]:
     """Render a mapping's `key: value` lines at `indent` spaces."""
     pad = ' ' * indent
     lines: list[str] = []
     for key, value in mapping.items():
         key_str = _scalar_text(key)
         if key_str is None:
-            message = f'{key!r} is not a valid SYML mapping key (must be str)'
-            raise TypeError(message, key)
+            message = f'{key!r} is not a valid SYML mapping key (must be str){format_data_path(path)}'
+            raise TypeError(message)
         if not key_is_representable(key_str):
             message = f'{key_str!r} is not representable as a SYML mapping key (§11.2.3)'
-            raise UnrepresentableValueError(message, key_str)
+            raise UnrepresentableValueError(message, path)
         value_text = _scalar_text(value)
+        value_path = (*path, key_str)
         if value_text is not None:
-            lines.extend(_with_marker(f'{pad}{key_str}:', _render_scalar_lines(value_text, indent + 2, 'mapping')))
+            lines.extend(
+                _with_marker(f'{pad}{key_str}:', _render_scalar_lines(value_text, indent + 2, 'mapping', value_path))
+            )
         else:
             lines.append(f'{pad}{key_str}:')
-            lines.extend(_render_value_lines(value, indent + 2))
+            lines.extend(_render_value_lines(value, indent + 2, value_path))
     return lines
 
 
-def _render_list_lines(items: list[object], indent: int) -> list[str]:
+def _render_list_lines(items: list[object], indent: int, path: DataPath) -> list[str]:
     """Render a list's `- item` lines at `indent` spaces."""
     pad = ' ' * indent
     lines: list[str] = []
-    for item in items:
+    for index, item in enumerate(items):
         item_text = _scalar_text(item)
+        item_path = (*path, index)
         if item_text is not None:
-            lines.extend(_with_marker(f'{pad}-', _render_scalar_lines(item_text, indent + 2, 'list')))
+            lines.extend(_with_marker(f'{pad}-', _render_scalar_lines(item_text, indent + 2, 'list', item_path)))
         else:
-            item_lines = _render_value_lines(item, indent + 2)
+            item_lines = _render_value_lines(item, indent + 2, item_path)
             # Rule G: exactly one space between `-` and an inline mapping's key.
             lines.append(f'{pad}- {item_lines[0].lstrip()}')
             lines.extend(item_lines[1:])
@@ -196,7 +215,7 @@ def _with_marker(marker: str, scalar_lines: list[str]) -> list[str]:
     return [marker, *scalar_lines]
 
 
-def _render_scalar_lines(value: str, indent: int, position: Position) -> list[str]:
+def _render_scalar_lines(value: str, indent: int, position: Position, path: DataPath) -> list[str]:
     """Render one string at `indent` for `position`, or raise UnrepresentableValueError (§11.2.1).
 
     Returns no lines for the empty string (rule A: the position's empty
@@ -214,46 +233,46 @@ def _render_scalar_lines(value: str, indent: int, position: Position) -> list[st
     if not text:
         return []
     if _CONTROL_CHAR_PATTERN.search(text):
-        raise _unrepresentable(text, 'contains a control character')
+        raise _unrepresentable(text, 'contains a control character', path)
     lines = text.split('\n')
     multiline = len(lines) > 1
     if multiline and lines[0] == '':
-        raise _unrepresentable(text, 'begins with a blank line')
+        raise _unrepresentable(text, 'begins with a blank line', path)
     if multiline and lines[-1] == '':
-        raise _unrepresentable(text, 'ends with a trailing newline')
+        raise _unrepresentable(text, 'ends with a trailing newline', path)
     if position in ('mapping', 'list') and not multiline:
-        _check_inline_first_line(text, lines[0], position)
+        _check_inline_first_line(text, lines[0], position, path)
     else:
         for index, line in enumerate(lines):
-            _check_block_line(text, line, index, position)
+            _check_block_line(text, line, index, position, path)
     pad = ' ' * indent
     return [f'{pad}{line}' if line else '' for line in lines]
 
 
-def _check_inline_first_line(text: str, line: str, position: Position) -> None:
+def _check_inline_first_line(text: str, line: str, position: Position, path: DataPath) -> None:
     """Raise unless `line` can stand as rule B's single-line inline value."""
     if line[:1] in (' ', '\t'):
-        raise _unrepresentable(text, 'begins with whitespace')
+        raise _unrepresentable(text, 'begins with whitespace', path)
     if position == 'list' and _lexes_as_structure(line):
-        raise _unrepresentable(text, 'a list item value would lex as structure')
+        raise _unrepresentable(text, 'a list item value would lex as structure', path)
 
 
-def _check_block_line(text: str, line: str, index: int, position: Position) -> None:
+def _check_block_line(text: str, line: str, index: int, position: Position, path: DataPath) -> None:
     """Raise unless `line` can stand as one physical line of a block value (§5.1, §5.3)."""
     leading = _leading_whitespace_run(line)
     if '\t' in leading:
-        raise _unrepresentable(text, 'a line begins with a tab')
+        raise _unrepresentable(text, 'a line begins with a tab', path)
     if leading and len(leading) == len(line):
-        raise _unrepresentable(text, 'contains a non-empty whitespace-only line')
+        raise _unrepresentable(text, 'contains a non-empty whitespace-only line', path)
     if position == 'root' and line.startswith(_COMMENT_MARKERS):
-        raise _unrepresentable(text, 'a line begins with a comment marker')
+        raise _unrepresentable(text, 'a line begins with a comment marker', path)
     if index == 0:
         if position in ('mapping', 'list') and line[:1] == ' ':
-            raise _unrepresentable(text, 'begins with whitespace')
+            raise _unrepresentable(text, 'begins with whitespace', path)
         if _lexes_as_structure(line):
-            raise _unrepresentable(text, 'a line would lex as structure')
+            raise _unrepresentable(text, 'a line would lex as structure', path)
     elif _later_line_marker_count(line) > MAX_LATER_LINE_MARKERS:
-        raise _unrepresentable(text, 'a later line has too many leading "- " markers')
+        raise _unrepresentable(text, 'a later line has too many leading "- " markers', path)
 
 
 def _leading_whitespace_run(line: str) -> str:

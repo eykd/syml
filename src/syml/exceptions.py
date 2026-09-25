@@ -300,5 +300,37 @@ class DuplicateKeyError(ParseError):
         self.first_position = first_position
 
 
+def format_data_path(path: Sequence[str | int]) -> str:
+    """Render `path` as a trailing ' at [...][...]' clause, or '' when `path` is empty (D30).
+
+    `path` is a sequence of mapping keys (`str`) and list indexes (`int`)
+    tracing a value from the root of a `dumps` call, in Python subscript
+    form, e.g. `['a']['b'][1]`. Shared by `UnrepresentableValueError` and
+    the `dumps` `TypeError` so both render the same path shape.
+    """
+    if not path:
+        return ''
+    return ' at ' + ''.join(f'[{key!r}]' for key in path)
+
+
 class UnrepresentableValueError(ValueError):
-    """A value has no SYML encoding (§11.2.1-.3). Raised by `dumps`, not a `ParseError`."""
+    """A value has no SYML encoding (§11.2.1-.3). Raised by `dumps`, not a `ParseError`.
+
+    `.path` is a tuple of mapping keys (`str`) and list indexes (`int`)
+    tracing the offending value from the root of the `dumps` call; `()` for
+    a root value. `str(e)` is `message` alone (D30) — never the tuple
+    `args` would otherwise render — with `.path` appended as a Python
+    subscript clause, e.g. `... at ['a']['b'][1]`; a root value's message
+    carries no path clause.
+    """
+
+    def __init__(self, message: str, path: tuple[str | int, ...] = ()) -> None:
+        """Store `.message` (with `path`'s clause appended) and `.path` itself."""
+        full_message = f'{message}{format_data_path(path)}'
+        super().__init__(full_message)
+        self.message = full_message
+        self.path = path
+
+    def __str__(self) -> str:
+        """Render `.message` alone (D30), not a tuple repr of `.args`."""
+        return self.message

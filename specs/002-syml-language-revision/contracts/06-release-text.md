@@ -177,6 +177,18 @@ dash followed by non-whitespace text (e.g. `-42`) as a marker, so exactly
 raising `UnrepresentableValueError`. No README change — the README does
 not document the 32-marker bound.
 
+D30 (`syml-cjk2.14`, break-testing round 2 lane 4): item 30, `str(e)` for
+`UnrepresentableValueError` and the `dumps` `TypeError` is the message
+alone, never a tuple repr of `.args` — the pre-fix bug (`str(e)` on
+`dumps({"a": {"b": ["x", 1]}})` rendered
+`('...', 1)`) — and the message now names the offending value's data path
+in Python subscript form, e.g. `at ['a']['b'][1]`, omitted for a root
+value. `UnrepresentableValueError` gains a public `.path` attribute
+(`tuple[str | int, ...]`, `()` at the root); the `dumps` `TypeError` stays
+a plain builtin `TypeError`, message only, no `.path`, no new subclass
+(Contract 04 §Error text and the data path). No README change — the
+README does not document either error's message shape.
+
 ## D. `README.md` (release leaf)
 
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling

@@ -284,6 +284,21 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     fix, the guard's regex let its own trailing `-?` match that dash and
     counted it as a marker, wrongly refusing the value (syml-cjk2.9,
     break-testing round 2 lane 5).
+30. **Bug fix: `dumps` errors render `str(e)` as the message alone, and now
+    name the offending value's data path.** Until this fix,
+    `UnrepresentableValueError` and the `dumps` `TypeError` passed the
+    offending value as a second constructor argument, so `str(e)` rendered
+    a two-item tuple repr instead of the message, e.g.
+    `str(e)` on `dumps({"a": {"b": ["x", 1]}})` was
+    `("1 is not representable in SYML (not str, list, or dict)", 1)`. Both
+    errors' messages now name the value's data path in Python subscript
+    form when it is not the root value, e.g.
+    `... is not representable in SYML (not str, list, or dict) at ['a']['b'][1]`
+    for that same example. `UnrepresentableValueError` gains a public
+    `.path` attribute (`tuple[str | int, ...]`, `()` at the root); a bad
+    mapping key is pathed to its parent mapping. The `dumps` `TypeError`
+    stays a plain builtin `TypeError`, message only — no `.path`, no new
+    subclass (D30, syml-cjk2.14, break-testing round 2 lane 4).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`
