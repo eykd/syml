@@ -33,10 +33,38 @@ class Root(ContainerNode):
 
 ## Rules
 
-1. **Text context (FR-003).** When a `TextLeafNode` is the tip and is offered
-   a non-`TextLeafNode` that carries a `content_pnode` and whose level passes
-   `accepts_level`, it is replaced by `TextLeafNode(pnode=node.content_pnode)`
-   and appended. Otherwise the node walks up unchanged (§9.2).
+1. **Text context (FR-003).** `TextLeafNode.incorporate_node` overrides
+   `SymlNode.incorporate_node`:
+
+   ```python
+   def incorporate_node(self, node: SymlNode) -> SymlNode:
+       if (
+           not isinstance(node, TextLeafNode)
+           and node.content_pnode is not None
+           and self.accepts_level(node.level)
+       ):
+           node = TextLeafNode(
+               pnode=node.content_pnode,
+               filename=node.filename,
+               position_map=node.position_map,
+           )
+       return super().incorporate_node(node)
+   ```
+
+   The substitute carries the same `filename`/`position_map` as the node it
+   replaces — both are threaded from the same `SymlParser`, so this only
+   matters for consistency, not correctness. `super().incorporate_node`
+   (`SymlNode.incorporate_node`) then re-checks `can_add_node(node)` itself:
+   for the substituted node this is always `True` (the replacement only fires
+   when `accepts_level` already held), so it is appended via `add_node`.
+   `SymlNode.__post_init__` derives the substitute's `level` from
+   `content_pnode.start.column` on the **normalized** text — the line's
+   indentation width, the same value `node.level` already held — so no level
+   is recomputed or lost in the swap. When the condition is false (the node
+   is already a `TextLeafNode`, carries no `content_pnode`, or is below
+   threshold), `super().incorporate_node` calls `self.can_add_node(node)`,
+   finds it `False`, and delegates to `self.parent.incorporate_node(node)` —
+   the original node walks up unchanged (§9.2), never the swapped one.
 2. **Threshold.** `accepts_level(level)`: `False` for `None`; `level > anchor_level`
    while `baseline is None` (an inline value before its first continuation);
    `level >= baseline` after. D11 fixes the baseline as today.

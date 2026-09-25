@@ -59,7 +59,7 @@ line-above gate), and the line above from `full_text` (R-08), and raises `OutOfC
 | `ContainerNode` | empty and `node.level > self.level` | unchanged |
 | `KeyValue` | as `ContainerNode` for every node type | **The `ListItem \| List` carve-out (`>=`) is deleted** (FR-010). |
 | `ListItem` | as `ContainerNode` | unchanged |
-| `Root` | empty and `node.level >= 0` | unchanged rule; **new** `incorporate_node` override: when empty and offered a plain `TextLeafNode` from a physical line, rebuild it over `line_pnode` (column 0, indentation included) before accepting; `add_node` fixes that leaf's baseline at 0 (FR-005, R-12). **New** `fail_to_incorporate_node` override builds the FR-012 message. |
+| `Root` | empty and `node.level >= 0` | unchanged rule; **new** `incorporate_node` override: when empty and offered a plain `TextLeafNode` from a physical line, rebuild it as `TextLeafNode(pnode=node.line_pnode, filename=node.filename, position_map=node.position_map, inline=node.inline)` (column 0, indentation included) before calling `super().incorporate_node` on the rebuilt node; `add_node` fixes that leaf's baseline at 0 (FR-005, R-12). **New** `fail_to_incorporate_node` override builds the FR-012 message. |
 | `List` | `node.level == self.level` and `ListItem` | unchanged |
 | `Mapping` | `node.level == self.level` and `KeyValue`; duplicate → `DuplicateKeyError` | raises with `filename=` instead of a hand-built prefix (R-07) |
 
@@ -71,7 +71,7 @@ line-above gate), and the line above from `full_text` (R-08), and raises `OutOfC
 | `blank_lines_before: int = 0` | **new** | Set by the parent value's `add_node` from the normalized-text gap (R-03). Meaningful only on continuation children. |
 | `accepts_level(level) -> bool` | **new** | Factored out of `can_add_node`: `level > anchor_level` while `baseline is None`, else `level >= baseline`. `None` level → `False`. |
 | `can_add_node(node)` | refactored | `isinstance(node, TextLeafNode) and self.accepts_level(node.level)`. |
-| `incorporate_node(node)` | **new override** | If `node` is not a `TextLeafNode`, has a `content_pnode`, and `accepts_level(node.level)`, replace it with `TextLeafNode(pnode=node.content_pnode, ...)`; then defer to `SymlNode.incorporate_node` (R-01). |
+| `incorporate_node(node)` | **new override** | If `node` is not a `TextLeafNode`, has a `content_pnode`, and `accepts_level(node.level)`, replace it with `TextLeafNode(pnode=node.content_pnode, filename=node.filename, position_map=node.position_map)`; either way, call `super().incorporate_node(node)` (`SymlNode.incorporate_node`), which re-checks `can_add_node` and appends via `add_node`, or — when the substitution did not fire — delegates the original node to `self.parent.incorporate_node(node)` unchanged (R-01; exact code in Contract 02 rule 1). |
 | `add_node(node)` | extended | Also computes `node.blank_lines_before`. |
 | `as_data()` | extended | Emits `blank_lines_before` empty strings before each continuation. |
 | `as_source()` | unchanged shape | `text` mirrors `as_data()` (paragraph breaks included); `start` is the first line's first character (column 0 for a root scalar, R-12); `end` is the last continuation's end. |
