@@ -40,7 +40,7 @@ later leaves delete their entries and the release leaf deletes the table
 | §7.5 | `ws` is spaces or tabs. `key:\tvalue` → `{"key": "value"}`; `-\tvalue` → `["value"]`; `key: \tv` → `{"key": "v"}`; a bare marker followed only by spaces or tabs is the bare marker (R-11). A separator tab counts as one column (§6.2). |
 | §7.6 | Table: `Invalid: value`, `key:\tv`, `key:value` rows updated (`key:\tv` is now a mapping). Replace the "every line is lexed independently" subsection with the text-context rule: `a: Note\n  warning: do not touch` → `{"a": "Note\nwarning: do not touch"}` (was ERROR). |
 | §8.1 | Unchanged example; it still raises. |
-| §8.3 | Output line matches the code: `ERROR: DuplicateKeyError: Duplicate key 'key'` (Contract 03 makes the code produce it). |
+| §8.3 | Output line matches the code: `ERROR: DuplicateKeyError: Duplicate key 'key' (first defined at line 1)` (Contract 03 makes the code produce it; D32, syml-cjk2.16). |
 | §8.4 | Last paragraph: a tab after `-`/`:` is separator whitespace (§7.5), not this error. |
 | §8.5, §13.4 | Limits are recommendations; `DocumentLimitError` is the name for an implementation that enforces them; `syml` enforces none (FR-017). |
 | §9.1 | Step 3: comment classification applies only at column 0 (the `comment` alternative of `line`); comment and blank lines are skipped by the builder, and paragraph breaks are recovered from line positions by counting the blank lines between two lines of a value, never the comment lines (§5.1). |

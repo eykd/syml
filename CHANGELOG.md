@@ -8,7 +8,8 @@ change from 0.6.2 is listed below, numbered to match Contract 06's audit
 (`specs/002-syml-language-revision/contracts/06-release-text.md` § FR-016
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
 § FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
-25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions (see
+25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 32
+the 2026-09-25 D32 `DuplicateKeyError` message addition (see
 `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in this one
 1.0.0 release.
 
@@ -307,6 +308,14 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     message is now `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`,
     `{XX}` the first offending byte in lowercase two-digit hex (D31,
     syml-cjk2.15, break-testing round 2 lane 4).
+32. **`DuplicateKeyError`'s message now names where the key first
+    appeared.** Until this fix, `Duplicate key 'a'` gave no way to find the
+    earlier occurrence in a long file — the exception already carried
+    `.first_position`, but the message omitted it. The message is now
+    `Duplicate key 'a' (first defined at line N)`, `N` the 1-indexed line
+    of the key's earlier, already-incorporated occurrence
+    (`.first_position.line`, attribute unchanged) (D32, syml-cjk2.16,
+    break-testing round 2 lane 4).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

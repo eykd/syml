@@ -1192,7 +1192,7 @@ mapping, implementations MUST raise `DuplicateKeyError` (§11.3):
 key: value1
 key: value2
 ```
-**Output:** `ERROR: DuplicateKeyError: Duplicate key 'key'`
+**Output:** `ERROR: DuplicateKeyError: Duplicate key 'key' (first defined at line 1)`
 
 Keys must be unique within their immediate mapping. The same key may
 appear in different nested mappings. Detection happens at

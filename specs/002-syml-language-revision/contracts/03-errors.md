@@ -85,18 +85,20 @@ filename's length.
 `DuplicateKeyError`'s description gets the same treatment (`syml-s9p9.14`):
 the grammar's key pattern (`[a-z][a-z0-9_-]*`) has no length bound, so a
 document that repeats a 1 MB key used to yield a multi-megabyte `.message`
-and `str(e)`. `duplicate_key_description(key)` windows `key` through
-`_truncated_window(key, center=0)` before quoting it — the same call shape
-as hint (a)'s would-be-key quote — so `.message` stays bounded regardless of
-the repeated key's length. `DuplicateKeyError.key` and `.args` still carry
-the full, untruncated key.
+and `str(e)`. `duplicate_key_description(key, first_line)` windows `key`
+through `_truncated_window(key, center=0)` before quoting it — the same call
+shape as hint (a)'s would-be-key quote — so `.message` stays bounded
+regardless of the repeated key's length; `first_line` (an `int`, unbounded
+by nature) is appended unwindowed as `(first defined at line {first_line})`
+(D32, syml-cjk2.16). `DuplicateKeyError.key` and `.args` still carry the
+full, untruncated key.
 
 ## Messages
 
 | Class | Description (the part after any filename prefix) |
 | --- | --- |
 | `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by the text-value clause (below), then by one space and a hint |
-| `DuplicateKeyError` | `Duplicate key '{key}'`, `key` windowed through `_truncated_window(key, center=0)` (unchanged attributes `key`, `first_position`, both carrying the full key) |
+| `DuplicateKeyError` | `Duplicate key '{key}' (first defined at line {N})`, `key` windowed through `_truncated_window(key, center=0)`, `N` = `first_position.line` (D32) (unchanged attributes `key`, `first_position`, both carrying the full key) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
 | `EncodingError` | `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`, `{XX}` the first offending byte in lowercase two-digit hex (D31) |
 
@@ -201,7 +203,7 @@ below):
 | US2-12 | `a: 1\r\n\tb: 2` | `TabIndentationError`, `position == Pos(6, 2, 0)` |
 | US2-12 | `\ufeff\tk: v` | `TabIndentationError`, `position == Pos(1, 1, 1)` |
 | US2-13 | `\ufeffa: b\r\n\tc: d` | `TabIndentationError`, `position == Pos(7, 2, 0)` |
-| FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a'"` (no `": "` prefix) |
+| FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a' (first defined at line 1)"` (no `": "` prefix) (D32) |
 | SC-007 | a plain context error (`a: 1\nb`) | `str(e)` line 1 is `2:0: …` with no hint; line 2 is `b` |
 | text clause | `k: a\n    b\n  c` (US1-18) | description `Line 3, at column 2, does not fit any open block; open blocks are at column 0; the open value continues at column 4.` |
 | text clause | `k:\n  a\n\xa0\n  b` (US2-7) | description `Line 3, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0; the open value continues at column 2.` |
@@ -236,9 +238,10 @@ below):
   raises with `filename=self.filename`. `SymlNode.fail_to_incorporate_node`
   keeps a minimal fallback only if a non-`Root` node can reach it; if none can,
   it is removed rather than left uncovered (principle III).
-- `Mapping.can_add_node` raises `DuplicateKeyError(duplicate_key_description(key), ..., filename=node.filename)`;
+- `Mapping.can_add_node` raises `DuplicateKeyError(duplicate_key_description(key, first.source.start.line), ..., filename=node.filename)`;
   `duplicate_key_description` windows `key` through `_truncated_window(key, center=0)`
-  before quoting it, the same treatment hint (a) gives a would-be key (§Bounded rendering, syml-s9p9.14).
+  before quoting it, the same treatment hint (a) gives a would-be key (§Bounded rendering, syml-s9p9.14),
+  then appends `(first defined at line {first_line})` unwindowed (D32, syml-cjk2.16).
 - `preprocess` builds the `PositionMap` first and passes it and `filename` to
   `_scan_for_tab_indentation`, which maps its `Pos` (R-09).
 - `encoding_error` passes `filename=` instead of calling `error_message`.

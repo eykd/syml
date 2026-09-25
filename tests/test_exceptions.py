@@ -311,21 +311,28 @@ class TestParseErrorStr:
 
 
 class TestDuplicateKeyErrorMessage:
-    """Contract 03 §Messages: `DuplicateKeyError.message` is `Duplicate key '<key>'`."""
+    """Contract 03 §Messages: `DuplicateKeyError.message` is `Duplicate key '<key>' (first defined at line <N>)` (D32)."""
 
-    def test_message_embeds_the_repeated_key(self) -> None:
-        """`.message` reads `Duplicate key '<key>'` with no filename prefix when none is given."""
+    def test_message_embeds_the_repeated_key_and_first_occurrence_line(self) -> None:
+        """`.message` names both the repeated key and the line its first occurrence started on."""
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.loads('a: 1\na: 2', filename='')
 
-        assert exc_info.value.message == "Duplicate key 'a'"
+        assert exc_info.value.message == "Duplicate key 'a' (first defined at line 1)"
 
     def test_spec_example_matches_exactly(self) -> None:
         r"""`SYML-SPECIFICATION.md`'s §8.3 example: `key: value1\nkey: value2` raises this exact message."""
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.loads('key: value1\nkey: value2\n')
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
+
+    def test_first_defined_line_reflects_a_non_first_line_occurrence(self) -> None:
+        """A key first defined past line 1 names that actual line, not line 1."""
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.loads('b: 1\na: 2\na: 3')
+
+        assert exc_info.value.message == "Duplicate key 'a' (first defined at line 2)"
 
 
 class TestParseErrorPickling:

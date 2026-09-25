@@ -162,8 +162,8 @@ def out_of_context_description(
     return sentence
 
 
-def duplicate_key_description(key: str) -> str:
-    """Build `DuplicateKeyError`'s description: `Duplicate key '{key}'`, `key` windowed.
+def duplicate_key_description(key: str, first_line: int) -> str:
+    """Build `DuplicateKeyError`'s description: `Duplicate key '{key}' (first defined at line {N})`.
 
     `key` is rendered through `_truncated_window(key, center=0)` before being
     quoted, mirroring hint (a)'s treatment of a would-be key (Contract 03
@@ -173,8 +173,13 @@ def duplicate_key_description(key: str) -> str:
     length. No `_printable` escaping is needed here — the key pattern admits
     no non-printable code point. The caller still stores the full,
     untruncated `key` on `DuplicateKeyError.key`/`.args`.
+
+    `first_line` is the 1-indexed line the key's earlier, already-incorporated
+    occurrence started on (`DuplicateKeyError.first_position.line`), so a
+    reader of a long file can find both locations without re-scanning the
+    document (D32, syml-cjk2.16).
     """
-    return f"Duplicate key '{_truncated_window(key, center=0)}'"
+    return f"Duplicate key '{_truncated_window(key, center=0)}' (first defined at line {first_line})"
 
 
 def _printable(text: str) -> str:

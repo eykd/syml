@@ -430,7 +430,7 @@ class Mapping(ParentNode):
         first = self.keys.get(node.key.as_data())
         if first is not None:
             key = node.key.as_data()
-            message = duplicate_key_description(key)
+            message = duplicate_key_description(key, first.source.start.line)
             raise DuplicateKeyError(
                 message,
                 node.source.start,

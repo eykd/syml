@@ -198,7 +198,7 @@ class TestLoadHonoursAnyOsPathLikeFilename:
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.load(handle)
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
 
     def test_a_bytes_name_yields_no_filename(self) -> None:
         handle = io.StringIO('key: value1\nkey: value2')
@@ -207,7 +207,7 @@ class TestLoadHonoursAnyOsPathLikeFilename:
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.load(handle)
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
 
 
 class TestParseIsAPublicExport:
