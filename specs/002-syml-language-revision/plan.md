@@ -342,6 +342,7 @@ to the leaf that inverts them:
 | `serialization_corpus.py` `lowercase_roman_numeral_key` (`{"ⅻ": "x"}`), `leading_feff_first_key` (`{"﻿k": "v"}`) | round-trip rows that become item-7 refusals (D20) | grammar (see below) |
 | `serialization_corpus.py` `colon_escape_list_item` (`["a\\: b"]`) and its `colon_escape_list_item_as_mapping_value` pair in `TestDumpsStructureShapedStringsArePositionDependent` | `a\:` is not a key under D20, so `- a\: b` is a text item and the refusal row becomes a round-trip row | grammar |
 | `serialization_corpus.py` `leading_space_root_scalar` (`"  hello"`), `block_line_lexes_as_structure` (`{"k": "a\n  - b"}`) | refusal rows that FR-005 and FR-006 make writable | serializer |
+| `test_nodes.py::TestSymlNodeBaseStubs` (four tests) and `TestDirectTestsForPreviouslyPragmadBranches` | they reach `SymlNode.as_data`, `.as_source`, `.can_add_node`, and `.fail_to_incorporate_node` **only** through `IndentNode`, and cover `Comment` directly; the grammar leaf deletes both classes, and `fail_to_incorporate_node` does not move to `Root` until the error leaf, so without a replacement the grammar-leaf commit drops the base stubs below 100% branch coverage (red team outer iteration 5) | grammar: replace `IndentNode` with a test-local bare `SymlNode` subclass (or `SymlNode` itself); delete the `Comment` test. The error leaf then removes `SymlNode.fail_to_incorporate_node` and its test if no non-`Root` node reaches it (Contract 03 § Placement) |
 
 The spike implements Contracts 01, 02 and the R-05 serializer only: it has
 no Contract 03 message text, `__str__`, or hints, and no Contract 05 changes,
@@ -434,6 +435,15 @@ Clarifications:
    recursion depth (Edge Cases & Error Handling, "A `- ` chain is text but
    still recurses"). FR-006's list was exhaustive ("MUST shrink to"), so the
    serializer could not refuse this family without the FR saying so.
+9. **FR-016 and US4 scenario 4** (red team outer iteration 5) name a third
+   `#` shape beside the first-line and after-first-entry ones: a `#` or `//`
+   after `key:` or `-` starts that key's or item's text value, which silently
+   takes in the block under it (`server: # prod\n  host: x`; Edge Cases &
+   Error Handling, "Silent one level down"). **SC-003** said "the one
+   same-column list in `bar.syml`" after planning's FR-010 correction found
+   two; it now says two, and FR-010 names the lines that move (24 and 36,
+   under `when:` on line 23 and `effect:` on line 35) so no one re-indents the
+   `- when:` / `- effect:` lines themselves.
 
 ## Open Questions for the Principal
 
@@ -579,6 +589,9 @@ kept, but no document may call it loud:
 | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` | a tab after `-` counts as **one** column, so `k` is at column 2 and a line an editor shows aligned under `k` (tab stop 8) is past it and joins the inline value (D24 × §6.2 × D21) |
 | `parent:\n  child1: a\n   child2: b` | `{"parent": {"child1": "a\nchild2: b"}}` | R-06 |
 | `name:\xa0app\nport: 80` | the `str` `"name:\xa0app\nport: 80"` | a NBSP (or any character other than space or tab) after `key:` is not separator whitespace (D24), so the line is text; as a first line it makes the root (or block) text. In 1.0 this raised at line 2; it is now silent (red team outer iteration 3; macOS Option-Space and pasted web text produce it) |
+| `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` | a `#` after `key:` is that key's inline text value (US1-5), so every deeper line is its continuation (D21 × D23). YAML's trailing comment on a section key. In 1.0 this raised at line 2 (D13); it is now silent (red team outer iteration 5) |
+| `- # item note\n  name: x` | `["# item note\nname: x"]` | the same shape after `-`: the item's inline value is text anchored at the `-` column, so the record under it joins it (red team outer iteration 5) |
+| `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` | the item's **first** key is outside D20's pattern, so `containerPort: 80` is the item's inline text value, anchored at the `-` column; the conforming sibling keys at the `-`+2 column are past that anchor and join it. In 1.0 this raised at line 3; it is now silent. A non-pattern **later** key (`- name: x\n  Age: 3`) still raises, with hint (a), because it sits at the open mapping's column (red team outer iteration 5) |
 
 Consequences for the text leaves (Contract 06): D23's breaking-change note,
 the CHANGELOG D23 item, and README "Coming from YAML" item 1 state that a
@@ -588,6 +601,34 @@ string, and that a later `#` line at a container's level raises; the
 state that columns are code-point counts, so a tab counts as one column. The
 README list stays at eight items in order (FR-015); the silent cases go into
 the wording of items 1, 3, 6, and 7, not a ninth item.
+
+### Silent one level down (red team outer iteration 5)
+
+The three rows added by this pass differ from the earlier ones in where the
+damage lands: the document still loads as a `dict` or `list`, and only one
+value inside it is a string that should have been a mapping. Two
+consequences for the release text (Contract 06):
+
+- **The D23 migration check is wrong for the commonest case.** Contract 06 §C
+  told a 0.6.2 user to check `isinstance(loads(text), dict)`. That check
+  passes for `server: # production\n  host: x`, whose top level is still a
+  `dict`. The CHANGELOG D23 item instead tells the user to search the file:
+  every line whose first non-space characters are `#` or `//`, and every
+  `key:` or `-` followed by separator whitespace and `#` or `//`, changes
+  meaning. D23's breaking-change note (Contract 06 §B) and README item 1
+  (§D) name the trailing-comment shape (`server: # prod` makes the block
+  under it part of the string).
+- **The key rule is asymmetric inside a list item.** A non-pattern first key
+  of a list item silently turns the whole record into one string; a
+  non-pattern later key raises with hint (a). D20's breaking-change note,
+  the CHANGELOG D20 item, and README item 6 state both halves with the
+  `containerPort` example.
+
+No parser mitigation is taken: nothing raises, so Contract 03's hints have
+no line to attach to, and making either shape raise would reopen D21 (US1-5
+and US1-16 already pin the mechanism). The three rows are Contract 02
+`silent` rows, pinned as unit tests (Contract 02 obligation 5), so the text
+that describes them is checked against behaviour.
 
 ### Error text for prose values (red team outer iteration 2)
 

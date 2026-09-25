@@ -49,7 +49,10 @@ line-above gate), and the line above from `full_text` (R-08), and raises `OutOfC
 ### Removed classes
 
 - **`IndentNode`**: the line visitor reads the indentation width directly;
-  nothing consumes the node.
+  no parser path consumes the node. It is, however, the test vehicle that
+  covers `SymlNode`'s base stubs (`tests/test_nodes.py::TestSymlNodeBaseStubs`);
+  the grammar leaf moves those tests to a bare `SymlNode` subclass in the
+  same commit (Contract 01 obligation 5).
 - **`Comment`**: FR-007.
 
 ### `ContainerNode` / `KeyValue` / `ListItem` / `Root`

@@ -65,10 +65,10 @@ breaking-change note (FR-016):
 
 | # | Decision (summary) | Alternative not taken | Supersedes | Breaking change |
 | --- | --- | --- | --- | --- |
-| D20 | A key is exactly `[a-z][a-z0-9_-]*`, preceded only by indentation spaces; any other would-be key line is text; `dumps` refuses other keys. | Keep D19's "no `Lu`/`Lt`" rule plus a leading-bracket/quote exclusion (`syml-xreq.16` option b). | D15, D19 | `Name:`, `firstName:`, `URL:`, `1:`, `e.mail:`, `名前:` stop being keys. |
+| D20 | A key is exactly `[a-z][a-z0-9_-]*`, preceded only by indentation spaces; any other would-be key line is text; `dumps` refuses other keys. | Keep D19's "no `Lu`/`Lt`" rule plus a leading-bracket/quote exclusion (`syml-xreq.16` option b). | D15, D19 | `Name:`, `firstName:`, `URL:`, `1:`, `e.mail:`, `名前:` stop being keys. Inside a list item the effect is asymmetric: a non-pattern **first** key makes the whole record one string with no error (`- containerPort: 80\n  protocol: TCP` → `["containerPort: 80\nprotocol: TCP"]`, raised in 1.0), while a non-pattern later key raises with hint (a) (red team outer iteration 5). |
 | D21 | Values are just text: structure is lexed at a block's first line and inline only; once a value is text, every line at or past its baseline is text until a line below it; a root document whose first line is text is text throughout. | Keep per-line lexing and add an error hint (`syml-xreq.22` option a). | D13 | Deeper structure-shaped lines after a text value join it; a line indented past a sibling that holds an inline value is absorbed silently (R-06). Lexing still runs first, so a long `- - - …` line still raises `RecursionError` inside a text value; an iterative list-marker rule that would lift this is a 1.x candidate. |
 | D22 | A blank line between two lines of the same value is an empty line of that value, one per physical line; blank lines before a value's first line, after its last, or between items/keys are inert; `dumps` writes paragraph breaks. | An explicit paragraph marker line (`syml-xreq.15` option c). | D12 | `k:\n  a\n\n  b` was `"a\nb"`, is `"a\n\nb"`. |
-| D23 | SYML has no comments; `#` and `//` are text everywhere. | Keep whole-line comments and document the continuation case (`syml-xreq.21` option a). | §4.3, M6's fix, B9's exception | Any `#`/`//` line changes meaning: text inside a value; `OutOfContextNodeError` at a container's level after its first entry; and, **silently**, a first line of the document or of a block makes that whole document or block one string (`# header\nk: v` → `"# header\nk: v"`; `a:\n  # s\n  b: 1` → `{"a": "# s\nb: 1"}`). The ruling's "all loud" premise holds only for the middle case. |
+| D23 | SYML has no comments; `#` and `//` are text everywhere. | Keep whole-line comments and document the continuation case (`syml-xreq.21` option a). | §4.3, M6's fix, B9's exception | Any `#`/`//` line changes meaning: text inside a value; `OutOfContextNodeError` at a container's level after its first entry; and, **silently**, a first line of the document or of a block makes that whole document or block one string (`# header\nk: v` → `"# header\nk: v"`; `a:\n  # s\n  b: 1` → `{"a": "# s\nb: 1"}`); and, **silently one level down**, a `#`/`//` after `key:` or `-` (YAML's trailing comment) is that key's or item's text value and takes in the block under it (`server: # prod\n  host: x` → `{"server": "# prod\nhost: x"}`, raised in 1.0; red team outer iteration 5). The ruling's "all loud" premise holds only for the middle case. |
 | D24 | A tab is separator whitespace after `key:` and `-` (`ws = [ \t]+`); a marker followed only by spaces/tabs is bare; a tab in indentation still raises. A separator tab counts as one column for §6.2's sibling column. | Make a post-marker tab an error (v1.2 candidate 4). | D5 | `k:\tv` was `"k:\tv"`, is `{"k": "v"}`; `k: \tv` was `{"k": "\tv"}`, is `{"k": "v"}`. After `-\tk: v`, a sibling key goes at column 2; a line an editor shows aligned under `k` at a tab stop joins `v` silently. |
 | D25 | Children are strictly deeper than their parent, list items included; the YAML indentless sequence is an error with a hint. §6.2's `- key:` sibling-column rule stands. | Keep the undocumented carve-out and add a KeyValue row to §9.3 (`syml-xreq.3` recommendation). | — (restores §4.2 rule 5 / §9.3 over code) | `k:\n- a` was `{"k": ["a"]}`, is `OutOfContextNodeError`. |
 
@@ -95,13 +95,21 @@ The 1.0.0 entry stays one entry. Corrections (FR-016):
 | 16 | Keep only what is true: `level` is the node's own column; `set_level`, `IndentNode`, `Comment`, and `SymlNode.comments` are gone; `syml.utils` is deleted. Delete the `doc`-argument, required-`source`, `KeyLeafNode.key`-removed, and no-`pnode` claims. |
 | 17 | True once FR-010 lands; add the indentless-sequence line (`k:\n- a` now raises, with a hint). |
 
-New breaking-change items, one per decision (FR-016): D20 keys; D21 values
+New breaking-change items, one per decision (FR-016): D20 keys (with the
+list-item asymmetry: a non-pattern first key silently makes the record one
+string, a non-pattern later key raises with a hint); D21 values
 are text throughout (with the silent-absorption note); D22 paragraph breaks
 kept; D23 comments removed, stating **both** halves for any third-party
 `.syml` file with `#` lines: a `#` line after a container's first entry now
 raises, and a `#` header line at the top of the file or of a block silently
-turns that file or block into one string (the item says how to check:
-`isinstance(loads(text), dict)`); the "loud" wording of the ruling is not
+turns that file or block into one string, and a `#`/`//` after `key:` or `-`
+(`server: # prod`) silently makes the block under it part of that key's
+string. The item says how to check: search the file for every line whose
+first non-space characters are `#` or `//`, and every `key:` or `-` followed
+by separator whitespace and `#` or `//`; each hit changes meaning. A
+top-level `isinstance(loads(text), dict)` check is **not** the advice (red
+team outer iteration 5): it passes for `server: # prod\n  host: x`, whose
+damage is one level down. The "loud" wording of the ruling is not
 used; D24 tab as separator (with the one-column note) (`k:\tv`, `k: \tv`); D25 indentless sequences
 rejected. One more item for the only-U+0020-indentation fix (`\xa0k: v` is
 text; NBSP, VT, FF, NEL, U+2028 at a line start are content; a document or
@@ -127,7 +135,9 @@ raises.
    beside it (FR-015, US4 scenario 5):
    1. No comments: `# note` is text; keep notes in a value or outside the file.
       A `#` header line at the top of a file or block makes that whole file
-      or block one string, with no error.
+      or block one string, with no error; so does a trailing comment after a
+      key (`server: # prod` makes the block under it part of `server`'s
+      string).
    2. No block-scalar indicators: `|` and `>` are literal; indent the lines
       under the key instead.
    3. No document markers: `---` and `...` are text (a document starting with
@@ -136,7 +146,10 @@ raises.
    5. `null`, `true`, `123`, `~`, `[a, b]`, `{a: 1}` are plain strings.
    6. Keys are `[a-z][a-z0-9_-]*`: `Name:`, `firstName:`, `URL:` are text, and
       a block of them (`env:\n  HOME: /h`) is one text value; so is a whole
-      file whose first line is one (`Name: app\nport: 80` is a string).
+      file whose first line is one (`Name: app\nport: 80` is a string), and
+      so is a list item whose first key is one
+      (`- containerPort: 80\n  protocol: TCP` is one string). A bad key
+      after a good one raises with a hint.
    7. `- key:` sets a sibling column: `- server:\n  host: x` is two siblings;
       `- server:\n    host: x` nests (show both). Use a space after `-`:
       a tab there counts as one column.

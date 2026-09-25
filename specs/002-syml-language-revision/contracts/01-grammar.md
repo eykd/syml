@@ -119,3 +119,12 @@ Document shape: `k: v` and `k: v\n` both → `{"k": "v"}`; `""`, `"\n"`,
    spans and not for `"\xa0"`.
 4. The grammar leaf is atomic (R-02): top rule, `indent`, `ws`, `key`, `eol`,
    and the `comment` removal land together; the suite is green at that commit.
+5. **Coverage at the grammar-leaf commit** (red team outer iteration 5):
+   `tests/test_nodes.py::TestSymlNodeBaseStubs` reaches `SymlNode.as_data`,
+   `.as_source`, `.can_add_node`, and `.fail_to_incorporate_node` only
+   through `IndentNode`, which this leaf deletes, and
+   `SymlNode.fail_to_incorporate_node` does not move to `Root` until the
+   error leaf (Contract 03). The grammar leaf rewrites those four tests over
+   a test-local bare `SymlNode` subclass (or `SymlNode` itself) and deletes
+   the `Comment` test in `TestDirectTestsForPreviouslyPragmadBranches`, so
+   100% branch coverage holds at this commit without a pragma.

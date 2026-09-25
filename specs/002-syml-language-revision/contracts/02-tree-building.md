@@ -115,6 +115,10 @@ class Root(ContainerNode):
 | silent | `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` (a text first block line makes the block text) |
 | silent | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` (the tab is one column; Contract 01) |
 | silent | `name:\xa0app\nport: 80` | `"name:\xa0app\nport: 80"` (a NBSP after `key:` is not separator whitespace, so the first line is text and the root is text; raised at line 2 in 1.0; red team outer iteration 3) |
+| silent | `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` (a `#` after `key:` is the inline text value, so the block under it joins it; raised in 1.0; red team outer iteration 5) |
+| silent | `- # item note\n  name: x` | `["# item note\nname: x"]` (the same after `-`) |
+| silent | `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` (a non-pattern **first** key makes the item's inline value text, anchored at the `-` column; raised in 1.0) |
+| edge | `- name: x\n  Age: 3` | `OutOfContextNodeError` at line 2 with hint (a) (a non-pattern **later** key sits at the open mapping's column; the contrast the README states, Contract 06 §D item 6) |
 | recursion | `k:\n  a\n  ` + `"- " * 1000` + `x` | `RecursionError` (the per-line lex recurses before the text context applies; documented, not fixed; plan § Edge Cases) |
 | US2-1 | `k:\n- a\n- b` | `OutOfContextNodeError` (hint, Contract 03) |
 | US2-2 | `a:\n- x\n- y\nb: z` / `- key:\n  - x` | `OutOfContextNodeError` |
@@ -160,6 +164,6 @@ unchanged. `stranger.syml` is unchanged.
    iteration 4).
 4. The existing D11 baseline tests stay green unchanged (FR-003: "D11's
    baseline rule stands").
-5. The four `silent` rows are pinned as unit tests (US1's 18 acceptance
+5. The seven `silent` rows are pinned as unit tests (US1's 18 acceptance
    scenarios stay as the spec writes them), so the release text's description of them (Contract 06 §B–§D)
    is checked against behaviour rather than asserted.
