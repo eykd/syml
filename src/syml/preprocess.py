@@ -79,8 +79,17 @@ def is_blank(text: str) -> bool:
     return all(ch in ' \t' for ch in text)
 
 
-def _scan_for_tab_indentation(normalized: str, filename: StrPath | None = None) -> None:
+def _scan_for_tab_indentation(
+    normalized: str,
+    position_map: PositionMap,
+    filename: StrPath | None = None,
+) -> None:
     """Raise `TabIndentationError` if any non-blank line has a tab in its leading-whitespace run.
+
+    The raised error's `.position` is translated through `position_map` into
+    the caller's original-text coordinates (through the BOM offset and CRLF
+    position map), not the normalized-text coordinates the scan itself works
+    in (Contract 03, FR-013).
 
     See §9.0.3, D14.
     """
@@ -94,7 +103,7 @@ def _scan_for_tab_indentation(normalized: str, filename: StrPath | None = None) 
             column = run_text.index('\t')
             raise TabIndentationError(
                 "A tab character was found in a line's leading whitespace",
-                Pos(index=offset + column, line=line_number, column=column),
+                position_map.to_original(Pos(index=offset + column, line=line_number, column=column)),
                 line,
                 filename=filename,
             )
@@ -155,10 +164,11 @@ def preprocess(text: str, filename: StrPath | None = None) -> Document:
     bom_offset = 1 if text.startswith(_BOM) else 0
     stripped = text[bom_offset:]
     normalized, crlf_indices = _normalize_line_endings(stripped)
-    _scan_for_tab_indentation(normalized, filename)
+    position_map = PositionMap(bom_offset=bom_offset, crlf_indices=crlf_indices)
+    _scan_for_tab_indentation(normalized, position_map, filename)
     return Document(
         original=text,
         normalized=normalized,
-        position_map=PositionMap(bom_offset=bom_offset, crlf_indices=crlf_indices),
+        position_map=position_map,
         filename=filename,
     )

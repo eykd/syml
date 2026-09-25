@@ -45,6 +45,36 @@ class TestPreprocessBlankClassificationAndTabScan:
         assert document.normalized == '  \t  \nkey: v'
 
 
+class TestTabIndentationErrorOriginalTextPosition:
+    """TabIndentationError.position reports original-text coordinates (FR-013, US2-12/13/14)."""
+
+    def test_it_should_report_the_original_index_through_a_crlf_collapse(self) -> None:
+        with pytest.raises(TabIndentationError) as exc_info:
+            preprocess.preprocess('a: 1\r\n\tb: 2')
+
+        assert exc_info.value.position == Pos(6, 2, 0)
+
+    def test_it_should_report_the_original_index_through_a_bom(self) -> None:
+        with pytest.raises(TabIndentationError) as exc_info:
+            preprocess.preprocess('﻿\tk: v')
+
+        assert exc_info.value.position == Pos(1, 1, 1)
+
+    def test_it_should_report_the_original_index_through_a_bom_and_a_crlf_collapse(self) -> None:
+        with pytest.raises(TabIndentationError) as exc_info:
+            preprocess.preprocess('﻿a: b\r\n\tc: d')
+
+        assert exc_info.value.position == Pos(7, 2, 0)
+
+    def test_it_should_not_raise_when_a_tab_follows_a_nonbreakingspaceled_line(self) -> None:
+        # A NBSP-led line is content at column 0, not indentation (D14): the
+        # leading-whitespace run before its first tab is empty, so the tab
+        # scan never sees it as indentation.
+        document = preprocess.preprocess('key: v\n\xa0\tx')
+
+        assert document.normalized == 'key: v\n\xa0\tx'
+
+
 class TestPositionMapToOriginal:
     def test_it_should_map_normalized_positions_back_to_original_via_bisect_left(
         self,
