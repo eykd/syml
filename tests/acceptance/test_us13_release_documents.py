@@ -120,7 +120,8 @@ def then_old_decisions_annotated_superseded(doc_text: str) -> None:
     'a "Coming from YAML" section lists, in order, comments only at column 0, '
     'no block-scalar indicators, no document markers, no quoting, that '
     'null/true/123/tilde/lists/mappings written inline are plain strings, the key pattern, '
-    'the sibling-column rule, and paragraph breaks'
+    'that a key or list marker needs a space after it, the sibling-column rule, paragraph breaks, '
+    'and that trailing whitespace is kept and over-indented lines join the value above'
 )
 def then_readme_lists_coming_from_yaml_in_order(doc_text: str) -> None:
     heading_index = doc_text.index('Coming from YAML')
@@ -132,8 +133,10 @@ def then_readme_lists_coming_from_yaml_in_order(doc_text: str) -> None:
         'quoting',
         'plain strings',
         r'\[a-z\]\[a-z0-9_-\]\*',
+        'needs a space after it',
         'sibling column',
         'paragraph break',
+        'Trailing whitespace',
     ]
     positions = [_index_of(section, phrase) for phrase in phrases]
     assert positions == sorted(positions), f'expected {phrases} in order, got indices {positions}'

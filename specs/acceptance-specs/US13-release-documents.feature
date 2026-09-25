@@ -28,7 +28,7 @@ Feature: The documents describe exactly what ships, and 1.0.0 is tagged
   Scenario: The README documents coming from YAML
     Given the README
     When it is read
-    Then a "Coming from YAML" section lists, in order, comments only at column 0, no block-scalar indicators, no document markers, no quoting, that null/true/123/tilde/lists/mappings written inline are plain strings, the key pattern, the sibling-column rule, and paragraph breaks
+    Then a "Coming from YAML" section lists, in order, comments only at column 0, no block-scalar indicators, no document markers, no quoting, that null/true/123/tilde/lists/mappings written inline are plain strings, the key pattern, that a key or list marker needs a space after it, the sibling-column rule, paragraph breaks, and that trailing whitespace is kept and over-indented lines join the value above
 
   Scenario: Every documented exception class is exported
     Given specification section 11.3

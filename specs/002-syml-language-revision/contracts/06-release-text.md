@@ -298,7 +298,7 @@ it equals `git rev-parse 1.0.0^{commit}` and is an ancestor of, or equal to,
 4. `tests/acceptance/test_us09_release_readiness.py`'s CHANGELOG assertions
    (built for 001) are updated for the rewritten items rather than deleted.
 5. A US13 acceptance scenario reads the README section headings and asserts
-   the nine items in order.
+   the ten items in order.
 6. A unit test reads `README.md`, extracts the lead example's document and
    its printed result (the first two fenced `python` blocks), and asserts
    `loads(document) == ast.literal_eval(result)`, so the README's first
