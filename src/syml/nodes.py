@@ -9,7 +9,7 @@ if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
 from .basetypes import Pos, Source, StrPath, get_line_text
-from .exceptions import DuplicateKeyError, OutOfContextNodeError
+from .exceptions import DuplicateKeyError, OutOfContextNodeError, out_of_context_description, would_be_key
 from .preprocess import PositionMap, is_blank
 
 
@@ -86,18 +86,15 @@ class SymlNode:
         return self.fail_to_incorporate_node(node)
 
     def fail_to_incorporate_node(self, node: SymlNode) -> NoReturn:
-        """Report a failure to incorporate a node, in original-text coordinates (Contract 05, 08).
+        """Report a failure to incorporate a node. Never reachable outside `Root` (Contract 03 §Placement).
 
-        `_delegate_incorporate_node` only reaches here once it has walked all
-        the way up to the root (the sole ancestor with no `parent`), so
-        `self.position_map` — threaded from the same `SymlParser` that built
-        `node` — is the right map to re-anchor this position onto the
-        caller's original text.
+        `_delegate_incorporate_node` only reaches this base-class stub if a
+        non-`Root` node ever ended up parentless, which never happens in a
+        real parse (every other node type is attached to a parent the moment
+        it exists) — `Root` is the sole ancestor with no `parent`, and it
+        overrides this method with the real implementation.
         """
-        pnode = node.pnode
-        pos = PositionMap.map(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
-        line = get_line_text(pnode.full_text, pos.line)
-        raise OutOfContextNodeError('Failed to incorporate a node', pos, line, filename=self.filename)
+        raise NotImplementedError
 
 
 SymlNodes = list[SymlNode]
@@ -210,6 +207,116 @@ class Root(ContainerNode):
             )
             node.baseline = 0
         return super().incorporate_node(node)
+
+    def fail_to_incorporate_node(self, node: SymlNode) -> NoReturn:
+        """Report a failure to incorporate `node`, naming every open column and a hint (Contract 03).
+
+        `_delegate_incorporate_node` only reaches here once it has walked
+        all the way up to the root (`Root` is the sole ancestor with no
+        `parent`), so `self.position_map` — threaded from the same
+        `SymlParser` that built `node` — is the right map to re-anchor this
+        position onto the caller's original text.
+
+        Walks `Root`'s rightmost spine (`children[-1]`, repeatedly),
+        recording every `List`/`Mapping` node's level and stopping at the
+        first `TextLeafNode` reached — the open value's own first line, not
+        `get_tip()`'s descent into its last continuation (red team outer
+        iteration 6) — or at a childless node otherwise (§Placement).
+        """
+        pnode = node.pnode
+        pos = PositionMap.map(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
+        line = get_line_text(pnode.full_text, pos.line)
+        column = pos.column
+
+        open_blocks, terminal = _walk_open_spine(self)
+        kind = 'list item' if isinstance(node, ListItem) else 'key' if isinstance(node, KeyValue) else 'text line'
+
+        continues_at: int | None = None
+        if isinstance(terminal, TextLeafNode) and terminal.baseline is not None and column < terminal.baseline:
+            continues_at = terminal.baseline
+
+        list_under_key = (
+            isinstance(node, ListItem)
+            and isinstance(terminal, KeyValue)
+            and not terminal.children
+            and terminal.level == column
+        )
+        candidate = None if list_under_key else _would_be_key_candidate(node, pnode, pos, line, open_blocks, terminal)
+
+        description = out_of_context_description(
+            line_number=pos.line,
+            column=column,
+            kind=kind,
+            open_columns=list(open_blocks),
+            other_kind=open_blocks.get(column),
+            continues_at=continues_at,
+            list_under_key=list_under_key,
+            would_be_key_name=candidate,
+        )
+        raise OutOfContextNodeError(description, pos, line, filename=self.filename)
+
+
+def _walk_open_spine(root: Root) -> tuple[dict[int, str], SymlNode]:
+    """Walk `root`'s rightmost spine, recording every open `List`/`Mapping` level.
+
+    Stops at the first `TextLeafNode` reached (the open value's own first
+    line, not `get_tip()`'s descent into its last continuation — red team
+    outer iteration 6) or at a childless node otherwise (Contract 03
+    §Messages, §Placement).
+    """
+    open_blocks: dict[int, str] = {}
+    cursor: SymlNode = root
+    terminal: SymlNode = root
+    while True:
+        if isinstance(cursor, List):
+            open_blocks[cast(int, cursor.level)] = 'list items'
+        elif isinstance(cursor, Mapping):
+            open_blocks[cast(int, cursor.level)] = 'keys'
+        if not cursor.children:
+            terminal = cursor
+            break
+        child = cursor.children[-1]
+        if isinstance(child, TextLeafNode):
+            terminal = child
+            break
+        cursor = child
+    return open_blocks, terminal
+
+
+def _would_be_key_candidate(
+    node: SymlNode,
+    pnode: PNode,
+    pos: Pos,
+    line: str,
+    open_blocks: dict[int, str],
+    terminal: SymlNode,
+) -> str | None:
+    """Return hint (a)'s `RUN`, checking the failing line then the line above (Contract 03 §Hints)."""
+    if open_blocks.get(pos.column) == 'keys':
+        candidate = would_be_key(line)
+        if candidate is not None:
+            return candidate
+    if isinstance(terminal, TextLeafNode) and not terminal.inline and isinstance(node, KeyValue | ListItem):
+        above_line = _line_above(pnode.full_text, pos.line)
+        if above_line == terminal.source.start.line:
+            return would_be_key(get_line_text(pnode.full_text, above_line))
+    return None
+
+
+def _line_above(full_text: str, line_number: int) -> int:
+    """Return the nearest earlier line that is neither blank nor a column-0 comment (Contract 03 §Messages).
+
+    Blankness uses `preprocess.is_blank` (spaces and tabs only), never
+    `str.strip()`, so a NBSP-only continuation counts as a line (FR-009).
+    """
+    candidate = line_number - 1
+    while candidate >= 1:
+        text = get_line_text(full_text, candidate)
+        if is_blank(text) or text.startswith(('#', '//')):
+            candidate -= 1
+            continue
+        return candidate
+    return candidate
 
 
 class List(ParentNode):

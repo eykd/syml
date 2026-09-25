@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: nocover
+    from collections.abc import Sequence
+
     from .basetypes import Pos, StrPath
 
 
@@ -14,6 +17,86 @@ def error_message(description: str, filename: StrPath | None) -> str:
     if filename is None:
         return description
     return f'{filename}: {description}'
+
+
+#: A would-be key candidate: leading indentation, then a non-empty run of
+#: non-whitespace, non-colon characters, then ':' followed by whitespace or
+#: end of line (Contract 03 §Hints (a)).
+_WOULD_BE_KEY_RE = re.compile(r'^[ \t]*([^\s:]+):(?=[ \t]|$)')
+
+#: The grammar's own key rule (§4.5, D20): exactly `[a-z][a-z0-9_-]*`.
+_KEY_PATTERN = re.compile(r'[a-z][a-z0-9_-]*')
+
+
+def would_be_key(line_text: str) -> str | None:
+    """Return the `RUN` would-be-key candidate in `line_text`, or `None` if there isn't one.
+
+    Matches `_WOULD_BE_KEY_RE` against `line_text` and returns the captured
+    run only when it does NOT already fully match the grammar's key pattern
+    (Contract 03 §Hints (a)) — a line that already lexes as a valid key never
+    gets a "not a key" hint about itself.
+    """
+    match = _WOULD_BE_KEY_RE.match(line_text)
+    if match is None:
+        return None
+    run = match.group(1)
+    if _KEY_PATTERN.fullmatch(run) is not None:
+        return None
+    return run
+
+
+def _columns_phrase(columns: Sequence[int]) -> str:
+    """Render the sorted, distinct `columns` as 'column 0', 'columns 0 and 2', or 'columns 0, 2 and 4'."""
+    cols = sorted(set(columns))
+    if len(cols) == 1:
+        return f'column {cols[0]}'
+    *head, last = (str(c) for c in cols)
+    return f"columns {', '.join(head)} and {last}"
+
+
+def out_of_context_description(
+    *,
+    line_number: int,
+    column: int,
+    kind: str,
+    open_columns: Sequence[int],
+    other_kind: str | None,
+    continues_at: int | None,
+    list_under_key: bool,
+    would_be_key_name: str | None,
+) -> str:
+    """Build `OutOfContextNodeError`'s description (Contract 03 §Messages).
+
+    `other_kind` is `None` when `column` is not one of `open_columns` (form
+    1: "does not fit any open block"); otherwise it is `'keys'` or `'list
+    items'` (form 2: "is a {kind}, but the open block ... holds
+    {other_kind}"). `continues_at`, when given, appends the text-value
+    clause. `list_under_key` selects hint (b); otherwise `would_be_key_name`
+    (already gated by the caller), when given, selects hint (a) — escaped
+    through `_printable` so an unprintable would-be key does not leak raw
+    control characters into `.message` (§Surface).
+    """
+    cols_phrase = _columns_phrase(open_columns)
+    if other_kind is None:
+        sentence = (
+            f'Line {line_number}, at column {column}, does not fit any open block; open blocks are at {cols_phrase}.'
+        )
+    else:
+        sentence = (
+            f'Line {line_number}, at column {column}, is a {kind}, but the open block at column {column} '
+            f'holds {other_kind}; open blocks are at {cols_phrase}.'
+        )
+    if continues_at is not None:
+        sentence = f'{sentence[:-1]}; the open value continues at column {continues_at}.'
+    hint: str | None = None
+    if list_under_key:
+        hint = "Hint: a list under a key must be indented past the key's column."
+    elif would_be_key_name is not None:
+        escaped = _printable(would_be_key_name)
+        hint = f"Hint: '{escaped}' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter."
+    if hint is not None:
+        sentence = f'{sentence} {hint}'
+    return sentence
 
 
 def _printable(text: str) -> str:

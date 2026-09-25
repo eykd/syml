@@ -157,10 +157,29 @@ class TestTextContextRereadsStructureShapedLines:
         assert rebuilt is not candidate
         assert rebuilt.pnode is candidate.content_pnode
 
+    @staticmethod
+    def _attach_to_root(leaf: nodes.TextLeafNode) -> None:
+        """Parent `leaf` under a realistic `Root -> Mapping -> KeyValue` spine.
+
+        So a rejected candidate's walk-up reaches `Root.fail_to_incorporate_node`
+        with the `List`/`Mapping`-first-child invariant it assumes (Contract 03
+        §Messages: "Root can only fail once its first child is a List or Mapping").
+        """
+        key_value = nodes.KeyValue(pnode=_pnode(''), key=nodes.KeyLeafNode(pnode=_pnode('k')), level=0)
+        key_value.children = [leaf]
+        leaf.parent = key_value
+        mapping = nodes.Mapping(pnode=_pnode(''), level=0)
+        mapping.children = [key_value]
+        key_value.parent = mapping
+        root = nodes.Root(pnode=_pnode(''))
+        root.children = [mapping]
+        mapping.parent = root
+
     def test_structure_shaped_candidate_below_threshold_is_not_rebuilt(self) -> None:
         """A candidate below threshold walks up unchanged, never swapped for text."""
         leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
         leaf.baseline = 4
+        self._attach_to_root(leaf)
         candidate = self._key_value_line('  key: value')
 
         with pytest.raises(OutOfContextNodeError):
@@ -170,6 +189,7 @@ class TestTextContextRereadsStructureShapedLines:
         """A candidate carrying no content_pnode (not a whole-line lex) is left alone."""
         leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
         leaf.baseline = 2
+        self._attach_to_root(leaf)
         candidate = self._key_value_line('  key: value')
         candidate.content_pnode = None
 
@@ -328,10 +348,19 @@ class TestSymlNodeBaseStubs:
         assert node.can_add_node(other) is False
 
     def test_incorporate_node_fails_when_parentless_and_rejected(self) -> None:
+        """The base-class `fail_to_incorporate_node` stub is a plain `NotImplementedError`.
+
+        Contract 03 §Placement: only `Root` builds the real
+        `OutOfContextNodeError` description — a non-`Root` node, such as
+        this bare, parentless `_BareSymlNode`, never reaches this path in a
+        real parse (every other node type is attached to a parent the
+        moment it exists), so the base stub stays a `NotImplementedError`
+        rather than duplicating `Root`'s message-building logic.
+        """
         node = _BareSymlNode(pnode=_pnode('  '))
         other = _BareSymlNode(pnode=_pnode('  '))
 
-        with pytest.raises(OutOfContextNodeError):
+        with pytest.raises(NotImplementedError):
             node.incorporate_node(other)
 
 

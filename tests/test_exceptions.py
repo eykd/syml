@@ -9,7 +9,7 @@ import pytest
 
 import syml
 from syml.basetypes import Pos
-from syml.exceptions import DuplicateKeyError, OutOfContextNodeError, ParseError, error_message
+from syml.exceptions import DuplicateKeyError, OutOfContextNodeError, ParseError, error_message, would_be_key
 from syml.preprocess import encoding_error
 
 
@@ -282,3 +282,230 @@ class TestParseErrorPickling:
         assert restored.args == error.args
         assert restored.key == error.key
         assert restored.first_position == error.first_position
+
+
+class TestOutOfContextNodeErrorMessageColumnsAndForms:
+    """Contract 03 §Messages: form 1 ('does not fit any open block') vs form 2 (KIND/OTHER mismatch)."""
+
+    @pytest.mark.parametrize(
+        ('document', 'expected_message'),
+        [
+            pytest.param(
+                'k:\n- a\n- b',
+                'Line 2, at column 0, is a list item, but the open block at column 0 holds keys; '
+                "open blocks are at column 0. Hint: a list under a key must be indented past the key's column.",
+                id='US2-1_list_item_vs_keys_with_hint_b',
+            ),
+            pytest.param(
+                '- item\nkey: value',
+                'Line 2, at column 0, is a key, but the open block at column 0 holds list items; '
+                'open blocks are at column 0.',
+                id='key_vs_list_items',
+            ),
+            pytest.param(
+                'a:\n  b: 1\n  plain',
+                'Line 3, at column 2, is a text line, but the open block at column 2 holds keys; '
+                'open blocks are at columns 0 and 2.',
+                id='text_line_vs_keys_two_columns',
+            ),
+            pytest.param(
+                '- a\nb',
+                'Line 2, at column 0, is a text line, but the open block at column 0 holds list items; '
+                'open blocks are at column 0.',
+                id='text_line_vs_list_items',
+            ),
+            pytest.param(
+                'a:\n  b:\n    c: 1\n   d: 2',
+                'Line 4, at column 3, does not fit any open block; open blocks are at columns 0, 2 and 4.',
+                id='three_open_columns_no_hint',
+            ),
+        ],
+    )
+    def test_message_names_kind_other_and_open_columns(self, document: str, expected_message: str) -> None:
+        """`.message` matches Contract 03's KIND/OTHER form and column-list formatting exactly."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads(document)
+
+        assert exc_info.value.message == expected_message
+
+
+class TestOutOfContextNodeErrorTextValueClause:
+    """Contract 03 §Text-value clause: present for a block value, and an inline value with a continuation."""
+
+    def test_str_matches_us2_9_exactly(self) -> None:
+        """US2-9: `str(e)` for an inline value with no continuation carries no text-value clause."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  a: 1\n b: 2')
+
+        assert (
+            str(exc_info.value)
+            == '3:1: Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2.\n b: 2'
+        )
+
+    def test_us2_10_filename_prefixes_str_and_message(self) -> None:
+        """US2-10: the same document loaded with a filename prefixes both `str(e)` and `.message`."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  a: 1\n b: 2', filename='f.syml')
+
+        assert str(exc_info.value).startswith('f.syml:3:1: ')
+        assert exc_info.value.message.startswith('f.syml: ')
+
+    def test_block_value_clause_us1_18(self) -> None:
+        """US1-18: a block value's baseline names the column the author most likely meant."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k: a\n    b\n  c')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, does not fit any open block; open blocks are at column 0; '
+            'the open value continues at column 4.'
+        )
+
+    def test_inline_value_with_continuation_clause_us2_7(self) -> None:
+        """US2-7: an inline value that already has one continuation also gets the clause."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  a\n\xa0\n  b')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 0, is a text line, but the open block at column 0 holds keys; '
+            'open blocks are at column 0; the open value continues at column 2.'
+        )
+
+
+class TestOutOfContextNodeErrorHintA:
+    """Contract 03 §Hints (a): would-be-key hint, on the failing line and on the line above."""
+
+    def test_failing_line_names_the_would_be_key_us1_8(self) -> None:
+        """US1-8: a same-column key with an uppercase character raises at line 2, naming it in the hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('name: a\nfirstName: b\nage: 3')
+
+        assert exc_info.value.position.line == 2
+        assert "Hint: 'firstName' is not a key" in exc_info.value.message
+
+    def test_line_above_names_the_would_be_key(self) -> None:
+        """The block value's own first line, one column below the failing key line, still gets the hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('config:\n  Host: x\n port: 1')
+
+        assert "Hint: 'Host' is not a key" in exc_info.value.message
+
+    def test_line_above_skips_a_column_0_comment(self) -> None:
+        """A column-0 comment between the value's first line and the failing line is skipped (R-18)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('config:\n  Host: x\n# c\n port: 1')
+
+        assert "Hint: 'Host' is not a key" in exc_info.value.message
+
+    def test_punctuation_key_gets_a_hint_too(self) -> None:
+        """A lowercase-but-punctuated run still fails the key pattern and gets a hint (README's former lead key)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\nbooleans?: x')
+
+        assert exc_info.value.message == (
+            'Line 2, at column 0, is a text line, but the open block at column 0 holds keys; '
+            "open blocks are at column 0. Hint: 'booleans?' is not a key; a key is lowercase ASCII letters, "
+            "digits, '-' and '_', starting with a letter."
+        )
+
+    def test_no_hint_when_colon_is_not_followed_by_whitespace(self) -> None:
+        """`Key:value` (no space after the colon) is not a would-be-key candidate at all."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\nKey:value')
+
+        assert 'Hint' not in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorHintGating:
+    """Contract 03 §Hints (a) Gating (red team outer iteration 7): dialogue in prose gets no false hint."""
+
+    def test_no_hint_when_a_later_continuation_line_would_be_a_key(self) -> None:
+        """`Carol: yo` is a continuation, not the value's first line, so it never qualifies."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey')
+
+        assert 'Hint' not in exc_info.value.message
+        assert exc_info.value.message.endswith('; the open value continues at column 4.')
+
+    def test_no_hint_when_the_failing_line_itself_lexes_as_text(self) -> None:
+        """Even though `Bob: hi` is the value's first line, the failing line lexed as text, not structure."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('- scene:\n    Bob: hi\n   Alice: hey')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 3, does not fit any open block; open blocks are at columns 0 and 2; '
+            'the open value continues at column 4.'
+        )
+
+    def test_no_hint_when_failing_column_is_not_an_open_mapping_column(self) -> None:
+        """`Port: 1` lexes as text, and column 1 is not an open `Mapping` column either."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('config:\n  Host: x\n Port: 1')
+
+        assert 'Hint' not in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorPosition:
+    """Contract 03 §Behaviour: a dropped column-0 comment keeps the original text's line numbers."""
+
+    def test_dropped_comment_line_still_counts_toward_the_line_number(self) -> None:
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\n# c\n- x')
+
+        assert exc_info.value.position == Pos(9, 3, 0)
+        assert exc_info.value.message == (
+            'Line 3, at column 0, is a list item, but the open block at column 0 holds keys; '
+            'open blocks are at column 0.'
+        )
+
+
+class TestOutOfContextNodeErrorEscaping:
+    """Contract 03 §Surface: an unprintable character in `line_text` or a would-be key is rendered, not echoed."""
+
+    def test_line_text_escape_us2_7(self) -> None:
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  a\n\xa0\n  b')
+
+        error = exc_info.value
+        assert error.line_text == '\xa0'
+        assert str(error).splitlines()[1] == '\\xa0'
+
+    def test_hint_key_escape(self) -> None:
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\n\x1b[31mX: y')
+
+        rendered = str(exc_info.value)
+        assert '\x1b' not in rendered
+        assert rendered.splitlines()[1] == '\\x1b[31mX: y'
+        assert "Hint: '\\x1b[31mX' is not a key" in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorSC007:
+    """Contract 03 §Test obligations item 7: SC-007's plain context error."""
+
+    def test_position_and_no_hint(self) -> None:
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\nb')
+
+        rendered = str(exc_info.value)
+        lines = rendered.splitlines()
+        assert lines[0].startswith('2:0: ')
+        assert 'Hint' not in lines[0]
+        assert lines[1] == 'b'
+
+
+class TestWouldBeKey:
+    """Contract 03 §Hints (a): the standalone `would_be_key` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('key: value', None, id='already_a_valid_key'),
+            pytest.param('  key: value', None, id='indented_valid_key'),
+            pytest.param('firstName: b', 'firstName', id='uppercase_run'),
+            pytest.param('a plain line', None, id='no_colon_at_all'),
+            pytest.param('Key:value', None, id='colon_not_followed_by_whitespace_or_eol'),
+            pytest.param('lastWord:', 'lastWord', id='colon_at_end_of_line'),
+        ],
+    )
+    def test_would_be_key(self, line_text: str, expected: str | None) -> None:
+        assert would_be_key(line_text) == expected
