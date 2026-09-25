@@ -363,6 +363,16 @@ Clarifications:
    line that is the first line of a document or of a block (it silently makes
    the document or block one string, see Edge Cases & Error Handling). The
    spec leaf rewords both; Contract 06 §A pins it.
+7. **FR-004** said the kept blank sits "between two continuation lines," with
+   blanks "before the first continuation line" inert — read literally, that
+   makes the blank in `k: first\n\n  second` inert, the opposite of R-04's
+   verdict (`{"k": "first\n\nsecond"}`), because `first` is the inline value's
+   text, not a continuation line, and `second` is the first one (deepen-plan
+   pass, red team iteration 2 target). FR-004 now reads "between two lines of
+   the same value," states that an inline value's text counts as the value's
+   first line, and carries the R-04 example inline; Contract 02's rule 4 and
+   Contract 06 §5.1 rule 5 already used this wording, so this closes the gap
+   between them and the FR text rather than opening a new one.
 
 ## Open Questions for the Principal
 

@@ -114,10 +114,11 @@ unchanged. `stranger.syml` is unchanged.
    scenarios, so the 18/14 counts in the Acceptance Test Strategy table do
    not change. `R-04` in particular (`k: first\n\n  second` →
    `{"k": "first\n\nsecond"}`) is covered only here and by the SC-002
-   round-trip property (Contract 04); it has no `spec.md` acceptance scenario
-   of its own because FR-004's continuation-line wording already reads that
-   the inline value's text counts as the value's first line (R-04's ruling),
-   so no example was added there.
+   round-trip property (Contract 04); it has no numbered `spec.md`
+   acceptance scenario of its own, but FR-004 now carries the R-04 example
+   inline (plan § Spec Corrections item 7) after planning found the
+   original "between two continuation lines" wording read the opposite way
+   for an inline value's first line.
 2. `accepts_level` truth table: `None`; unset baseline at, above, below
    `anchor_level`; set baseline at, above, below.
 3. SC-004: the four lane-4 documents (`doc01_scene_cellar`,
