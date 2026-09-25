@@ -135,10 +135,12 @@ wherever a `str` key or scalar is expected (it is written by its text).
 It raises `TypeError` for anything else (including a mapping key that is
 neither a `str` nor a `Source`), and `UnrepresentableValueError` for a
 value with no SYML encoding: a control character other than LF/TAB
-anywhere; a first line that would lex as structure (at a list position, or
-a mapping/root position for a multi-line value), plus any later line whose
-leading `- ` marker chain holds more than 32 markers; a block value's first
-line beginning with a space; any line whose leading whitespace contains a
+anywhere; a first line that would lex as structure (at a list position, at
+a mapping position for a multi-line value, or at the root regardless of
+length), plus any later line whose leading `- ` marker chain holds more
+than 32 markers; a value's first line, inline or block, beginning with a
+space (mapping or list position only — a root scalar's leading spaces are
+literal content, see above); any line whose leading whitespace contains a
 tab; a non-empty, whitespace-only line; a multi-line value whose first or
 last line is empty; a mapping key that does not match `[a-z][a-z0-9_-]*`;
 an empty list or empty mapping at any depth; and a root scalar with any

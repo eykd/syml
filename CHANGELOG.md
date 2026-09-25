@@ -74,11 +74,13 @@ this one 1.0.0 release.
     each line indented beneath its key or `-`; `dumps('')` is `''`. It
     raises `UnrepresentableValueError` for the nine families in §11.2.1:
     a control character other than LF/TAB anywhere; a structure-shaped
-    first line at a list position (any length) or a mapping/root position
-    (multi-line only), plus any later line whose leading `- ` marker chain
-    holds more than 32 markers; a block value's first line beginning with
-    a space (mapping or list position); any line whose leading run of
-    spaces/tabs contains a tab; a non-empty, spaces-and-tabs-only line; a
+    first line at a list position (any length), at a mapping position
+    (multi-line only), or at the root (any length), plus any later line
+    whose leading `- ` marker chain holds more than 32 markers; a value's
+    first line, inline or block, beginning with a space (mapping or list
+    position only; a root scalar's leading spaces round-trip literally);
+    any line whose leading run of spaces/tabs contains a tab; a
+    non-empty, spaces-and-tabs-only line; a
     multi-line value whose first or last line is empty; a mapping key that
     does not match `[a-z][a-z0-9_-]*`; an empty list or empty mapping at
     any depth; and a root scalar with any line beginning with `#` or `//`.
