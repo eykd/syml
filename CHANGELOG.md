@@ -308,13 +308,18 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     stays a plain builtin `TypeError`, message only — no `.path`, no new
     subclass (D30, syml-cjk2.14, break-testing round 2 lane 4).
 31. **Bug fix: `EncodingError`'s message now names the bad byte and says
-    UTF-8.** Until this fix, an invalid-UTF-8 file raised with the message
-    `Invalid encoding`, which never named the expected encoding or the
-    offending byte, and whose shown line stopped just before that byte — so
-    the typical Latin-1/Windows file gave no clue what was wrong. The
-    message is now `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`,
-    `{XX}` the first offending byte in lowercase two-digit hex (D31,
-    syml-cjk2.15, break-testing round 2 lane 4).
+    UTF-8, and names the actual codec when it isn't UTF-8.** Until this fix,
+    an invalid-UTF-8 file raised with the message `Invalid encoding`, which
+    never named the expected encoding or the offending byte, and whose shown
+    line stopped just before that byte — so the typical Latin-1/Windows file
+    gave no clue what was wrong. The message is now `Invalid UTF-8 (byte
+    0x{XX}); save the file as UTF-8`, `{XX}` the first offending byte in
+    lowercase two-digit hex (D31, syml-cjk2.15, break-testing round 2 lane
+    4). A caller-supplied text stream decoded with its own non-UTF-8 codec
+    (e.g. `open(p, encoding='ascii')` on a UTF-8 file) is not itself invalid
+    UTF-8, so that case instead says `Invalid {codec} (byte 0x{XX})`, naming
+    the actual codec and dropping the "save the file as UTF-8" advice (D31,
+    syml-cjk2.21, break-testing round 2 lane 4).
 32. **`DuplicateKeyError`'s message now names where the key first
     appeared.** Until this fix, `Duplicate key 'a'` gave no way to find the
     earlier occurrence in a long file — the exception already carried

@@ -109,6 +109,22 @@ class TestEncodingErrorPositionDerivation:
         assert result.line_text == 'x: '
         assert result.message == 'Invalid UTF-8 (byte 0xff); save the file as UTF-8'
 
+    def test_encoding_error_names_the_actual_codec_for_a_non_utf8_stream(self) -> None:
+        """A caller-supplied stream decoded with a non-UTF-8 codec names that codec (D31 refinement).
+
+        A valid-UTF-8 file opened with the wrong codec (e.g. ``encoding='ascii'``)
+        is not itself invalid UTF-8, so the message must not claim it is and must
+        not offer UTF-8-specific advice.
+        """
+        raw = 'café'.encode()
+        with pytest.raises(UnicodeDecodeError) as exc_info:
+            raw.decode('ascii')
+        err = exc_info.value
+
+        result = encoding_error(err, None)
+
+        assert result.message == 'Invalid ascii (byte 0xc3)'
+
 
 class TestWhichErrorForWhichConditionMapping:
     """Contract 05 §Which error for which condition.

@@ -7,6 +7,7 @@ back to the caller's original text.
 
 from __future__ import annotations
 
+import codecs
 import dataclasses
 import re
 from bisect import bisect_left
@@ -155,6 +156,12 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     `err.start` is a byte offset; this converts it to code-point coordinates
     over `(err.object, err.start, err.encoding)` alone.
 
+    The message names the codec that actually failed (D31 refinement): a
+    normalized codec of `utf-8` keeps the "save the file as UTF-8" advice,
+    while any other codec (a caller-supplied text stream decoded with its
+    own, non-UTF-8 codec) is named instead and the UTF-8-specific advice is
+    dropped, since re-saving as UTF-8 would not fix a codec mismatch.
+
     :param err: The `UnicodeDecodeError` raised while decoding.
     :param filename: The filename to include in the message, if any.
     :returns: An `EncodingError` positioned at the first invalid byte.
@@ -167,8 +174,12 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     column = index - last_break_end
     line_text = prefix[last_break_end:]
     bad_byte = err.object[err.start]
+    if codecs.lookup(err.encoding).name == 'utf-8':
+        message = f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8'
+    else:
+        message = f'Invalid {err.encoding} (byte 0x{bad_byte:02x})'
     return EncodingError(
-        f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8',
+        message,
         Pos(index=index, line=line, column=column),
         line_text,
         filename=filename,
