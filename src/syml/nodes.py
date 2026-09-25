@@ -10,7 +10,7 @@ if TYPE_CHECKING:  # pragma: nocover
 
 from .basetypes import Pos, Source, StrPath, get_line_text
 from .exceptions import DuplicateKeyError, OutOfContextNodeError, error_message
-from .preprocess import PositionMap
+from .preprocess import PositionMap, is_blank
 
 
 @dataclass(kw_only=True)
@@ -304,6 +304,12 @@ class TextLeafNode(SymlNode):
     # anchor_level = self.level, baseline = None if node.inline else node.level.
     anchor_level: int = field(default=-1)
     baseline: int | None = field(default=0)
+    # Number of physical blank lines between this continuation and the
+    # value's previous line, set by `add_node` on attach (Contract 02 rule
+    # 4, FR-004). A column-0 comment line in the gap is neither a line of
+    # the value nor a blank line; every physical blank line on either side
+    # of it still counts (principal's blank-lines ruling, 2026-09-24).
+    blank_lines_before: int = field(default=0)
 
     def as_source(self) -> Source:
         """Return this node's Source, spanning through the last continuation line (Contract 08).
@@ -326,6 +332,7 @@ class TextLeafNode(SymlNode):
         """
         parts = [str(self.source)]
         for child in self.children:
+            parts.extend([''] * cast('TextLeafNode', child).blank_lines_before)
             indent = ' ' * max(0, cast(int, child.level) - cast(int, self.baseline))
             parts.append(f'{indent}{child.as_data()}')
         return '\n'.join(parts)
@@ -381,10 +388,22 @@ class TextLeafNode(SymlNode):
         continuation, and propagated unchanged down the rest of the chain so
         every descendant measures its extra indentation against the same
         original baseline rather than its own (uninitialized) default.
+
+        Also counts the physical blank lines between the value's previous
+        line (`self`, or its last accepted continuation) and `node`, over
+        the NORMALIZED text spanned by `pnode` (Contract 02 rule 4, R-03,
+        R-04). A column-0 comment line in the gap is skipped — neither a
+        line of the value nor a blank line — but every physical blank line
+        on either side of it still counts.
         """
         if self.baseline is None:
             self.baseline = node.level
-        cast(TextLeafNode, node).baseline = self.baseline
+        child = cast(TextLeafNode, node)
+        child.baseline = self.baseline
+        prev = self.children[-1] if self.children else self
+        full_text = child.pnode.full_text
+        gap = full_text[prev.pnode.end : child.pnode.start]
+        child.blank_lines_before = sum(1 for line in gap.split('\n')[1:-1] if is_blank(line))
         super().add_node(node)
         return self
 

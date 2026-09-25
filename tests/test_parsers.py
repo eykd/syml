@@ -897,6 +897,54 @@ class TestContract02TextContextBehaviourTable:
             syml.loads(text)
 
 
+class TestContract02ParagraphBreakBehaviourTable:
+    r"""Contract 02 §Behaviour / §Test obligations 1: the paragraph-break (rule 4) rows.
+
+    One physical blank line between two lines of the same value survives as
+    one empty line in `as_data()`, counted from the NORMALIZED text's line
+    breaks at attach time (R-03). A column-0 comment line in the gap is
+    neither a line of the value nor a blank line: it is skipped when
+    counting, and every physical blank line on either side of it still
+    counts (principal's blank-lines ruling, 2026-09-24).
+    """
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            # US1-1: a block value's paragraph break survives.
+            ('k:\n  Para one.\n\n  Para two.', {'k': 'Para one.\n\nPara two.'}),
+            # US1-2: a root scalar's paragraph break survives.
+            ('Para one.\n\nPara two.', 'Para one.\n\nPara two.'),
+            # US1-11: multiple consecutive blanks count individually;
+            # trailing blanks after the value's last line are inert.
+            ('k:\n  a\n\n\n  b\n\n', {'k': 'a\n\n\nb'}),
+            # US1-12: a blank before the first continuation is inert.
+            ('k:\n\n  a', {'k': 'a'}),
+            # US1-13: a blank before the next key is inert.
+            ('k:\n  a\n\nb: 2', {'k': 'a', 'b': '2'}),
+            # US1-21: a column-0 comment between two lines is skipped, not
+            # counted as a blank (0 blank lines).
+            ('k:\n  a\n# note\n  b', {'k': 'a\nb'}),
+            # US1-22 / principal's ruling (2026-09-24): a column-0 comment
+            # flanked by real blanks doesn't swallow them — both sides
+            # still count (the literal as-if-not-there reading).
+            ('k:\n  a\n\n# note\n\n  b', {'k': 'a\n\n\nb'}),
+            ('k:\n  a\n\n# note\n  b', {'k': 'a\n\nb'}),
+            # R-03: a whitespace-only line is blank too.
+            ('k:\n  a\n      \n  b', {'k': 'a\n\nb'}),
+            # R-04: an inline value's first line counts too.
+            ('k: first\n\n  second', {'k': 'first\n\nsecond'}),
+        ],
+    )
+    def test_a_behaviour_table_row_produces_its_stated_output(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    def test_as_source_round_trips_through_str_with_paragraph_breaks(self) -> None:
+        """`str(node.as_source()) == node.as_data()` still holds with paragraph breaks (Contract 02)."""
+        result = parsers.parse('k:\n  Para one.\n\n  Para two.')
+        assert str(result.as_source()['k']) == result.as_data()['k']
+
+
 class TestVisitLineReturnsNone:
     r"""Contract 01 test obligation 3: `visit_line` returns `None` for a blank content span or a comment.
 

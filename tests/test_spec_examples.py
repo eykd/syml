@@ -38,10 +38,6 @@ PENDING: dict[tuple[str, str], str] = {
         "ERROR: DuplicateKeyError: Duplicate key 'key'",
     ): 'FR-011 (Contract 03: exact exception message text)',
     (
-        'k:\n  a\n\n  b\n',
-        '{"k": "a\\n\\nb"}',
-    ): 'FR-004 (paragraph breaks, D22)',
-    (
         'k:\n- a\n',
         'ERROR: OutOfContextNodeError',
     ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
