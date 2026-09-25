@@ -36,6 +36,7 @@ later leaves delete their entries and the release leaf deletes the table
 | §6.4 | Keep; add that a `#`/`//` line at a container's level is text and errors like `plain`. |
 | §7.2 | Keep the mapping/list asymmetry. Add: at a continuation position a `- ` line is text (§5.1). |
 | §7.4 | "An empty document, or one with only blank lines, is `""`." A document of former comment lines is a root scalar. |
+| §7.5 (fenced-example limit) | A fenced example cannot end a line with a space or tab: the `trailing-whitespace` pre-commit hook strips it, so `a:\t` + newline + `  b: 1` (US2-4) and a whitespace-only blank line inside a value (R-03) are stated in prose or inline code with escapes, never as an Output-bearing fenced block. A tab inside a line (`key:\tv`, `-\tk: v`) survives the hook, as the three tabs in today's spec do (red team outer iteration 10). |
 | §7.5 | `ws` is spaces or tabs. `key:\tvalue` → `{"key": "value"}`; `-\tvalue` → `["value"]`; `key: \tv` → `{"key": "v"}`; a bare marker followed only by spaces or tabs is the bare marker (R-11). A separator tab counts as one column (§6.2). |
 | §7.6 | Table: `Invalid: value`, `key:\tv`, `key:value` rows updated (`key:\tv` is now a mapping). Replace the "every line is lexed independently" subsection with the text-context rule: `a: Note\n  warning: do not touch` → `{"a": "Note\nwarning: do not touch"}` (was ERROR). |
 | §8.1 | Unchanged example; it still raises. |
@@ -209,10 +210,34 @@ branch is merged to `master`: create an annotated `1.0.0` tag on the merge
 commit, `git push origin 1.0.0`, and verify with `git ls-remote --tags origin`
 (US4 scenario 7). No PyPI upload.
 
+**US4 scenario 7 runs outside `just acceptance`** (red team outer iteration
+10). CI runs `just acceptance` on every push, and the tag goes on the merge
+commit only after that commit is pushed, so a tag check inside the normal
+acceptance run fails the merge commit's own CI job and ties every later run
+to the network and the remote's state. The US13 feature tags scenario 7
+`@release`; `pyproject.toml` registers the `release` marker; `just
+acceptance` becomes `-m "acceptance and not release"`; a new `just
+release-check` recipe runs `-m release`. The release leaf runs it by hand
+after `git push origin 1.0.0` and records the output in its close reason.
+The binding reads the peeled SHA (`refs/tags/1.0.0^{}` in `git ls-remote
+--tags origin`; an annotated tag's own ref names the tag object) and asserts
+it equals `git rev-parse 1.0.0^{commit}` and is an ancestor of, or equal to,
+`HEAD`, never that it equals `HEAD`.
+
 ## Test obligations
 
 1. `tests/test_spec_examples.py` passes over the edited spec with the new
-   minimum count (SC-005, US4 scenario 1).
+   minimum count (SC-005, US4 scenario 1). **The oracle checks an ERROR
+   line's message, not only its class** (red team outer iteration 10): today
+   the extractor keeps only the name before the first `:` after `ERROR:` and
+   the test uses `pytest.raises`, which also accepts a subclass, so §8.3's
+   `Duplicate key 'key'` and §6.1's hint text would never be compared with
+   the code. When the code span has text after `ERROR: <Class>:`, the test
+   asserts `type(e) is <Class>` and that the text equals `e.message` (the
+   oracle passes no filename, so there is no prefix); a span that names only
+   a class keeps the class check, made exact. The spec leaf lands this
+   extractor change with the `PENDING` table, whose `(source, stated output)`
+   key includes the message text.
 2. The grammar-identity test (Contract 01).
 3. The §11.3-vs-exports test (Contract 05).
 4. `tests/acceptance/test_us09_release_readiness.py`'s CHANGELOG assertions

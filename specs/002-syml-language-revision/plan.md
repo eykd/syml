@@ -277,6 +277,24 @@ independent.
    `xfail(strict=True)`. Each later leaf deletes the entries it satisfies (a
    strict XPASS fails the run if it forgets), and the release leaf deletes the
    empty table. `MINIMUM_EXAMPLE_COUNT` moves to the new count here.
+   **The same leaf makes the oracle read an ERROR line's message (red team
+   outer iteration 10).** `tests/test_spec_examples.py` keeps only the class
+   name of an `ERROR:` line (`content[len('ERROR:'):].split(':')[0]`) and
+   checks it with `pytest.raises`, which also passes for a subclass. So the
+   one ERROR example that states a message (§8.3's
+   `ERROR: DuplicateKeyError: Duplicate key 'key'`, the `syml-xreq.9` half
+   whose complaint was a message the code never produces) and the new §6.1
+   indentless-sequence example with its hint (Contract 06 §A) are never
+   compared with the code: SC-005 and US4 scenario 1 ("raises exactly that
+   error") would pass over a drifted message. The extractor keeps the text
+   after `<Class>:` when there is any, and the test then asserts
+   `type(e) is <Class>` (exact class) and that the text equals the error's
+   description (`e.message` with no filename, since the oracle passes none);
+   an ERROR line that names only a class keeps the class-only check. The
+   `PENDING` key's stated output includes that text, so an example whose
+   message changes with Contract 03 is keyed to FR-011/FR-012 until the error
+   leaf lands. The prose after the code span (`— child2 is indented…`) stays
+   unchecked.
 2. **Grammar leaf** (Contract 01), atomic: top rule, `indent`, `ws`, `key`,
    `eol` (written `~r"\Z"`, Security Considerations), comment removal, D19 removal, `IndentNode`/`Comment` removal, grammar
    identity test, and the rewrite of existing tests that pinned D5, D15, D19,
@@ -300,6 +318,32 @@ independent.
 3. **Tree-builder leaves** (Contract 02), in order: strict depth + `bar.syml`
    (independent); root scalar; text context; paragraph breaks (needs text
    context).
+   **Which Contract 02 rows each tree-builder leaf may pin (red team outer
+   iteration 10)**, the same rule outer iteration 9 set for the grammar leaf:
+   a leaf's tests expect only what that leaf and the ones before it produce.
+   The root-scalar leaf lands **before** text context, and Contract 02 rule 5's
+   "the document is then text throughout" is rule 1's work, not rule 5's: with
+   rule 5 alone, `Given:
+  a: 1` (US1-9), `hello
+k: v`, and `---
+k: v`
+   still raise, because their later lines lex as structure. Conversely, text
+   context alone already makes those three rows pass (1.0's `Root.add_node`
+   fixes a column-0 root scalar's baseline at 0). So the **root-scalar leaf**
+   pins only the rows about an **indented** first line (US1-10 and the
+   `Source` start row `Pos(0, 1, 0)`); the **text-context leaf** pins every
+   row whose later line lexes as structure (US1-3, -4, -7, -9, -16, -17, the
+   R-06 rows, the `hello`/`---` edge rows, and the `silent` rows); the
+   **paragraph-break leaf** pins US1-1, -2, -11 and the R-03 and R-04 rows;
+   the **strict-depth leaf** pins US2-1, US2-2, and the `- key:
+    - x`
+   edge row. Rows that already hold at the grammar-leaf commit (US1-12, -13,
+   -14, -15, -18, US2-3, -7, -14, and the NBSP-only row `k: v
+  
+j: w`,
+   which 1.0's builder already joins because the line lexes as text) may sit
+   in any of these leaves. Contract 02 carries the same assignment as a
+   `Leaf` note under its table.
 4. **Error leaves** (Contract 03): `ParseError` filename/`__str__`; tab-scan
    positions; out-of-context message and hints (needs 3 for the new shapes).
 5. **Serializer leaves** (Contract 04), after 2–3: structure match
@@ -403,7 +447,28 @@ change") is pinned by a US11 scenario and a README leaf, not by code.
 
 **Pipeline**: pytest-bdd via `just acceptance`. US4 scenario 7 (the tag on the
 remote) can only pass after the release leaf; its binding is written in the
-release leaf, not earlier. Where a scenario needs whitespace a Gherkin string
+release leaf, not earlier.
+
+**US4 scenario 7 is kept out of `just acceptance` (red team outer iteration
+10).** CI (`.github/workflows/ci.yaml`, `on: push`) runs `just acceptance` on
+every push, and its comment promises master stays green. Contract 06 §F puts
+the tag on the merge commit **after** the merge is pushed, so a binding that
+runs `git ls-remote --tags origin` inside `just acceptance` fails the CI run
+of the very merge commit it is meant to certify (the tag does not exist yet;
+whether it passes depends on how fast the tag push beats the CI job), and
+from then on it makes every local and CI acceptance run depend on network
+access and on the remote's state; "points at the commit that carries the
+revised spec" also stops being true of `HEAD` at the next commit to master.
+Fix: the US13 feature tags scenario 7 `@release`; `pyproject.toml` registers
+a `release` marker (`--strict-markers`); `just acceptance` runs
+`-m "acceptance and not release"`; a new `just release-check` recipe runs
+`-m release` and is run by hand in the release leaf after `git push origin
+1.0.0`, its output recorded in the leaf's close reason. The binding compares
+the **peeled** SHA (`refs/tags/1.0.0^{}`: an annotated tag's own ref is the
+tag object, not the commit) with the merge commit (`git rev-parse
+1.0.0^{commit}` locally, which must be an ancestor of or equal to `HEAD`),
+not with `HEAD` itself. The other seven US13 scenarios stay in
+`just acceptance`. Where a scenario needs whitespace a Gherkin string
 cannot hold literally, write `\t`, `\xa0`, `\ufeff`, `\r` escapes and decode
 them in the step (the 001 bindings already do this).
 

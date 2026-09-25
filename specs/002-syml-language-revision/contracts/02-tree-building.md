@@ -129,6 +129,18 @@ class Root(ContainerNode):
 | US2-7 | `k:\n  a\n\xa0\n  b` | `OutOfContextNodeError` |
 | US2-14 | `key: v\n\xa0\tx` | `OutOfContextNodeError` (no `TabIndentationError`) |
 
+**Leaf** (red team outer iteration 10; plan § Leaf Ordering item 3): each
+row is pinned in the first tree-builder leaf whose commit makes it true. The
+**root-scalar** leaf lands before text context and pins only the
+indented-first-line rows (US1-10 and the `Source` start row below); rule 5's
+"text throughout" needs rule 1, so US1-9 and the `hello`/`---` edge rows
+belong to the **text-context** leaf, with every other row whose later line
+lexes as structure (US1-3, -4, -7, -16, -17, R-06, `silent`). The
+**paragraph-break** leaf pins US1-1, -2, -11, R-03, R-04. The **strict-depth**
+leaf pins US2-1, US2-2 and `- key:\n    - x`. US1-12, -13, -14, -15, -18,
+US2-3, -7, -14 and `k: v\n \xa0\nj: w` already hold at the grammar-leaf
+commit and may go in any of them.
+
 `as_source()`: `str(node.as_source()) == node.as_data()` still holds, paragraph
 breaks included. A root scalar `  hello` has `start == Pos(0, 1, 0)`.
 
