@@ -60,7 +60,7 @@ serializer or error-message change required.
 6. **Given** `- [ask: why?]`, `- "listen: I know."`, `- 3: 1 odds`, and `"so: you came back."`, **When** loaded, **Then** every one is text: `["[ask: why?]"]`, `["\"listen: I know.\""]`, `["3: 1 odds"]`, and the root scalar `"\"so: you came back.\""`.
 7. **Given** `env:\n  HOME: /h\n  PATH: /p`, **When** loaded, **Then** the result is `{"env": "HOME: /h\nPATH: /p"}` (uppercase would-be keys are text; the README documents this).
 8. **Given** `name: a\nfirstName: b\nage: 3`, **When** loaded, **Then** `OutOfContextNodeError` is raised at line 2 and its message carries the key-pattern hint (see User Story 2).
-9. **Given** `Given:\n  a: 1`, **When** loaded, **Then** the result is the root scalar `"Given:\na: 1"`: the first line is text, so the document is text throughout.
+9. **Given** `Given:\n  a: 1`, **When** loaded, **Then** the result is the root scalar `"Given:\n  a: 1"`: the first line is text, so the document is text throughout, and the two spaces past the column-0 baseline are kept.
 10. **Given** `  hello`, `  hello\nworld`, and `  hello\n    world`, **When** loaded, **Then** the results are `"  hello"`, `"  hello\nworld"`, and `"  hello\n    world"` (a root scalar keeps its leading indentation; the root baseline is column 0).
 11. **Given** `k:\n  a\n\n\n  b\n\n`, **When** loaded, **Then** the result is `{"k": "a\n\n\nb"}`: blank lines between continuation lines are kept one for one; blank lines after the last continuation are inert, so a value never ends with a blank line.
 12. **Given** `k:\n\n  a`, **When** loaded, **Then** the result is `{"k": "a"}` (a blank line before the first continuation line is inert).
@@ -106,7 +106,7 @@ serializer or documentation change is needed.
 11. **Given** `a: 1\n  - x` and `a:\n\tb` loaded with `filename="f.syml"`, **When** they raise, **Then** both `.message` values begin with `f.syml: ` (every `ParseError` subclass carries the prefix).
 12. **Given** `a: 1\r\n\tb: 2` and `\ufeff\tk: v`, **When** they raise `TabIndentationError`, **Then** `.position` points at the tab in the caller's original text: index 6, line 2, column 0 for the first (today it reports index 5, the line feed); index 1, line 1, column 1 for the second (today it reports index 0, the BOM).
 13. **Given** `\ufeffa: b\r\n\tc: d`, **When** it raises, **Then** `.position` is index 7, line 2, column 0 (BOM and CRLF both accounted for).
-14. **Given** `key: v\n\xa0\tx`, **When** loaded, **Then** the line beginning with NBSP is content, not indentation, so no `TabIndentationError` is raised for the tab that follows it.
+14. **Given** `key: v\n\xa0\tx`, **When** loaded, **Then** no `TabIndentationError` is raised for the tab (the NBSP-led line is content at column 0, not indentation); the line is re-offered after the closed inline pair and raises `OutOfContextNodeError` instead.
 
 ---
 
