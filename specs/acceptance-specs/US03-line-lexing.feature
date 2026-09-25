@@ -28,15 +28,15 @@ Feature: Lines lex per the section 4.1 grammar as printed
     When it is parsed
     Then the result is the scalar "-42"
 
-  Scenario: A tab immediately after the colon is never separator whitespace
+  Scenario: A tab immediately after the colon is separator whitespace (D24)
     Given a SYML document "key:\\tv"
     When it is parsed
-    Then the result is the scalar "key:\tv"
+    Then the result equals {'key': 'v'}
 
-  Scenario: A tab after the separating space is preserved as value content
+  Scenario: A tab after the separating space is also separator whitespace (D24)
     Given a SYML document "key: \\tv"
     When it is parsed
-    Then the result equals {'key': '\tv'}
+    Then the result equals {'key': 'v'}
 
   Scenario: A trailing space after a valueless key does not change the result
     Given a SYML document "key: \\n  nested: content"
