@@ -451,7 +451,7 @@ class TestLineAboveScanScaling:
 
         with (
             mock.patch.object(basetypes, '_compute_line_start_offsets', counting_compute),
-            pytest.raises(Exception),  # noqa: PT011 - any OutOfContextNodeError raise
+            pytest.raises(Exception),  # noqa: B017, PT011 - any OutOfContextNodeError raise
         ):
             syml.loads(text)
         return misses
