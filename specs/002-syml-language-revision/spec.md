@@ -39,7 +39,7 @@
 ### Red team corrections (2026-09-24, `/sp:04-red-team` outer iteration 3)
 
 - User Story 3's closing sentence no longer says the residual set is "exactly the values that have no spelling at all": R-05 found one refused family that has a spelling (`{"k": "a: 1\nb"}` as `k: a: 1\n  b`), and rule D refuses control characters that §4.6.1 lets `loads` read. Verdict on plan open question 3: the narrative moves, FR-006 stands (accepting the family later is additive). Applied here rather than in the spec leaf, because `/sp:05-tasks` binds acceptance scenarios from this file.
-- User Story 4 scenario 4 and FR-016 no longer call the comments change "loud": a `#`/`//` line that is the first line of a document or block silently makes that document or block one string; only a later one at a container's level raises (plan open question 7).
+- User Story 4 scenario 4 and FR-016 no longer call the comments change "loud": a `#`/`//` line that is the first line of a document or block silently makes that document or block one string; only a later one at a container's level raises (plan open question 7). (Superseded by the principal rulings of 2026-09-24 below: a column-0 `#`/`//` line is now a comment.)
 - FR-006 gains one refusal: a later line of a multi-line value whose per-line lexing exceeds the parser's recursion depth (a long `- - - …` chain). Under FR-003 such a line is text, but the per-line PEG lex still recurses once per `- `, so `loads` raises `RecursionError` on it; `dumps` must not write a line it cannot read back (§11.2.1). The load-side cliff stays documented, not fixed (Scope Boundaries). (Outer iteration 7 replaced the recursion test with a fixed marker count; see below.)
 
 ### Red team corrections (2026-09-24, `/sp:04-red-team` outer iteration 7)

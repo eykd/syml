@@ -18,7 +18,7 @@
 - [x] Success criteria are measurable — SC-001 counts closed issues, SC-005 counts spec examples, SC-006 names the gates, SC-008 names the tag.
 - [x] Success criteria are technology-agnostic — "round-trip property", "quality gates", "the acceptance suite"; no tool named.
 - [x] All acceptance scenarios are defined — 50 scenarios across four stories, covering all 24 findings.
-- [x] Edge cases are identified — twelve, including the root-first-line rule, blank-only vs former-comment documents, the moot tab hint, and the unchanged recursion cliff.
+- [x] Edge cases are identified — twelve, including the root-first-line rule, blank-only vs comment-only documents (column-0 comments, per the 2026-09-24 ruling), the moot tab hint, and the unchanged recursion cliff.
 - [x] Scope is clearly bounded — six exclusions, including PyPI and limit enforcement.
 - [x] Dependencies and assumptions identified — four deferred planning items carried verbatim, plus the spec-first ordering, the task granularity, the ready-queue hazard, the lane-4 oracle caveat, and the `DocumentLimitError` direction.
 
