@@ -95,6 +95,88 @@ class TestTextLeafNodeContinuationBaseline:
         assert leaf.can_add_node(below_baseline) is False
 
 
+class TestAcceptsLevelTruthTable:
+    """Contract 02 rule 2 / §Test obligations item 2: `accepts_level`'s full truth table.
+
+    `False` for `None`. While `baseline` is unset (inline value awaiting its
+    first continuation), the threshold is `anchor_level` and the comparison
+    is strict (`>`): at or below is declined. Once `baseline` is fixed, the
+    comparison is inclusive (`>=`): at or above is accepted, below declined.
+    """
+
+    def test_none_level_is_never_accepted(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+
+        assert leaf.accepts_level(None) is False
+
+    def test_unset_baseline_accepts_only_strictly_above_anchor_level(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+        leaf.anchor_level = 2
+        leaf.baseline = None
+
+        assert leaf.accepts_level(3) is True
+        assert leaf.accepts_level(2) is False
+        assert leaf.accepts_level(1) is False
+
+    def test_set_baseline_accepts_at_or_above_it(self) -> None:
+        leaf = nodes.TextLeafNode(pnode=_pnode('a'), level=0)
+        leaf.baseline = 4
+
+        assert leaf.accepts_level(5) is True
+        assert leaf.accepts_level(4) is True
+        assert leaf.accepts_level(3) is False
+
+
+class TestTextContextRereadsStructureShapedLines:
+    """Contract 02 rule 1 (R-01, FR-003): a text tip re-reads a later structure-shaped line as text.
+
+    `TextLeafNode.incorporate_node` swaps a candidate that lexed as
+    structure (a `KeyValue`, `ListItem`, etc. carrying a `content_pnode`)
+    for a fresh `TextLeafNode` built over that same `content_pnode`,
+    whenever the candidate's level clears this leaf's threshold — before
+    delegating to the normal accept/decline walk.
+    """
+
+    @staticmethod
+    def _key_value_line(text: str) -> nodes.KeyValue:
+        """Build a real `KeyValue` the way `visit_line` would, `content_pnode`/`level` included."""
+        parser = SymlParser()
+        line_pnode = SymlParser.grammar['line'].parse(text)
+        return cast('nodes.KeyValue', parser.visit(line_pnode))
+
+    def test_structure_shaped_candidate_at_or_past_threshold_is_rebuilt_as_text(self) -> None:
+        """A KeyValue-shaped candidate within threshold becomes a TextLeafNode over content_pnode."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 2
+        candidate = self._key_value_line('  key: value')
+
+        leaf.incorporate_node(candidate)
+
+        rebuilt = leaf.children[-1]
+        assert isinstance(rebuilt, nodes.TextLeafNode)
+        assert rebuilt is not candidate
+        assert rebuilt.pnode is candidate.content_pnode
+
+    def test_structure_shaped_candidate_below_threshold_is_not_rebuilt(self) -> None:
+        """A candidate below threshold walks up unchanged, never swapped for text."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 4
+        candidate = self._key_value_line('  key: value')
+
+        with pytest.raises(OutOfContextNodeError):
+            leaf.incorporate_node(candidate)
+
+    def test_candidate_without_content_pnode_is_not_rebuilt(self) -> None:
+        """A candidate carrying no content_pnode (not a whole-line lex) is left alone."""
+        leaf = nodes.TextLeafNode(pnode=_pnode('prose'), level=0)
+        leaf.baseline = 2
+        candidate = self._key_value_line('  key: value')
+        candidate.content_pnode = None
+
+        with pytest.raises(OutOfContextNodeError):
+            leaf.incorporate_node(candidate)
+
+
 class TestMappingDuplicateKeyDetection:
     """Contract 03 §Duplicate keys (FR-007, §8.3, §10.3).
 

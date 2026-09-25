@@ -24,9 +24,9 @@ class TestLineTextIsTheOffendingLineOnEveryParseError:
         ('document', 'error_type', 'expected_line_text'),
         [
             pytest.param(
-                'a: 1\n  - foo\nc: 1\n',
+                'k: a\n    b\n  c\n',
                 OutOfContextNodeError,
-                '  - foo',
+                '  c',
                 id='out_of_context_node_error_strips_terminator',
             ),
             pytest.param(

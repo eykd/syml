@@ -805,6 +805,98 @@ class TestContract01BehaviourTable:
         assert exc_info.value.position == Pos(index=9, line=3, column=0)
 
 
+class TestContract02TextContextBehaviourTable:
+    r"""Contract 02 §Behaviour / §Test obligations 1: one parametrized test per pinned row.
+
+    Structure is lexed only at a block's first line; once a value is text,
+    every later line at or past its baseline is that value's text too,
+    whatever shape it lexes to. Covers the US1/US2 scenario rows, the R-06
+    rows, the `edge` rows, and all eight `silent` rows the leaf ordering
+    (plan.md §Leaf Ordering item 3, Contract 02 lines 154-169) assigns to
+    this leaf — including the ``-\\tk: v\\n        j: w`` row Contract 01
+    excludes as "Not a grammar-leaf test".
+    """
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            # US1-3: a dash-shaped continuation is text.
+            ('k:\n  some prose\n  - used as a dash\n  more', {'k': 'some prose\n- used as a dash\nmore'}),
+            # US1-4: an indented //, # continuation is text.
+            ('- Share is\n  //server/share', ['Share is\n//server/share']),
+            ('- tag line\n  #winning', ['tag line\n#winning']),
+            # US1-7: uppercase KEY: lines are text.
+            ('env:\n  HOME: /h\n  PATH: /p', {'env': 'HOME: /h\nPATH: /p'}),
+            # US1-9: a text root scalar stays text throughout.
+            ('Given:\n  a: 1', 'Given:\n  a: 1'),
+            # US1-16: inline value plus deeper lines of any shape.
+            ('k: first\n  - second\n  key: third', {'k': 'first\n- second\nkey: third'}),
+            # US1-17 (negative control): the first line still decides structure.
+            ('k:\n  - a\n  - b', {'k': ['a', 'b']}),
+            ('k:\n  x: 1\n  y: 2', {'k': {'x': '1', 'y': '2'}}),
+            # US1-24: a trailing "comment" after key: is the inline text value.
+            ('server: # prod\n  host: x', {'server': '# prod\nhost: x'}),
+            # R-06: a later key-shaped or dash-shaped line joins the open value.
+            ('k:\n  a: 1\n   b: 2', {'k': {'a': '1\nb: 2'}}),
+            ('- eggs\n - bread', ['eggs\n- bread']),
+            ('a: 1\n  - x', {'a': '1\n- x'}),
+            ('parent:\n  child1: a\n   child2: b', {'parent': {'child1': 'a\nchild2: b'}}),
+            # edge: a text root scalar's first line, dash included.
+            ('hello\nk: v', 'hello\nk: v'),
+            ('---\nk: v', '---\nk: v'),
+            # silent (Contract 02 'silent' rows): an indented first-line `#`
+            # makes the whole block text.
+            ('a:\n  # section\n  b: 1\n  c: 2', {'a': '# section\nb: 1\nc: 2'}),
+            # silent, "Not a grammar-leaf test" (Contract 01): the tab is one column.
+            ('-\tk: v\n        j: w', [{'k': 'v\nj: w'}]),
+            # silent: a NBSP after key: is not separator whitespace, so the
+            # first line is text and the root is text throughout.
+            ('name:\xa0app\nport: 80', 'name:\xa0app\nport: 80'),
+            # silent: a `#` after key: is the inline text value; the block
+            # under it joins it.
+            ('server: # production\n  host: x\n  port: 80', {'server': '# production\nhost: x\nport: 80'}),
+            ('- # item note\n  name: x', ['# item note\nname: x']),
+            # silent: a trailing invisible character after `key: `/`- ` is a
+            # non-empty inline text value (FR-009); the block under it joins it.
+            ('x: 1\nserver: \xa0\n  host: a\n  port: 80', {'x': '1', 'server': '\xa0\nhost: a\nport: 80'}),
+            ('- \xa0\n  name: x', ['\xa0\nname: x']),
+            # silent: a line of only a NBSP, FF, or other non-space character
+            # is content, not blank; as a block's first line it makes the
+            # block text.
+            ('k: v\n \xa0\nj: w', {'k': 'v\n\xa0', 'j': 'w'}),
+            ('k:\n  a\n  \xa0\n  b', {'k': 'a\n\xa0\nb'}),
+            ('k:\n  \x0c\n  b: 1', {'k': '\x0c\nb: 1'}),
+            # silent: a non-pattern first key makes the item's inline value
+            # text, anchored at the `-` column.
+            (
+                'ports:\n  - containerPort: 80\n    protocol: TCP',
+                {'ports': ['containerPort: 80\nprotocol: TCP']},
+            ),
+        ],
+    )
+    def test_a_behaviour_table_row_produces_its_stated_output(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    @pytest.mark.parametrize(
+        'text',
+        [
+            # US1-18: a line below the fixed baseline ends the value and
+            # still finds no context, unchanged.
+            'k: a\n    b\n  c',
+            # edge: a shallower plain-text line after a text root scalar's
+            # first line is still out of context.
+            'k: v\nhello',
+            # edge: a non-pattern LATER key sits at the open mapping's
+            # column and still raises (the contrast with the silent 'ports'
+            # row, whose non-pattern key is the item's FIRST line).
+            '- name: x\n  Age: 3',
+        ],
+    )
+    def test_a_behaviour_table_row_raises_out_of_context(self, text: str) -> None:
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            syml.loads(text)
+
+
 class TestVisitLineReturnsNone:
     r"""Contract 01 test obligation 3: `visit_line` returns `None` for a blank content span or a comment.
 

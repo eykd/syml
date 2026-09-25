@@ -330,13 +330,49 @@ class TextLeafNode(SymlNode):
             parts.append(f'{indent}{child.as_data()}')
         return '\n'.join(parts)
 
-    def can_add_node(self, node: SymlNode) -> bool:
-        """Check if a child node can be added (§5.3, D11, §9.3)."""
-        if not isinstance(node, TextLeafNode) or node.level is None:
+    def accepts_level(self, level: int | None) -> bool:
+        """Check whether a candidate at `level` continues this value's text (Contract 02 rule 2).
+
+        `False` for `None` (an inline sub-node, never a whole physical line).
+        Before the baseline is fixed (inline value awaiting its first
+        continuation), a candidate must be strictly deeper than the value's
+        `anchor_level`. Once fixed, a candidate is accepted iff it is at or
+        past the baseline (D11 stands).
+        """
+        if level is None:
             return False
         if self.baseline is None:
-            return node.level > self.anchor_level
-        return node.level >= self.baseline
+            return level > self.anchor_level
+        return level >= self.baseline
+
+    def can_add_node(self, node: SymlNode) -> bool:
+        """Check if a child node can be added (§5.3, D11, §9.3)."""
+        if not isinstance(node, TextLeafNode):
+            return False
+        return self.accepts_level(node.level)
+
+    def incorporate_node(self, node: SymlNode) -> SymlNode:
+        """Incorporate `node`, re-reading a structure-shaped line as this value's text (Contract 02 rule 1).
+
+        Structure is lexed only at a block's first line; once a value is
+        text, any later line at or past its baseline is that value's text
+        too, whatever shape it lexed to (`- x`, `key: v`, `key:`, an
+        indented `#`/`//` comment). A candidate that is not already a
+        `TextLeafNode`, carries a `content_pnode` (a whole physical line's
+        lex — never an inline sub-node), and sits at or past this leaf's
+        threshold gets rebuilt as a `TextLeafNode` over that `content_pnode`
+        before falling through to the normal accept/decline walk. A node
+        below threshold, already text, or without a `content_pnode` is
+        untouched and re-offered up the parent chain unchanged (§9.2) once
+        `can_add_node` declines it.
+        """
+        if not isinstance(node, TextLeafNode) and node.content_pnode is not None and self.accepts_level(node.level):
+            node = TextLeafNode(
+                pnode=node.content_pnode,
+                filename=node.filename,
+                position_map=node.position_map,
+            )
+        return super().incorporate_node(node)
 
     def add_node(self, node: SymlNode) -> SymlNode:
         """Add a continuation child, fixing and propagating the baseline (D11).

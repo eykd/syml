@@ -260,11 +260,13 @@ parent:
   child1: value
    child2: value
 ```
-**Output:** `{"parent": {"child1": "value\n child2: value"}}` — `child2:
+**Output:** `{"parent": {"child1": "value\nchild2: value"}}` — `child2:
 value` lexes as a valid `key_value`, but `child1`'s TextLeaf is open (its
 inline value's baseline is not yet fixed) and this line's level (3) is
 greater than `child1`'s own level (2, §5.1 rule 1), so it is accepted as
-the value's first continuation line regardless of how it lexes (§9.3).
+the value's first continuation line regardless of how it lexes (§9.3). That
+first continuation also fixes the baseline at its own level (3), so no
+extra indentation is preserved past it (D11).
 
 ### 4.3 Comments
 

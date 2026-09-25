@@ -38,37 +38,13 @@ PENDING: dict[tuple[str, str], str] = {
         "ERROR: DuplicateKeyError: Duplicate key 'key'",
     ): 'FR-011 (Contract 03: exact exception message text)',
     (
-        'parent:\n  child1: value\n   child2: value\n',
-        '{"parent": {"child1": "value\\n child2: value"}}',
-    ): 'FR-003 (text context, D21)',
-    (
-        'server: # prod\n  host: x\n',
-        '{"server": "# prod\\nhost: x"}',
-    ): 'FR-007 (trailing "comment" after key is text, D23)',
-    (
         'k:\n  a\n\n  b\n',
         '{"k": "a\\n\\nb"}',
     ): 'FR-004 (paragraph breaks, D22)',
     (
-        'a:\n  b: 1\n   c: 2\n',
-        '{"a": {"b": "1\\nc: 2"}}',
-    ): 'FR-003 (text context, D21)',
-    (
-        'Name: app\nport: 80\n',
-        '"Name: app\\nport: 80"',
-    ): 'FR-001 (key pattern, D20)',
-    (
-        'note: hello\n  more: text\n',
-        '{"note": "hello\\nmore: text"}',
-    ): 'FR-003 (text context, D21)',
-    (
         'k:\n- a\n',
         'ERROR: OutOfContextNodeError',
     ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
-    (
-        'a: Note\n  warning: do not touch\n',
-        '{"a": "Note\\nwarning: do not touch"}',
-    ): 'FR-003 (text context, D21)',
 }
 
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
