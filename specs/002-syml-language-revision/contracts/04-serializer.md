@@ -1,5 +1,7 @@
 # Contract 04 — `dumps` Writes Everything the Parser Reads
 
+> Amended 2026-09-25 by D29, D30, and the `syml-cjk2.9` 32-marker bound fix (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
+
 **Requirements**: FR-002, FR-006, FR-014, FR-017 (`dumps('')`) | **Decisions**: D20, D21, D22, D23, D24 (serializer halves) | **Findings closed**: `syml-xreq.6`, `.12`, `.15` / `.16` / `.2` / `.1` (serializer halves), `.23` (code half) | **Research**: R-05, R-14, R-18
 
 ## Surface
