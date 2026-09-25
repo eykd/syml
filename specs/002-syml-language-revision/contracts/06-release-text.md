@@ -178,10 +178,14 @@ succeeds but `.as_data()` raises.
       so is a list item whose first key is one
       (`- containerPort: 80\n  protocol: TCP` is one string). A bad key
       after a good one raises with a hint.
-   7. `- key:` sets a sibling column: `- server:\n  host: x` is two siblings;
+   7. A key or list marker needs a space after it (D26): `port:8080` (no
+      space after the colon) is not a key — it's text, so it silently makes
+      the whole document, or the whole block it's in, one string; same for
+      `-b` in a list. When it raises instead, the error now includes a hint.
+   8. `- key:` sets a sibling column: `- server:\n  host: x` is two siblings;
       `- server:\n    host: x` nests (show both). Use a space after `-`:
       a tab there counts as one column.
-   8. A blank line inside a value is a paragraph break.
+   9. A blank line inside a value is a paragraph break.
 2. A **`Source`** paragraph with Contract 05's three facts (FR-014).
 3. Any README example that uses an indented comment line, a key outside
    `[a-z][a-z0-9_-]*` (uppercase, camelCase, or punctuation: the lead
@@ -253,7 +257,7 @@ it equals `git rev-parse 1.0.0^{commit}` and is an ancestor of, or equal to,
 4. `tests/acceptance/test_us09_release_readiness.py`'s CHANGELOG assertions
    (built for 001) are updated for the rewritten items rather than deleted.
 5. A US13 acceptance scenario reads the README section headings and asserts
-   the eight items in order.
+   the nine items in order.
 6. A unit test reads `README.md`, extracts the lead example's document and
    its printed result (the first two fenced `python` blocks), and asserts
    `loads(document) == ast.literal_eval(result)`, so the README's first

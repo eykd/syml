@@ -119,7 +119,7 @@ column a prose author most likely meant; without the clause
 continuation yet (baseline unset) gets no clause: its anchor column is
 already in `{COLS}` (US2-9 keeps its exact text).
 
-Hints (at most one; (b) is checked first):
+Hints (at most one; checked in the order (b), (a), (c)):
 
 - **(b) list at its key's column**: the failing node is a `ListItem` and the
   spine ends in a childless `KeyValue` at the same level →
@@ -144,6 +144,22 @@ Hints (at most one; (b) is checked first):
   without the failing-node clause, the same dialogue with one line before the
   dedent (`- scene:\n    Bob: hi\n   Alice: hey`) gets `'Bob' is not a key`,
   because `Bob: hi` is the value's first line.
+- **(c) missing space after a marker** (D26, `syml-cjk2.10`): the failing
+  line, or the line above under (a)'s exact look-back (same candidate line,
+  same gate on it being the value's first line and the failing node being a
+  `KeyValue`/`ListItem`), after its indentation spaces, matches
+  `[a-z][a-z0-9_-]*:\S` (a key immediately followed by a non-space
+  character) or `-(?!-)\S` (a list marker immediately followed by a
+  non-space character, `--`/`---`/`...` excluded — those are `.11`'s
+  document-marker hint's territory, not this one's) →
+  `Hint: a key or list marker needs a space after it.` **Failing-line
+  gating** differs from (a): (c) fires on either open-column kind (`{COLS}`
+  holding `keys` *or* `list items`, i.e. form 2 of the message), never on
+  form 1 (`C` not an open column) — there the real problem is indentation,
+  not a missing space, and the hint would mislead (`config:\n  Host: x\n
+  port:8080`, column 1 not open, gets no hint). (a) and (c) never both match
+  the same candidate line: (a)'s pattern requires whitespace or end-of-line
+  after the colon, (c)'s requires a non-space character there.
 
 ## Behaviour
 
@@ -168,6 +184,11 @@ Hints (at most one; (b) is checked first):
 | position | `a: 1\n# c\n- x` | raises at `Pos(9, 3, 0)`; description `Line 3, at column 0, is a list item, but the open block at column 0 holds keys; open blocks are at column 0.` (the dropped comment line keeps its number, so line numbers are the original text's) |
 | gate | `config:\n  Host: x\n Port: 1` | no hint (the failing line lexed as text; column 1 is not an open `Mapping` column, so it does not qualify on its own either) |
 | punctuation key | `a: 1\nbooleans?: x` | description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: 'booleans?' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter.` (the README's former lead-example key; US1-8 covers only camelCase, red team outer iteration 4) |
+| hint (c), `syml-cjk2.10` | `server:\n  host: x\n  port:8080` | `OutOfContextNodeError`; description `Line 3, at column 2, is a text line, but the open block at column 2 holds keys; open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.` |
+| hint (c), `syml-cjk2.10` | `l:\n  - a\n  -b` | description `Line 3, at column 2, is a text line, but the open block at column 2 holds list items; open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.` |
+| hint (c), `syml-cjk2.10` | `k:\n  port:8080\n- x` | hint (c) fires from the line above (D26's look-back), naming no run — description ends `Hint: a key or list marker needs a space after it.` |
+| hint (c) gate, `syml-cjk2.10` | `server:\n  host: x\n port:8080` | no hint (column 1 is not an open block — form 1 — even though the line is missing its space; the real problem is indentation) |
+| hint (c) gate, `syml-cjk2.10` | `needs_space_after_marker('---')` / `'--x'` | both `False` — a document-marker-shaped line never gets hint (c); `.11` owns that hint |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
 | escape | `a: 1\na: 2`, `filename="x\n\x1b[2J\udcff.syml"` | `str(e)` is exactly two lines; its first begins `x\\n\\x1b[2J\\udcff.syml:2:0: ` (escaped); `str(e).encode("utf-8")` does not raise; `e.message` begins with the raw filename |
@@ -209,6 +230,16 @@ Hints (at most one; (b) is checked first):
    fire from the line above when the failing line lexed as text (the two
    outer-iteration-7 gate rows); hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.
+6a. Hint (c) (D26, `syml-cjk2.10`): fires on the failing line for both
+   open-column kinds (`server:\n  host: x\n  port:8080`; `l:\n  - a\n  -b`)
+   and on the line above via (a)'s exact look-back
+   (`k:\n  port:8080\n- x`); does not fire on form 1
+   (`server:\n  host: x\n port:8080`, the indentation-error case); never
+   fires alongside hint (a) on the same candidate line (they are mutually
+   exclusive by construction). `needs_space_after_marker`'s own truth table:
+   `key:value` / `-x` (indented or not) → `True`; `key: value` / `key:` /
+   `- x` / `a plain line` → `False`; `---` / `--x` / `...` → `False` (never
+   a document-marker-shaped line — `.11`'s territory).
 7. SC-007's three cases as acceptance scenarios (US11).
 8. `_printable`: `str(e)` contains no character outside `str.isprintable()`
    except the one `\n` between its two lines, for every raised error in the

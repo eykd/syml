@@ -76,11 +76,16 @@ Skimming a YAML file into SYML? Watch for these, in order:
    (`Name: app\nport: 80` is a string), and so is a list item whose first
    key is one (`- containerPort: 80\n  protocol: TCP` is one string). A
    bad key after a good one raises with a hint.
-7. **`- key:` sets a sibling column.** `- server:\n  host: x` is two
+7. **A key or list marker needs a space after it.** `port:8080` (no space
+   after the colon) is not a key at all — it's text, so it silently makes
+   the whole document, or the whole block it's in, one string. Same
+   for `-b` in a list. When it raises instead (because a sibling with a
+   proper space already opened the block), the error now includes a hint.
+8. **`- key:` sets a sibling column.** `- server:\n  host: x` is two
    siblings (`[{'server': '', 'host': 'x'}]`); `- server:\n    host: x`
    nests (`[{'server': {'host': 'x'}}]`). Use a space after `-`: a tab
    there counts as one column too, but is easy to misalign visually.
-8. **A blank line inside a value is a paragraph break.** `k:\n  a\n\n  b`
+9. **A blank line inside a value is a paragraph break.** `k:\n  a\n\n  b`
    is `{'k': 'a\n\nb'}`, not `{'k': 'a\nb'}`.
 
 

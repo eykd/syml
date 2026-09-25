@@ -7,9 +7,10 @@ Migration notes for a 0.6.2 user upgrading to 1.0.0. Every user-visible
 change from 0.6.2 is listed below, numbered to match Contract 06's audit
 (`specs/002-syml-language-revision/contracts/06-release-text.md` § FR-016
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
-§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision
-(see `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in
-this one 1.0.0 release.
+§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, item
+25 the 2026-09-25 D26 break-testing-round-2 hint addition (see
+`SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in this one
+1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
 2. Tabs in indentation → `TabIndentationError`.
@@ -238,6 +239,13 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     in 0.6.2, matching item 17 above (D25) — no change from 0.6.2 here,
     though an intermediate draft of this release briefly allowed it
     before D25 restored the strict rule.
+25. **New hint (D26).** `OutOfContextNodeError` gains a third hint: when the
+    failing line, or the line above (hint (a)'s look-back), is a key or list
+    marker missing its trailing space (`port:8080`, `-b`), the message ends
+    "Hint: a key or list marker needs a space after it." Grammar unchanged:
+    `port:8080` alone (no sibling to raise against) still silently parses as
+    text (item 5, D21); the hint only fires where an `OutOfContextNodeError`
+    already raises for another reason.
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

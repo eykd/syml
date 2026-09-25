@@ -10,7 +10,14 @@ import pytest
 
 import syml
 from syml.basetypes import Pos
-from syml.exceptions import DuplicateKeyError, OutOfContextNodeError, ParseError, error_message, would_be_key
+from syml.exceptions import (
+    DuplicateKeyError,
+    OutOfContextNodeError,
+    ParseError,
+    error_message,
+    needs_space_after_marker,
+    would_be_key,
+)
 from syml.preprocess import encoding_error
 
 
@@ -494,6 +501,51 @@ class TestOutOfContextNodeErrorHintGating:
         assert 'Hint' not in exc_info.value.message
 
 
+class TestOutOfContextNodeErrorHintC:
+    """Contract 03 §Hints (c) (D26): missing-space-after-marker hint, on the failing line and the line above."""
+
+    def test_key_missing_space_under_a_mapping(self) -> None:
+        """`port:8080` (no space after the colon) under an open `Mapping` gets the missing-space hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: x\n  port:8080')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds keys; '
+            'open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.'
+        )
+
+    def test_list_marker_missing_space_under_a_list(self) -> None:
+        """`-b` (no space after the list marker) under an open `List` gets the missing-space hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('l:\n  - a\n  -b')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds list items; '
+            'open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.'
+        )
+
+    def test_line_above_gets_the_missing_space_hint(self) -> None:
+        """The block value's own first line, missing its colon-space, still gets the hint via the look-back."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  port:8080\n- x')
+
+        assert 'Hint: a key or list marker needs a space after it.' in exc_info.value.message
+
+    def test_no_hint_when_the_failing_column_is_not_an_open_block(self) -> None:
+        """Form 1 (`does not fit any open block`) never gets hint (c) — the real problem is indentation."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: x\n port:8080')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2.'
+        )
+
+    def test_no_hint_for_a_document_marker_shaped_line(self) -> None:
+        """`---`/`--x` never gets hint (c) — mid-file document markers are `.11`'s leaf, not this one's."""
+        assert needs_space_after_marker('---') is False
+        assert needs_space_after_marker('--x') is False
+
+
 class TestOutOfContextNodeErrorPosition:
     """Contract 03 §Behaviour: a dropped column-0 comment keeps the original text's line numbers."""
 
@@ -593,3 +645,26 @@ class TestWouldBeKey:
     )
     def test_would_be_key(self, line_text: str, expected: str | None) -> None:
         assert would_be_key(line_text) == expected
+
+
+class TestNeedsSpaceAfterMarker:
+    """Contract 03 §Hints (c): the standalone `needs_space_after_marker` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('key:value', True, id='key_colon_no_space'),
+            pytest.param('  key:value', True, id='indented_key_colon_no_space'),
+            pytest.param('key: value', False, id='key_colon_with_space'),
+            pytest.param('key:', False, id='key_colon_at_end_of_line'),
+            pytest.param('-x', True, id='list_marker_no_space'),
+            pytest.param('  -x', True, id='indented_list_marker_no_space'),
+            pytest.param('- x', False, id='list_marker_with_space'),
+            pytest.param('---', False, id='document_marker'),
+            pytest.param('--x', False, id='double_dash_marker'),
+            pytest.param('...', False, id='end_marker'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+        ],
+    )
+    def test_needs_space_after_marker(self, line_text: str, *, expected: bool) -> None:
+        assert needs_space_after_marker(line_text) is expected

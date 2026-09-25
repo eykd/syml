@@ -44,6 +44,23 @@ def would_be_key(line_text: str) -> str | None:
     return run
 
 
+#: Hint (c) candidates (Contract 03 §Hints (c), D26): a key immediately
+#: followed by a non-space character after its colon, or a list marker
+#: immediately followed by a non-space character. Both patterns are
+#: prefixed with `[ \t]*` (matching `_WOULD_BE_KEY_RE`'s tolerance for
+#: leading indentation) rather than D26's bare `^[a-z][a-z0-9_-]*:\S` /
+#: `^-\S`, since the lines this hint fires on are always indented. The list
+#: pattern excludes a second leading `-` (`--`, `---`) so this hint never
+#: fires on a document-marker-shaped line; `.11` owns that hint.
+_MISSING_SPACE_KEY_RE = re.compile(r'^[ \t]*[a-z][a-z0-9_-]*:\S')
+_MISSING_SPACE_LIST_RE = re.compile(r'^[ \t]*-(?!-)\S')
+
+
+def needs_space_after_marker(line_text: str) -> bool:
+    """Return whether `line_text` looks like a key or list marker missing its trailing space (Contract 03 §Hints (c))."""
+    return _MISSING_SPACE_KEY_RE.match(line_text) is not None or _MISSING_SPACE_LIST_RE.match(line_text) is not None
+
+
 def _columns_phrase(columns: Sequence[int]) -> str:
     """Render the sorted, distinct `columns` as 'column 0', 'columns 0 and 2', or 'columns 0, 2 and 4'."""
     cols = sorted(set(columns))
@@ -63,6 +80,7 @@ def out_of_context_description(
     continues_at: int | None,
     list_under_key: bool,
     would_be_key_name: str | None,
+    missing_space_after_marker: bool = False,
 ) -> str:
     """Build `OutOfContextNodeError`'s description (Contract 03 §Messages).
 
@@ -73,7 +91,10 @@ def out_of_context_description(
     clause. `list_under_key` selects hint (b); otherwise `would_be_key_name`
     (already gated by the caller), when given, selects hint (a) — escaped
     through `_printable` so an unprintable would-be key does not leak raw
-    control characters into `.message` (§Surface).
+    control characters into `.message` (§Surface); otherwise
+    `missing_space_after_marker` (already gated by the caller, D26) selects
+    hint (c). Hint (c)'s text has no interpolated content, so it needs no
+    `_printable`/`_truncated_window` bounding.
     """
     cols_phrase = _columns_phrase(open_columns)
     if other_kind is None:
@@ -93,6 +114,8 @@ def out_of_context_description(
     elif would_be_key_name is not None:
         escaped = _printable(_truncated_window(would_be_key_name, center=0))
         hint = f"Hint: '{escaped}' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter."
+    elif missing_space_after_marker:
+        hint = 'Hint: a key or list marker needs a space after it.'
     if hint is not None:
         sentence = f'{sentence} {hint}'
     return sentence

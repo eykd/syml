@@ -13,6 +13,7 @@ from .exceptions import (
     DuplicateKeyError,
     OutOfContextNodeError,
     duplicate_key_description,
+    needs_space_after_marker,
     out_of_context_description,
     would_be_key,
 )
@@ -247,7 +248,9 @@ class Root(ContainerNode):
             and not terminal.children
             and terminal.level == column
         )
-        candidate = None if list_under_key else _would_be_key_candidate(node, pnode, pos, line, open_blocks, terminal)
+        candidate, missing_space = (
+            (None, False) if list_under_key else _hint_candidates(node, pnode, pos, line, open_blocks, terminal)
+        )
 
         description = out_of_context_description(
             line_number=pos.line,
@@ -258,6 +261,7 @@ class Root(ContainerNode):
             continues_at=continues_at,
             list_under_key=list_under_key,
             would_be_key_name=candidate,
+            missing_space_after_marker=missing_space,
         )
         raise OutOfContextNodeError(description, pos, line, filename=self.filename)
 
@@ -289,24 +293,45 @@ def _walk_open_spine(root: Root) -> tuple[dict[int, str], SymlNode]:
     return open_blocks, terminal
 
 
-def _would_be_key_candidate(
+def _hint_candidates(
     node: SymlNode,
     pnode: PNode,
     pos: Pos,
     line: str,
     open_blocks: dict[int, str],
     terminal: SymlNode,
-) -> str | None:
-    """Return hint (a)'s `RUN`, checking the failing line then the line above (Contract 03 §Hints)."""
-    if open_blocks.get(pos.column) == 'keys':
-        candidate = would_be_key(line)
-        if candidate is not None:
-            return candidate
+) -> tuple[str | None, bool]:
+    """Return hint (a)'s `RUN` and hint (c)'s missing-space flag (Contract 03 §Hints).
+
+    Both hints share the same two candidate lines, checked in the same
+    order: the failing line first, then the line above (D26 — hint (c)
+    reuses hint (a)'s look-back). Hint (a)'s failing-line gate stays
+    `'keys'`-only (a would-be key only makes sense under an open `Mapping`);
+    hint (c)'s failing-line gate is any open column (`'keys'` or `'list
+    items'`, i.e. form 2) — never form 1 (`column not in open_blocks`),
+    where the real problem is indentation and "needs a space" would
+    mislead. Only one hint ever wins per candidate line: hint (a)'s pattern
+    requires whitespace/EOL after the colon, hint (c)'s requires a
+    non-space character there, so the two are mutually exclusive on any
+    single line.
+    """
+    if pos.column in open_blocks:
+        if open_blocks[pos.column] == 'keys':
+            candidate = would_be_key(line)
+            if candidate is not None:
+                return candidate, False
+        if needs_space_after_marker(line):
+            return None, True
     if isinstance(terminal, TextLeafNode) and not terminal.inline and isinstance(node, KeyValue | ListItem):
         above_line = _line_above(pnode.full_text, pos.line)
         if above_line == terminal.source.start.line:
-            return would_be_key(get_line_text(pnode.full_text, above_line))
-    return None
+            above_text = get_line_text(pnode.full_text, above_line)
+            candidate = would_be_key(above_text)
+            if candidate is not None:
+                return candidate, False
+            if needs_space_after_marker(above_text):
+                return None, True
+    return None, False
 
 
 def _line_above(full_text: str, line_number: int) -> int:
