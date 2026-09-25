@@ -537,6 +537,22 @@ class TestOutOfContextNodeErrorBoundedSize:
         assert len(str(error)) < 1_000
 
 
+class TestDuplicateKeyErrorBoundedSize:
+    """Contract 03 §Messages/§Bounded rendering: a hostile long key yields a bounded description (syml-s9p9.14)."""
+
+    def test_bounded_message_and_str_for_a_duplicated_one_megabyte_key(self) -> None:
+        r"""A key repeating 1 MB used to yield a multi-megabyte `.message`/`str(e)`."""
+        key = 'a' * 1_000_000
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.loads(f'{key}: 1\n{key}: 2')
+
+        error = exc_info.value
+        # `.key` still carries the full, untruncated key (Contract 03 §Messages: "unchanged attributes").
+        assert error.key == key
+        assert len(error.message) < 1_000
+        assert len(str(error)) < 1_000
+
+
 class TestOutOfContextNodeErrorSC007:
     """Contract 03 §Test obligations item 7: SC-007's plain context error."""
 

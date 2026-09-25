@@ -9,7 +9,13 @@ if TYPE_CHECKING:  # pragma: nocover
     from parsimonious.nodes import Node as PNode
 
 from .basetypes import Pos, Source, StrPath, get_line_text
-from .exceptions import DuplicateKeyError, OutOfContextNodeError, out_of_context_description, would_be_key
+from .exceptions import (
+    DuplicateKeyError,
+    OutOfContextNodeError,
+    duplicate_key_description,
+    out_of_context_description,
+    would_be_key,
+)
 from .preprocess import PositionMap, is_blank
 
 
@@ -358,7 +364,7 @@ class Mapping(ParentNode):
         first = self.keys.get(node.key.as_data())
         if first is not None:
             key = node.key.as_data()
-            message = f'Duplicate key {key!r}'
+            message = duplicate_key_description(key)
             raise DuplicateKeyError(
                 message,
                 node.source.start,

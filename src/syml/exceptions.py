@@ -98,6 +98,21 @@ def out_of_context_description(
     return sentence
 
 
+def duplicate_key_description(key: str) -> str:
+    """Build `DuplicateKeyError`'s description: `Duplicate key '{key}'`, `key` windowed.
+
+    `key` is rendered through `_truncated_window(key, center=0)` before being
+    quoted, mirroring hint (a)'s treatment of a would-be key (Contract 03
+    §Messages/§Bounded rendering, syml-s9p9.14): the grammar's key pattern
+    (`[a-z][a-z0-9_-]*`) has no length bound, so an attacker-repeated 1 MB
+    key would otherwise make `.message`/`str(e)` scale with the key's
+    length. No `_printable` escaping is needed here — the key pattern admits
+    no non-printable code point. The caller still stores the full,
+    untruncated `key` on `DuplicateKeyError.key`/`.args`.
+    """
+    return f"Duplicate key '{_truncated_window(key, center=0)}'"
+
+
 def _printable(text: str) -> str:
     """Replace every non-`str.isprintable()` character in `text` with its Python escape.
 

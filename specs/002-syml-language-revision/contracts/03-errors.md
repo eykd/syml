@@ -70,12 +70,21 @@ windowed — so a 1 MB hostile line (e.g. a run of `\x00` before a bare `:`)
 still yields a bounded `.message` and `str(e)` instead of the unbounded,
 multi-megabyte rendering this caps.
 
+`DuplicateKeyError`'s description gets the same treatment (`syml-s9p9.14`):
+the grammar's key pattern (`[a-z][a-z0-9_-]*`) has no length bound, so a
+document that repeats a 1 MB key used to yield a multi-megabyte `.message`
+and `str(e)`. `duplicate_key_description(key)` windows `key` through
+`_truncated_window(key, center=0)` before quoting it — the same call shape
+as hint (a)'s would-be-key quote — so `.message` stays bounded regardless of
+the repeated key's length. `DuplicateKeyError.key` and `.args` still carry
+the full, untruncated key.
+
 ## Messages
 
 | Class | Description (the part after any filename prefix) |
 | --- | --- |
 | `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by the text-value clause (below), then by one space and a hint |
-| `DuplicateKeyError` | `Duplicate key '{key}'` (unchanged attributes `key`, `first_position`) |
+| `DuplicateKeyError` | `Duplicate key '{key}'`, `key` windowed through `_truncated_window(key, center=0)` (unchanged attributes `key`, `first_position`, both carrying the full key) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
 | `EncodingError` | `Invalid encoding` (unchanged) |
 
@@ -169,7 +178,9 @@ Hints (at most one; (b) is checked first):
   raises with `filename=self.filename`. `SymlNode.fail_to_incorporate_node`
   keeps a minimal fallback only if a non-`Root` node can reach it; if none can,
   it is removed rather than left uncovered (principle III).
-- `Mapping.can_add_node` raises `DuplicateKeyError(f"Duplicate key {key!r}", ..., filename=node.filename)`.
+- `Mapping.can_add_node` raises `DuplicateKeyError(duplicate_key_description(key), ..., filename=node.filename)`;
+  `duplicate_key_description` windows `key` through `_truncated_window(key, center=0)`
+  before quoting it, the same treatment hint (a) gives a would-be key (§Bounded rendering, syml-s9p9.14).
 - `preprocess` builds the `PositionMap` first and passes it and `filename` to
   `_scan_for_tab_indentation`, which maps its `Pos` (R-09).
 - `encoding_error` passes `filename=` instead of calling `error_message`.
@@ -203,4 +214,7 @@ Hints (at most one; (b) is checked first):
 9. Bounded rendering (`syml-s9p9.9`): a hostile 1 MB line (e.g. a run of
    `\x00` before a bare `:`) yields a `.message` and `str(e)` that both stay
    well under the input's size, while `.line_text` still carries the full,
-   untruncated line.
+   untruncated line. Bounded rendering also covers `DuplicateKeyError`
+   (`syml-s9p9.14`): a document repeating a 1 MB key yields a `.message` and
+   `str(e)` well under the input's size, while `.key` still carries the
+   full, untruncated key.
