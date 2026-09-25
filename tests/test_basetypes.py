@@ -191,9 +191,10 @@ class TestPosFromStrIndex:
         text = 'a\nb'
         assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 1)
 
-    def test_it_should_report_column_zero_past_a_trailing_newline(self) -> None:
+    def test_it_should_report_the_next_line_column_zero_past_a_trailing_newline(self) -> None:
+        r"""Contract 05 §Behaviour: end-of-text after a trailing `\n` is the *next* line (`syml-xreq.11`)."""
         text = 'a\nb\n'
-        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 2, 0)
+        assert basetypes.Pos.from_str_index(text, len(text)) == basetypes.Pos(len(text), 3, 0)
 
 
 def _reference_from_str_index(text: str, index: int) -> basetypes.Pos:
@@ -202,12 +203,17 @@ def _reference_from_str_index(text: str, index: int) -> basetypes.Pos:
     Pins the bisect-based rewrite in `basetypes.Pos.from_str_index` to the exact
     behavior (including its bad-index and unterminated-line quirks) that shipped
     before this module cached `_line_start_offsets` to fix the O(n^2) parse-time
-    regression.
+    regression, plus the end-of-text-after-trailing-`\n` fix (Contract 05
+    §Behaviour, `syml-xreq.11`): `index == len(text)` right after a trailing
+    `\n` reports the *next* line, column 0, rather than staying on the last
+    line that ended.
     """
     parts = text.split('\n')
     lines = [part + '\n' for part in parts[:-1]]
     if parts[-1]:
         lines.append(parts[-1])
+    if text and text.endswith('\n') and index == len(text):
+        return basetypes.Pos(index, len(lines) + 1, 0)
     curr_pos = 0
     linenum = 0
     last = len(lines) - 1

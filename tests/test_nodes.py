@@ -421,3 +421,22 @@ class TestRootScalarKeepsIndentation:
 
     def test_an_indented_root_scalars_source_starts_at_column_0(self) -> None:
         assert parsers.parse('  hello').as_source().start == Pos(0, 1, 0)
+
+
+class TestBlankAndCommentOnlyDocumentSourceStart:
+    r"""Contract 05 §Behaviour: a blank-only or comment-only document ending in `\n` (`syml-xreq.11`).
+
+    Both are zero-width under the empty-document/column-0-comment rules, so
+    `.as_source().start` must report a `Pos` consistent with the end-of-text
+    fix in `Pos.from_str_index` -- the *next* line, column 0 -- not the line
+    that ended.
+    """
+
+    def test_a_blank_only_document_reports_the_next_line_column_zero(self) -> None:
+        assert parsers.parse('\n').as_source().start == Pos(index=1, line=2, column=0)
+
+    def test_a_comment_only_document_reports_the_next_line_column_zero(self) -> None:
+        assert parsers.parse('# x\n').as_source().start == Pos(index=4, line=2, column=0)
+
+    def test_an_empty_document_still_reports_the_first_line_column_zero(self) -> None:
+        assert parsers.parse('').as_source().start == Pos(index=0, line=1, column=0)

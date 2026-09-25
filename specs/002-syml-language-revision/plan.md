@@ -402,7 +402,13 @@ independent.
   grep; 05-tasks greps for `comment`, `uppercase`, `Listen`, `IndentNode`,
   `\t`, `>=`, `Failed to incorporate`). Done (`syml-s9p9.5.3.4`): the rule-A
   row `('', '\n')` in `tests/test_serializer.py` is now `('', '')`
-  (FR-017, `syml-xreq.12`).
+  (FR-017, `syml-xreq.12`). Done (`syml-s9p9.5.3.6`): `tests/test_basetypes.py`'s
+  `test_it_should_report_column_zero_past_a_trailing_newline` (renamed
+  `..._the_next_line_column_zero_past_a_trailing_newline`) and
+  `_reference_from_str_index`/`TestPosFromStrIndexEquivalenceWithReferenceImplementation`
+  now encode the end-of-text-after-trailing-`\n` fix (`Pos.from_str_index`
+  reports the next line, column 0, not the line that ended), matching
+  Contract 05 §Behaviour (FR-017, `syml-xreq.11`).
 
 **Comment tests after the principal's ruling (2026-09-24).** Column-0
 comments keep 1.0's behaviour, so several 1.0 comment tests now stay green

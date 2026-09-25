@@ -116,6 +116,11 @@ class Pos:
         starts, ends_without_newline = _line_start_offsets(text)
         if not starts:
             return cls(len(text), 1, 0)
+        if index == len(text) and not ends_without_newline:
+            # Contract 05 §Behaviour: end-of-text right after a trailing `\n`
+            # reports the *next* line, column 0 -- not the last line that
+            # ended, which every other index still resolves to (syml-xreq.11).
+            return cls(index, len(starts) + 1, 0)
         linenum = bisect_right(starts, index) - 1
         line_start = starts[linenum]
         is_last_line = linenum == len(starts) - 1

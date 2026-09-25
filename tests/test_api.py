@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import os
+import pathlib
 
 import pytest
 
 import syml
 from syml import basetypes, serializer
-from syml.exceptions import DuplicateKeyError, EncodingError
+from syml.exceptions import DuplicateKeyError, EncodingError, ParseError
 
 
 class TestLoadsCarriesFilenameIntoEveryParseErrorMessage:
@@ -70,6 +72,122 @@ class TestLoadResolvesFilenameFromFileObj:
 
         assert 'given.syml' in exc_info.value.message
         assert 'ignored.syml' not in exc_info.value.message
+
+
+class TestLoadsRejectsNonStrInputWithAClearTypeError:
+    """Contract 05 §Behaviour: non-`str` input to `loads` raises `TypeError` naming the type."""
+
+    @pytest.mark.parametrize(
+        ('document', 'expected_type_name'),
+        [
+            pytest.param(b'k: v', 'bytes', id='bytes'),
+            pytest.param(None, 'NoneType', id='none'),
+            pytest.param(1, 'int', id='int'),
+        ],
+    )
+    def test_loads_raises_a_type_error_naming_the_received_type(
+        self,
+        document: object,
+        expected_type_name: str,
+    ) -> None:
+        with pytest.raises(TypeError) as exc_info:
+            syml.loads(document)  # type: ignore[arg-type]
+
+        assert expected_type_name in str(exc_info.value)
+
+
+class TestLoadRejectsNonTextNonBytesReadResults:
+    """Contract 05 §Behaviour: `load()` on a non-`str`/`bytes` `read()` result raises `TypeError`."""
+
+    def test_a_memoryview_read_result_raises_a_type_error_naming_memoryview(self) -> None:
+        class _MemoryviewHandle:
+            def read(self) -> memoryview:
+                return memoryview(b'k: v')
+
+        with pytest.raises(TypeError, match='memoryview'):
+            syml.load(_MemoryviewHandle())  # type: ignore[arg-type]
+
+
+class TestLoadOnAClosedHandleRaisesTypeError:
+    """Contract 05 §Behaviour: `load()` on a closed handle raises a chained `TypeError`, not `ValueError`."""
+
+    def test_a_closed_string_io_handle_raises_type_error_chained_from_value_error(self) -> None:
+        handle = io.StringIO('key: value')
+        handle.close()
+
+        with pytest.raises(TypeError) as exc_info:
+            syml.load(handle)
+
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_a_closed_handle_is_not_caught_by_except_parse_error(self) -> None:
+        """`except ParseError` must not confuse the closed-handle error for a parse error."""
+        handle = io.StringIO('key: value')
+        handle.close()
+
+        try:
+            syml.load(handle)
+        except ParseError:
+            pytest.fail('closed-handle TypeError was caught by except ParseError')
+        except TypeError:
+            pass
+        else:
+            pytest.fail('expected load() to raise TypeError on a closed handle')
+
+
+class TestLoadHonoursAnyOsPathLikeFilename:
+    """Contract 05 §Behaviour: `load()` honours any `os.PathLike` `.name`, not just `str`/`Path`."""
+
+    def test_a_pathlib_pure_posix_path_name_prefixes_the_message(self) -> None:
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = pathlib.PurePosixPath('p.syml')
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message.startswith('p.syml: ')
+
+    def test_a_custom_os_pathlike_name_is_honoured_via_fspath(self) -> None:
+        class _CustomPath(os.PathLike[str]):
+            def __fspath__(self) -> str:
+                return 'custom.syml'
+
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = _CustomPath()
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message.startswith('custom.syml: ')
+
+    def test_a_surrogate_escaped_pathlike_name_is_fsdecoded_raw_and_printable_escaped_in_str(self) -> None:
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = pathlib.PurePosixPath(os.fsdecode(b'\xff.syml'))
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message.startswith('\udcff.syml: ')
+        assert str(exc_info.value).startswith('\\udcff.syml:')
+        str(exc_info.value).encode('utf-8')
+
+    def test_an_int_name_yields_no_filename(self) -> None:
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = 5
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == "Duplicate key 'key'"
+
+    def test_a_bytes_name_yields_no_filename(self) -> None:
+        handle = io.StringIO('key: value1\nkey: value2')
+        handle.name = b'x.syml'
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == "Duplicate key 'key'"
 
 
 class TestParseIsAPublicExport:
