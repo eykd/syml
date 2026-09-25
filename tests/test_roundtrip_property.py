@@ -88,8 +88,8 @@ _plain_scalar = st.text(max_size=12)
 _punctuation_scalar = st.text(alphabet='abc XYZ-:#/\n\t\'"', max_size=12)
 scalar = st.one_of(_seeded_scalar, _plain_scalar, _punctuation_scalar)
 
-#: `[a-z][a-z0-9_-]*`: the grammar's key rule (§4.5), matching `_KEY_PATTERN`
-#: in `serializer.py`. Built directly rather than filtered through
+#: `[a-z][a-z0-9_-]*`: the grammar's key rule (§4.5), matching `basetypes.KEY_PATTERN`.
+#: Built directly rather than filtered through
 #: `key_is_representable`, so the strategy does not depend on the code P7
 #: exercises.
 valid_key = st.builds(
