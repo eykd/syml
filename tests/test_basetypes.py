@@ -10,6 +10,7 @@ import pytest
 
 import syml
 from syml import basetypes, parsers
+from syml.exceptions import OutOfContextNodeError
 from syml.nodes import KeyValue
 
 
@@ -451,7 +452,7 @@ class TestLineAboveScanScaling:
 
         with (
             mock.patch.object(basetypes, '_compute_line_start_offsets', counting_compute),
-            pytest.raises(Exception),  # noqa: B017, PT011 - any OutOfContextNodeError raise
+            pytest.raises(OutOfContextNodeError),
         ):
             syml.loads(text)
         return misses
@@ -473,7 +474,7 @@ class TestLineAboveScanScaling:
         def timed(n: int) -> float:
             text = 'k:\n  text\n' + '\n' * n + '- x\n'
             start = time.perf_counter()
-            with pytest.raises(Exception):  # noqa: B017, PT011 - any OutOfContextNodeError raise
+            with pytest.raises(OutOfContextNodeError):
                 syml.loads(text)
             return time.perf_counter() - start
 
