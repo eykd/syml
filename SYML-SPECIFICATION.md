@@ -1477,7 +1477,7 @@ Implementations SHOULD offer two output modes:
 - **Source mode**: Returns Source objects that stringify to their text but preserve location info
 
 Source objects SHOULD be usable as dictionary keys interchangeably with
-strings (i.e., `Source("foo") == "foo"` for equality and hashing).
+strings (i.e., `Source.from_text("foo") == "foo"` for equality and hashing).
 Because Source objects compare and hash exactly as their text, an
 implementation MUST NOT rely on final mapping construction to detect
 duplicate keys (§8.3): two colliding Source keys collapse silently in a

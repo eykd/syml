@@ -94,9 +94,9 @@ facts distinguish it from `str`:
 - **`Source` is not a `str`.** It compares equal to a `str` with the same
   text and hashes the same way, so it works as a dict key or in a set
   alongside plain strings, but `isinstance(source, str)` is `False`.
-- **An empty `Source` is truthy.** `bool(Source(text=''))` is `True` even
-  though `bool('')` is `False`, and `Source` has no `__len__`, so `len()`
-  raises `TypeError` rather than returning `0`.
+- **An empty `Source` is truthy.** `bool(Source.from_text(''))` is `True`
+  even though `bool('')` is `False`, and `Source` has no `__len__`, so
+  `len()` raises `TypeError` rather than returning `0`.
 - **A multi-line `Source.text` is the dedented value.** It is exactly the
   string `as_data()` would return for the same node — indentation past the
   baseline preserved, indentation up to the baseline stripped — not the

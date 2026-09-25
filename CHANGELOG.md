@@ -52,7 +52,7 @@ this one 1.0.0 release.
    column 0, is a text line, ...` followed by the offending line.
 10. `Pos` coordinates now refer to the **original** text. `Source` still
     equals a `str` with the same text, but no longer equals a non-`str`
-    (`Source('1') == 1` was `True`). `Source.from_node` takes
+    (`Source.from_text('1') == 1` was `True`). `Source.from_node` takes
     `(pnode, filename=None)`; `Pos.from_str_index` and `Source.from_text`
     count only `\n` as a line break (U+2028, U+0085 and the rest no longer
     start a line); and `Source + str` now counts the joining `\n` in

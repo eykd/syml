@@ -9,9 +9,13 @@ drift from the parser (red team outer iteration 4).
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
+import pytest
+
 import syml
+from syml.basetypes import Source
 
 README_PATH = Path(__file__).parent.parent / 'README.md'
 
@@ -56,3 +60,14 @@ def test_the_readme_lead_example_matches_what_loads_actually_returns() -> None:
     expected = _extract_printed_result(result_block)
 
     assert syml.loads(document) == expected
+
+
+def test_the_readme_source_truthiness_example_is_runnable() -> None:
+    """README's `Source` section states a runnable expression, not `Source(text=...)` (syml-cjk2.4)."""
+    readme_text = README_PATH.read_text(encoding='utf-8')
+    match = re.search(r'`(bool\(Source\.from_text\(\'\'\)\))` is `True`', readme_text)
+    assert match is not None, "expected the README's empty-Source-is-truthy example to be present"
+
+    assert eval(match.group(1), {'Source': Source}) is True  # noqa: S307
+    with pytest.raises(TypeError):
+        len(Source.from_text(''))  # type: ignore[arg-type]
