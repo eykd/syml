@@ -148,21 +148,19 @@ class TestDumpsUnrepresentableScalars:
             ('a\x85b', 'contains a control character'),
             ({'k': ' lead'}, 'begins with whitespace'),
             ({'k': '\tlead'}, 'begins with whitespace'),
-            ('  hello', 'begins with whitespace'),
             ([' x\ny'], 'begins with whitespace'),
-            ('x\n\ny', 'contains a blank or whitespace-only line'),
             ({'k': 'a\n   '}, 'contains a blank or whitespace-only line'),
-            ({'k': 'x\n'}, 'contains a blank or whitespace-only line'),
+            ({'k': 'x\n'}, 'begins or ends with a blank line'),
+            ({'k': '\nx'}, 'begins or ends with a blank line'),
+            ('x\n', 'begins or ends with a blank line'),
             ({'k': 'a\n\tb'}, 'a line begins with a tab'),
             ({'k': 'a\n  \tb'}, 'a line begins with a tab'),
-            ({'k': 'a\n# c'}, 'a line begins with a comment marker'),
-            ('x\n  //c', 'a line begins with a comment marker'),
+            ('a\n# b', 'a line begins with a comment marker'),
             ('# c', 'a line begins with a comment marker'),
-            ({'k': 'a\n  - b'}, 'a line would lex as structure'),
-            ({'k': 'a\nlisten: x'}, 'a line would lex as structure'),
             ('k:', 'a line would lex as structure'),
             ('- x', 'a line would lex as structure'),
             ('- ' * 200 + 'x', 'a line would lex as structure'),
+            ('  - b', 'a line would lex as structure'),
             (['- x'], 'a list item value would lex as structure'),
             (['key: v'], 'a list item value would lex as structure'),
             (['-'], 'a list item value would lex as structure'),
@@ -173,6 +171,22 @@ class TestDumpsUnrepresentableScalars:
         with pytest.raises(UnrepresentableValueError) as excinfo:
             serializer.dumps(value)  # type: ignore[arg-type]
         assert reason in excinfo.value.args[0]
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            {'k': 'a\n  - b'},
+            {'k': 'a\nlisten: x'},
+            {'k': 'a\n# c'},
+            'x\n  //c',
+            '  hello',
+            'x\n\ny',
+            ' leading',
+        ],
+    )
+    def test_it_should_round_trip_values_no_longer_refused(self, value: object) -> None:
+        """D21/D22/D23/FR-005: a later line's shape, a mid-value blank line, and a root scalar's own leading spaces no longer make a value unrepresentable."""
+        assert loads(serializer.dumps(value)) == value  # type: ignore[arg-type]
 
 
 class TestLexesAsStructure:
@@ -247,6 +261,94 @@ class TestDumpsRuleG:
         assert serializer.dumps([{'a': {'b': 'c'}}]) == '- a:\n    b: c\n'
 
 
+class TestDumpsResidualUnrepresentableSet:
+    """Contract 04's residual nine-item set: exact output and the 32-marker recursion guard."""
+
+    def test_it_should_write_a_paragraph_break_as_an_empty_physical_line(self) -> None:
+        """US3-1: a blank line inside a value is one empty physical line, no indentation."""
+        value = {'k': 'Para one.\n\nPara two.'}
+        expected = 'k:\n  Para one.\n\n  Para two.\n'
+        assert serializer.dumps(value) == expected
+        assert loads(expected) == value
+
+    def test_it_should_write_a_structure_shaped_later_line_unrestricted(self) -> None:
+        """US3-2: a later block line free to lex as structure still round-trips as text."""
+        value = {'k': 'some prose\n- used as a dash\nkey: v'}
+        expected = 'k:\n  some prose\n  - used as a dash\n  key: v\n'
+        assert serializer.dumps(value) == expected
+        assert loads(expected) == value
+
+    def test_it_should_write_an_indented_root_scalar_at_column_0(self) -> None:
+        """US3-3: FR-005 — a root scalar's own leading spaces are literal, unstripped."""
+        value = '  hello\nworld'
+        expected = '  hello\nworld\n'
+        assert serializer.dumps(value) == expected
+        assert loads(expected) == value
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            {'k': 'a\n' + '- ' * 32 + 'x'},
+            ['a\n' + '- ' * 32 + 'x'],
+            'a\n' + '- ' * 32 + 'x',
+        ],
+    )
+    def test_it_should_accept_a_later_line_with_32_markers(self, value: object) -> None:
+        assert loads(serializer.dumps(value)) == value  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            {'k': 'a\n' + '- ' * 33 + 'x'},
+            ['a\n' + '- ' * 33 + 'x'],
+            'a\n' + '- ' * 33 + 'x',
+        ],
+    )
+    def test_it_should_refuse_a_later_line_with_33_markers(self, value: object) -> None:
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps(value)  # type: ignore[arg-type]
+
+    def test_it_should_refuse_33_tab_separated_markers(self) -> None:
+        """Tabs separate markers too, not only spaces."""
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps({'k': 'a\n' + '-\t' * 33 + 'x'})
+
+    def test_it_should_count_a_trailing_bare_dash_as_a_marker(self) -> None:
+        """33 markers with the last one bare (no trailing space) still refuses."""
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps({'k': 'a\n  ' + '- ' * 32 + '-'})
+
+    def test_it_should_round_trip_a_long_chain_after_an_inline_key(self) -> None:
+        """A chain after `k: ` is inline `data`, not a later block line, so it never recurses."""
+        value = {'k': 'a\nk: ' + '- ' * 100 + 'x'}
+        assert loads(serializer.dumps(value)) == value
+
+    def test_it_should_round_trip_a_short_later_line_chain(self) -> None:
+        value = {'k': 'a\n' + '- ' * 20 + 'x'}
+        assert loads(serializer.dumps(value)) == value
+
+    def test_it_should_refuse_a_deep_later_line_load_only_family(self) -> None:
+        """L3: `loads` can read a 40-marker chain at a shallow stack; `dumps` refuses it at every stack."""
+        value = loads('k:\n  a\n  ' + '- ' * 40 + 'x')
+        with pytest.raises(UnrepresentableValueError):
+            serializer.dumps(value)
+
+    def _dumps_after_burning_frames(self, value: object, depth: int) -> str | None:
+        """Recurse `depth` frames deep before calling dumps, to prove the bound is a fixed count."""
+        if depth <= 0:
+            try:
+                serializer.dumps(value)  # type: ignore[arg-type]
+            except UnrepresentableValueError:
+                return 'refused'
+            return 'accepted'
+        return self._dumps_after_burning_frames(value, depth - 1)
+
+    def test_it_should_refuse_33_markers_the_same_way_at_a_shallow_or_deep_stack(self) -> None:
+        value = {'k': 'a\n' + '- ' * 33 + 'x'}
+        assert self._dumps_after_burning_frames(value, 0) == 'refused'
+        assert self._dumps_after_burning_frames(value, 500) == 'refused'
+
+
 class TestDumpsUnrepresentableEmptyContainers:
     """§11.2.2 — empty list/mapping raise UnrepresentableValueError at any depth (D1)."""
 
@@ -309,18 +411,35 @@ class TestDumpsUnrepresentableRootScalars:
         [
             '- x',  # would lex as list_item
             'k: v',  # would lex as key_value
-            '#comment',  # begins with '#'
-            '//comment',  # begins with '//'
+            '#comment',  # begins with '#' at column 0
+            '//comment',  # begins with '//' at column 0
             'a\rb',  # control character other than LF/TAB
-            ' leading',  # leading whitespace on its first line
-            'x\n\ny',  # contains a blank line
+            '\tleading',  # leading tab on its first line
+            'a\n# b',  # a later line begins with '#' at column 0 (item 9, root only)
+            'a\n// b',  # a later line begins with '//' at column 0 (item 9, root only)
         ],
     )
     def test_it_should_raise_unrepresentable_value_error_for_a_root_scalar_with_no_encoding(self, value: str) -> None:
         with pytest.raises(UnrepresentableValueError):
             serializer.dumps(value)
 
-    @pytest.mark.parametrize('value', ['hello', 'a\nb', 'trailing ', "''", '""', "'Tis", 'Listen: here'])
+    @pytest.mark.parametrize(
+        'value',
+        [
+            'hello',
+            'a\nb',
+            'trailing ',
+            "''",
+            '""',
+            "'Tis",
+            'Listen: here',
+            '  hello',  # FR-005: leading spaces on a root scalar's first line are literal
+            '  hello\nworld',  # US3-3
+            'x\n\ny',  # D22: a mid-value blank line is a paragraph break
+            '  # x',  # D23: indented, so not a column-0 comment
+            'a\n  # b',  # D23: indented later line, not a column-0 comment
+        ],
+    )
     def test_it_should_serialize_a_representable_root_scalar(self, value: str) -> None:
         assert loads(serializer.dumps(value)) == value
 

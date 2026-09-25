@@ -69,18 +69,22 @@ CORPUS: dict[str, SymlInput] = {
     # list item and both round-trip (syml-xreq.6).
     'leading_feff_list_item': ['\ufeff- x'],
     'leading_feff_block_line': {'k': 'a\n\ufeff- x'},
+    # D21/D23 (Contract 04): once a block value's baseline is fixed, a later
+    # line is that value's text whatever it lexes as, and a non-root line
+    # beginning with '#'/'//' is text too (only a root scalar's line can be
+    # read back as a comment). These four moved out of UNREPRESENTABLE.
+    'leading_space_root_scalar': '  hello',
+    'contains_blank_line': {'k': 'x\n\ny'},
+    'block_line_begins_with_comment_marker': {'k': 'a\n# c'},
+    'block_line_lexes_as_structure': {'k': 'a\n  - b'},
 }
 
 UNREPRESENTABLE: dict[str, object] = {
     'leading_trailing_space': {'k': ' x '},
     'leading_trailing_tab': {'k': '\tx\t'},
-    'leading_space_root_scalar': '  hello',
     'contains_cr': {'k': 'a\rb'},
     'contains_nul': {'k': 'a\x00b'},
-    'contains_blank_line': {'k': 'x\n\ny'},
     'block_line_begins_with_tab': {'k': 'a\n\tb'},
-    'block_line_begins_with_comment_marker': {'k': 'a\n# c'},
-    'block_line_lexes_as_structure': {'k': 'a\n  - b'},
     'looks_like_key_value': ['key: value'],
     'looks_like_list_item': ['- x'],
     'bare_dash_list_item': ['-'],

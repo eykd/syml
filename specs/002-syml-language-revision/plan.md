@@ -387,7 +387,12 @@ independent.
   round-trip leaf (serializer, `syml-s9p9.5.3.1`) adds
   `leading_feff_list_item` (`["\ufeff- x"]`) and `leading_feff_block_line`
   (`{"k": "a\n\ufeff- x"}`) to both `CORPUS` and US07's representable
-  Examples (US3-5, `syml-xreq.6`).
+  Examples (US3-5, `syml-xreq.6`). Done (residual-set leaf,
+  `syml-s9p9.5.3.2`): `contains_blank_line`, `block_line_begins_with_comment_marker`,
+  `leading_space_root_scalar`, and `block_line_lexes_as_structure` moved from
+  `UNREPRESENTABLE` to `CORPUS` and to US07's representable Examples;
+  `uppercase_key` and the rest of the key-rule/root-scalar-refusal rows were
+  checked against Contract 04 and stayed unrepresentable, unchanged.
 - `specs/acceptance-specs/US09-release-readiness.feature`: CHANGELOG item
   assertions.
 - `tests/test_parsers.py`, `tests/test_nodes.py`, `tests/test_serializer.py`,

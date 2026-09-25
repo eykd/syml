@@ -1557,22 +1557,29 @@ C. **Multi-line value** (contains `\n`), or **any root scalar**. Write it
    marker; a root scalar is written as bare lines at column 0. Because
    §5.1/§5.3 preserve indentation beyond the baseline, only the *first*
    line's leading whitespace is restricted: it MUST NOT begin with a
-   space or tab (at a key or list position a leading space would move
-   the baseline; at every position a leading tab is a tab in indentation,
-   §8.4); later lines keep their own leading spaces. A block value's
-   lines MUST NOT: be blank or whitespace-only (a blank line is a
-   paragraph break, not a literal empty line stored some other way);
-   begin with `#` or `//` after any leading spaces, **except** as the
-   value's own first line at a mapping/list position (`{"k": "#x\nmore"}`
-   is representable: the first line is inline, only later lines are
-   restricted) — a **root scalar**, however, MUST NOT have *any* line
-   beginning with `#`/`//`, first line included, since a root scalar's
-   first line has no separator to protect it from column 0 (item 9
-   below). Every other line, once past the first, is free to lex as
-   `list_item`/`key_value`/`section` and still round-trip, because
-   text-context (§5.1 rule 6) reads it back as this value's text — this
-   is the headline behaviour change from 1.0: a structure-shaped
-   continuation line is no longer unrepresentable.
+   space at a key or list position, since a leading space would move the
+   baseline there (item 3 below); a **root scalar**'s first line has no
+   such restriction — its own leading spaces are literal content, written
+   and read back as-is (FR-005) — but at every position a leading tab on
+   any line, first or later, is a tab in indentation and unrepresentable
+   (§8.4, item 4 below); later lines otherwise keep their own leading
+   spaces. A value with more than one line MUST NOT have an empty first
+   or last line (item 6 below); a line that is non-empty and whitespace-only
+   is also unrepresentable (item 5 below) — but a genuinely empty *interior*
+   line is a paragraph break, written and read back as such (D22). A
+   **root scalar**'s lines, first included, MUST NOT begin with `#` or
+   `//` at column 0, since a root scalar's first line has no separator to
+   protect it from column 0 and every line is read at column 0 (item 9
+   below) — an indented `#`/`//` line is ordinary text, at the root as
+   everywhere else (D23). At a mapping or list position, every line once
+   past the first is free to lex as `list_item`/`key_value`/`section`,
+   including one that begins with `#` or `//`, and still round-trips,
+   because text-context (§5.1 rule 6) reads it back as this value's text
+   — this is the headline behaviour change from 1.0: a structure-shaped
+   continuation line is no longer unrepresentable. The one exception is a
+   fixed recursion guard: a later line whose leading `- ` marker chain
+   holds more than 32 markers is unrepresentable at every position (item 2
+   below), a bound §13.4 explains.
 D. **Control characters.** A string containing `\r` (§4.7), NUL, or any
    other control character except LF and TAB (§4.6.1) is unrepresentable
    at every position: there is no escape sequence to write one. TAB is
@@ -1586,27 +1593,33 @@ G. **Inline mapping in a list item** (`- key: v`): `dumps` MUST emit
 
 The nine unrepresentable families a conforming `dumps` MUST reject with
 `UnrepresentableValueError` (§11.3), rather than emit text that would not
-read back as the same value: (1) a leading space/tab on a block value's
-first line; (2) more than 32 leading `- ` markers on a later line of a
-block value, a fixed bound chosen well under the recursion cliff
-(§13.4); (3) a blank/whitespace-only line inside a block value; (4) a
-control character other than LF/TAB anywhere; (5) a leading tab as a
-line's first character in block form (a tab in indentation, §8.4); (6) a
-value beginning with a space/tab at a single-line mapping/list position;
-(7) a single-line value at a list position that itself lexes as
-`list_item`/`key_value`/`section`; (8) an empty list or empty mapping at
-any depth (§11.2.2); and (9) a root scalar with any line — including its
-first — that begins with `#` or `//` (it would read back as a column-0
-comment, D23). Three families `loads` can return but `dumps` never
-writes (load-only): an inline-first mapping spelling (`- key: v\n  j: w`
-reads as a two-key mapping; `dumps` of that mapping instead writes `-
-key: v\n  j: w` only at the block layout above — there is no separate
-"inline-first" `dumps` output, so a value round-tripped through `dumps`
-never depends on this reading); a value containing a control character
-other than LF/TAB that §4.6.1 lets `loads` read back verbatim from a
-raw byte stream `dumps` never emits; and a later continuation line with
-more than 32 leading `- ` markers, which `loads` reads (bounded by the
-recursion cliff, §13.4) but item 2 above refuses to write.
+read back as the same value (Contract 04, §11.2.1 as revised): (1) a
+control character other than LF/TAB anywhere, including `\r` (§4.6.1) —
+every position; (2) a first line that is structure-shaped (it would lex
+as `list_item`/`key_value`/`section`, a `RecursionError` counting as
+structure) — at a list position (single- or multi-line value), at a
+mapping position (multi-line value only), or at the root — **and**, at
+every position, any later line of a multi-line value whose leading `- `
+marker chain holds more than 32 markers, a fixed bound chosen well under
+the recursion cliff (§13.4); (3) a block value's first line beginning
+with a space — mapping or list position only; (4) any line whose leading
+run of spaces and tabs contains a tab — every position; (5) any line
+that is non-empty and consists only of spaces and tabs — every position;
+(6) a value with more than one line whose first or last line is empty —
+every position; (7) a mapping key that does not match
+`[a-z][a-z0-9_-]*`, including the empty string; (8) an empty list or
+empty mapping at any depth (§11.2.2); and (9) a root scalar with any
+line — including its first — that begins with `#` or `//` (it would read
+back as a column-0 comment, D23). Three families `loads` can return but
+`dumps` never writes (load-only): a multi-line value at a mapping
+position whose first line is structure-shaped (`k: a: 1\n  b` reads as
+`{"k": "a: 1\nb"}`; item 2 at a mapping position refuses to write it —
+the value has only this inline-first spelling, which `dumps` never
+uses); a value containing a control character other than LF/TAB that
+§4.6.1 lets `loads` read back verbatim from a raw byte stream `dumps`
+never emits; and a later continuation line with more than 32 leading
+`- ` markers, which `loads` reads (bounded by the recursion cliff,
+§13.4) but item 2 above refuses to write.
 
 #### 11.2.2 Unrepresentable Values: Empty Containers
 

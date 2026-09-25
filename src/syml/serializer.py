@@ -22,6 +22,18 @@ _COMMENT_MARKERS = ('#', '//')
 #: Mirrors the grammar's `key` rule (§4.5): ASCII, lowercase, leading letter.
 _KEY_PATTERN = re.compile(r'[a-z][a-z0-9_-]*')
 
+#: A leading run of `- ` (or `-\t`) markers, with an optional trailing bare
+#: `-`, matched against a later block line after its leading spaces (§11.2.1
+#: item 2, R-05, R-17). Always matches (possibly the empty string at index 0).
+_MARKER_CHAIN_PATTERN = re.compile(r'(?:-[ \t]+)*-?')
+
+#: The recursion guard for a later block line's leading marker chain: a fixed
+#: count, never a parse, because the lex cliff moves with the caller's own
+#: stack (about 122 markers at a shallow stack, about 60 with 500 frames
+#: already in use). 32 markers costs `loads` roughly a quarter of the default
+#: recursion limit.
+MAX_LATER_LINE_MARKERS = 32
+
 Position = Literal['root', 'mapping', 'list']
 
 
@@ -37,8 +49,10 @@ def dumps(data: SymlInput) -> str:
     non-str mapping key.
 
     Output format (an implementation choice, not conformance): two-space
-    indentation, no blank lines, exactly one trailing newline, keys in
-    insertion order. The empty string serializes to the empty document ''.
+    indentation, exactly one trailing newline, keys in insertion order. A
+    literal blank line inside a value (a paragraph break, D22) is written as
+    an empty physical line with no indentation. The empty string serializes
+    to the empty document ''.
     If the output would begin with U+FEFF, one extra U+FEFF is prepended,
     because loads strips exactly one leading mark. A str subclass, such as
     a (str, Enum) member, is written as its string value.
@@ -166,10 +180,14 @@ def _render_scalar_lines(value: str, indent: int, position: Position) -> list[st
 
     Returns no lines for the empty string (rule A: the position's empty
     convention). A single-line value at a mapping or list position is
-    written inline; a multi-line value, or any root scalar, is written as
-    bare lines, which must each survive being lexed on their own (§5.1
-    rule 6). Relative indentation past the first line is preserved by §5.3,
-    so only the first line's leading whitespace is restricted.
+    written inline (rule B); a multi-line value, or any root scalar, is
+    written as bare lines in block form (rule C). Once a block value's
+    baseline is fixed, only its *first* line is restricted the way rule B's
+    single-line value is (no leading space at a mapping/list position, no
+    structure-shaped lex); every later line is free to lex as anything and
+    still round-trips as text (D21), except the fixed 32-marker recursion
+    guard (item 2's later-line clause) and, for a root scalar only, a
+    column-0 `#`/`//` line (item 9, D23).
     """
     text = str.__str__(value)
     if not text:
@@ -177,29 +195,61 @@ def _render_scalar_lines(value: str, indent: int, position: Position) -> list[st
     if _CONTROL_CHAR_PATTERN.search(text):
         raise _unrepresentable(text, 'contains a control character')
     lines = text.split('\n')
-    if lines[0][:1] in (' ', '\t'):
-        raise _unrepresentable(text, 'begins with whitespace')
-    block = position == 'root' or len(lines) > 1
-    if block:
-        for line in lines:
-            _check_block_line(text, line)
-    elif position == 'list' and _lexes_as_structure(lines[0]):
-        raise _unrepresentable(text, 'a list item value would lex as structure')
+    multiline = len(lines) > 1
+    if multiline and (lines[0] == '' or lines[-1] == ''):
+        raise _unrepresentable(text, 'begins or ends with a blank line')
+    if position in ('mapping', 'list') and not multiline:
+        _check_inline_first_line(text, lines[0], position)
+    else:
+        for index, line in enumerate(lines):
+            _check_block_line(text, line, index, position)
     pad = ' ' * indent
-    return [f'{pad}{line}' for line in lines]
+    return [f'{pad}{line}' if line else '' for line in lines]
 
 
-def _check_block_line(text: str, line: str) -> None:
+def _check_inline_first_line(text: str, line: str, position: Position) -> None:
+    """Raise unless `line` can stand as rule B's single-line inline value."""
+    if line[:1] in (' ', '\t'):
+        raise _unrepresentable(text, 'begins with whitespace')
+    if position == 'list' and _lexes_as_structure(line):
+        raise _unrepresentable(text, 'a list item value would lex as structure')
+
+
+def _check_block_line(text: str, line: str, index: int, position: Position) -> None:
     """Raise unless `line` can stand as one physical line of a block value (§5.1, §5.3)."""
-    content = line.lstrip(' ')
-    if not content:
-        raise _unrepresentable(text, 'contains a blank or whitespace-only line')
-    if content.startswith('\t'):
+    leading = _leading_whitespace_run(line)
+    if '\t' in leading:
         raise _unrepresentable(text, 'a line begins with a tab')
-    if content.startswith(_COMMENT_MARKERS):
+    if leading and len(leading) == len(line):
+        raise _unrepresentable(text, 'contains a blank or whitespace-only line')
+    if position == 'root' and line.startswith(_COMMENT_MARKERS):
         raise _unrepresentable(text, 'a line begins with a comment marker')
-    if _lexes_as_structure(content):
-        raise _unrepresentable(text, 'a line would lex as structure')
+    if index == 0:
+        if position in ('mapping', 'list') and line[:1] == ' ':
+            raise _unrepresentable(text, 'begins with whitespace')
+        if _lexes_as_structure(line):
+            raise _unrepresentable(text, 'a line would lex as structure')
+    elif _later_line_marker_count(line) > MAX_LATER_LINE_MARKERS:
+        raise _unrepresentable(text, 'a later line has too many leading "- " markers')
+
+
+def _leading_whitespace_run(line: str) -> str:
+    """Return the run of spaces and tabs at the start of `line`."""
+    index = 0
+    while index < len(line) and line[index] in ' \t':
+        index += 1
+    return line[:index]
+
+
+def _later_line_marker_count(line: str) -> int:
+    """Count leading `- ` markers in `line` after its leading spaces (§11.2.1 item 2).
+
+    A count, never a parse (R-17): the recursion cliff moves with the
+    caller's own stack, so this never risks a `RecursionError` and never
+    depends on where `dumps` is called from.
+    """
+    match = _MARKER_CHAIN_PATTERN.match(line.lstrip(' '))
+    return match.group().count('-') if match else 0
 
 
 def _lexes_as_structure(line: str) -> bool:

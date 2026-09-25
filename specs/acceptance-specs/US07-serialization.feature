@@ -50,6 +50,10 @@ Feature: Round-trip serialization with dumps and dump
       | leading_feff_root_scalar |
       | leading_feff_list_item |
       | leading_feff_block_line |
+      | leading_space_root_scalar |
+      | contains_blank_line |
+      | block_line_begins_with_comment_marker |
+      | block_line_lexes_as_structure |
 
   Scenario Outline: An unrepresentable value raises UnrepresentableValueError
     Given the unrepresentable corpus value "<corpus_id>"
@@ -60,13 +64,9 @@ Feature: Round-trip serialization with dumps and dump
       | corpus_id |
       | leading_trailing_space |
       | leading_trailing_tab |
-      | leading_space_root_scalar |
       | contains_cr |
       | contains_nul |
-      | contains_blank_line |
       | block_line_begins_with_tab |
-      | block_line_begins_with_comment_marker |
-      | block_line_lexes_as_structure |
       | looks_like_key_value |
       | looks_like_list_item |
       | bare_dash_list_item |
@@ -114,7 +114,7 @@ Feature: Round-trip serialization with dumps and dump
     Then serializing fails with "UnrepresentableValueError"
 
   Scenario: A root scalar with no encoding is unrepresentable
-    Given a root scalar that would lex as structure, begins with a comment marker, holds a control character other than tab, has leading whitespace on its first line, or contains a blank line
+    Given a root scalar that would lex as structure, holds a control character other than tab, begins with a tab on its first line, or has a line beginning with a comment marker
     When it is serialized
     Then serializing fails with "UnrepresentableValueError"
 
