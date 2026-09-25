@@ -66,10 +66,6 @@ PENDING: dict[tuple[str, str], str] = {
         'ERROR: OutOfContextNodeError',
     ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
     (
-        '# one\n  # two\n',
-        '"  # two"',
-    ): 'FR-007 (indented comment is text, D23)',
-    (
         'a: Note\n  warning: do not touch\n',
         '{"a": "Note\\nwarning: do not touch"}',
     ): 'FR-003 (text context, D21)',

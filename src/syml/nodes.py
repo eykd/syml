@@ -190,6 +190,27 @@ class Root(ContainerNode):
         """Check if a child node may be added."""
         return not self.children and (node.level is None or (self.level is not None and node.level >= self.level))
 
+    def incorporate_node(self, node: SymlNode) -> SymlNode:
+        """Incorporate the given node into this root (Contract 02 rule 5).
+
+        An empty `Root` offered a plain (non-inline) `TextLeafNode` rebuilds
+        it over `line_pnode` — the whole physical line, indentation included
+        — rather than the grammar's `text` pnode, which never carries the
+        line's leading whitespace. The rebuilt leaf's `baseline` is fixed at
+        0 (R-12), so the document is text throughout from here on (rule 1:
+        every later level is `>= 0`), and the root scalar keeps its own
+        leading indentation as literal characters instead of having it
+        stripped like a nested value's anchor column would be.
+        """
+        if not self.children and isinstance(node, TextLeafNode) and not node.inline and node.line_pnode is not None:
+            node = TextLeafNode(
+                pnode=node.line_pnode,
+                filename=node.filename,
+                position_map=node.position_map,
+            )
+            node.baseline = 0
+        return super().incorporate_node(node)
+
 
 class List(ParentNode):
     """A list node"""

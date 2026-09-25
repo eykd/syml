@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 import syml
 from syml import nodes, parsers
+from syml.basetypes import Pos
 from syml.exceptions import DuplicateKeyError, OutOfContextNodeError
 from syml.parsers import SymlParser
 
@@ -250,3 +251,62 @@ class TestSymlNodeBaseStubs:
 
         with pytest.raises(OutOfContextNodeError):
             node.incorporate_node(other)
+
+
+class TestRootScalarKeepsIndentation:
+    """Contract 02 rule 5 (R-12, US1-10, US1-14, US1-25 half, `syml-xreq.2`).
+
+    An empty `Root` offered a plain, non-inline `TextLeafNode` rebuilds it
+    over `line_pnode` (the whole physical line, indentation included) rather
+    than the grammar's `text` pnode, and fixes its `baseline` at 0 — a root
+    scalar keeps its own leading indentation as literal characters instead
+    of having it stripped like a nested value's anchor column would.
+    """
+
+    def test_root_incorporate_node_rebuilds_an_indented_first_line_over_line_pnode(self) -> None:
+        """An empty Root offered an indented plain-text line keeps the leading spaces."""
+        root = nodes.Root(pnode=_pnode(''))
+        line_node = SymlParser.grammar['line'].parse('  hello')
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), line_pnode=line_node, level=2)
+
+        root.incorporate_node(value)
+
+        rebuilt = cast('nodes.TextLeafNode', root.children[0])
+        assert rebuilt.source.text == '  hello'
+        assert rebuilt.baseline == 0
+
+    def test_root_incorporate_node_leaves_an_inline_leaf_unrebuilt(self) -> None:
+        """A `TextLeafNode` already marked inline is not rebuilt (rule 5 only covers bare lines)."""
+        root = nodes.Root(pnode=_pnode(''))
+        line_node = SymlParser.grammar['line'].parse('  hello')
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), line_pnode=line_node, level=2, inline=True)
+
+        root.incorporate_node(value)
+
+        assert root.children[0] is value
+        assert root.children[0].source.text == 'hello'
+
+    def test_root_incorporate_node_leaves_a_leaf_without_line_pnode_unrebuilt(self) -> None:
+        """A `TextLeafNode` with no `line_pnode` (not a whole-line lex) is not rebuilt."""
+        root = nodes.Root(pnode=_pnode(''))
+        value = nodes.TextLeafNode(pnode=_pnode('hello'), level=2)
+
+        root.incorporate_node(value)
+
+        assert root.children[0] is value
+        assert root.children[0].source.text == 'hello'
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            ('  hello', '  hello'),
+            ('  hello\nworld', '  hello\nworld'),
+            ('  hello\n    world', '  hello\n    world'),
+            ('# c\n  hello', '  hello'),
+        ],
+    )
+    def test_an_indented_root_scalar_keeps_its_indentation(self, text: str, expected: str) -> None:
+        assert syml.loads(text) == expected
+
+    def test_an_indented_root_scalars_source_starts_at_column_0(self) -> None:
+        assert parsers.parse('  hello').as_source().start == Pos(0, 1, 0)
