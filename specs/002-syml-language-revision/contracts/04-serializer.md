@@ -91,6 +91,16 @@ caller's stack still let `loads` read (item 2, later-line clause; red team
 outer iteration 7). Every other value `loads` returns is written by `dumps`
 and round-trips. P8 below pins this.
 
+**Not checked: structural nesting** (red team outer iteration 8, plan open
+question 9). Item 2's count looks at a value's text lines only. A nested list
+is written inline (`[["x"]]` → `- - x`), so `dumps` of a list nested 130 deep
+writes one line that `loads` cannot read (the lex cliff is about 121 levels
+at a shallow stack, 58 with 500 frames in use; identical on `master`). That
+is the §13.4 nesting cliff, documented and not enforced (Scope Boundaries);
+§11.2.1's guarantee is scoped to a value's text (Contract 06 §A). The
+property strategies must keep nesting well under that depth, and no test
+pins the deep case either way until the principal rules on open question 9.
+
 ## Test obligations
 
 1. Every row above.

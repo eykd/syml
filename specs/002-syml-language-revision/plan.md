@@ -85,9 +85,9 @@ walk-up stays recursive; the recursion cliff is measured and documented
 settled in research.md R-01–R-05 (with R-04 settling a sub-question of item
 c), and R-06–R-12 settle seven more questions that planning surfaced. The
 distinct "Open Questions for the Principal" section below records verdicts
-the red team reached on the planner's questions, two of which (7, 8) still
-want the principal's confirmation before the spec leaf lands; neither blocks
-drafting the plan.
+the red team reached on the planner's questions, three of which (7, 8, 9)
+still want the principal's confirmation before the spec leaf lands; none
+blocks drafting the plan.
 
 ## Brainstorm Context
 
@@ -457,6 +457,14 @@ Clarifications:
     blank-line Edge Case says "spaces and tabs", matching FR-004 and
     Contract 01.
 
+11. **Edge Cases, NBSP-only line** (red team outer iteration 8): the spec
+    said a NBSP-only line "inside a block value … is a below-baseline line
+    (an error)". That holds only at column 0 (US2-7). Indented at or past
+    the value's threshold (`k:\n  a\n  \xa0\n  b`) it is a content line of
+    the value, `{"k": "a\n\xa0\nb"}`, where 1.0 read it as blank; the
+    sentence now says both halves and names FF and the other invisible
+    characters (silent table above).
+
 ## Open Questions for the Principal
 
 The red team (pass 1) returned a verdict on each of the planner's questions;
@@ -537,6 +545,31 @@ on. Question 8 was added by red team outer iteration 2.
    text only; **not added** (FR-012's list is closed), for the principal to
    decide with this question.
 
+9. **`dumps` writes nested lists that `loads` cannot read (new, red team
+   outer iteration 8).** `dumps` writes a list whose first item is a list
+   inline (`[["x"]]` → `- - x`), so a chain of nested lists becomes one line
+   of `- ` markers, the same per-line lex recursion that made outer
+   iteration 7 refuse a later text line of more than 32 markers (Contract 04
+   item 2). Measured on the planning spike (and identical on `master`, so
+   this predates the feature), bisecting the deepest value whose `dumps`
+   output `loads` reads at the default recursion limit, at a shallow stack
+   and with 500 frames already in use: nested lists 121 / 58, nested dicts
+   496 / 246, lists of one-key dicts 248 / 123. So `dumps([[…130 deep…]])`
+   succeeds and its output raises `RecursionError` from `loads` at any stack,
+   and at depth 100 it reads or not depending on the caller's stack: the
+   §11.2.1 "MUST raise rather than emit text that would not read back" and
+   stack-independence arguments of outer iteration 7 apply to it unchanged,
+   yet item 2's count checks text lines only. **Plan position: documented,
+   not bounded.** Structural depth is the §13.4 nesting cliff, which Scope
+   Boundaries keep documented and unenforced (no limit enforcement), so this
+   feature does not add a depth refusal; §11.2.1's guarantee is scoped to a
+   value's text and §13.4 gains the nested-list figures (Contract 06 §A, R-17
+   measurement 6). **Ask the principal** whether to bound it like L3 instead
+   (refuse a list nested inline more than 32 deep, a fourth load-only family,
+   since `loads` reads up to about 121); adding the refusal later would be
+   breaking for values between 33 and the cliff, which is the argument for
+   deciding before the tag.
+
 ## Security Considerations
 
 `syml` parses documents that may come from third parties. Red team pass 1
@@ -600,6 +633,12 @@ so no carried-over finding applies).
   refuses to write a later line with more than 32 leading markers (FR-006,
   Contract 04 item 2), a fixed count so its answer does not depend on the
   caller's stack.
+- **`dumps` still writes the same chain from structure (red team outer
+  iteration 8).** A nested list is written `- - - … x` on one line, and the
+  count above does not look at it: `dumps` of a list nested 130 deep succeeds
+  and `loads` of the output raises `RecursionError`; at about 58 to 121
+  levels the answer depends on the caller's stack. Pre-existing in 1.0 and
+  left documented as part of the §13.4 nesting cliff (open question 9).
 
 ## Edge Cases & Error Handling
 
@@ -619,6 +658,7 @@ kept, but no document may call it loud:
 | `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` | a `#` after `key:` is that key's inline text value (US1-5), so every deeper line is its continuation (D21 × D23). YAML's trailing comment on a section key. In 1.0 this raised at line 2 (D13); it is now silent (red team outer iteration 5) |
 | `- # item note\n  name: x` | `["# item note\nname: x"]` | the same shape after `-`: the item's inline value is text anchored at the `-` column, so the record under it joins it (red team outer iteration 5) |
 | `x: 1\nserver: \xa0\n  host: a\n  port: 80` | `{"x": "1", "server": "\xa0\nhost: a\nport: 80"}` | a trailing invisible character after `key: ` (NBSP, U+200B, U+3000, U+FEFF; any character other than space or tab) is a non-empty inline text value (FR-009), so the block under it joins it (D21). The same after `- ` (`- \xa0\n  name: x` → `["\xa0\nname: x"]`). In 1.0 all of these raised at the first block line; now silent, and the value is invisible in an editor, so the `#`-only search in the D23 item cannot find it (red team outer iteration 6) |
+| `k: v\n \xa0\nj: w`, `k:\n  a\n  \xa0\n  b`, `k:\n  \x0c\n  b: 1` | `{"k": "v\n\xa0", "j": "w"}`, `{"k": "a\n\xa0\nb"}`, `{"k": "\x0c\nb: 1"}` | a line holding only an invisible non-space character (NBSP, FF, VT, U+3000, U+200B; a NBSP left on an otherwise blank line by a paste, a `^L` page break) is not blank under FR-009, so when it is indented at or past an open value's threshold it is a content line of that value, and as a block's first line it makes the block text. 1.0's `indent = \s*` swallowed all three as blank lines (`{"k": "v", "j": "w"}`, `{"k": "a\nb"}`, `{"k": {"b": "1"}}`, verified on `master`); now silent, and the kept character is invisible in an editor. Only the column-0 form raises (US2-7) (red team outer iteration 8) |
 | `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` | the item's **first** key is outside D20's pattern, so `containerPort: 80` is the item's inline text value, anchored at the `-` column; the conforming sibling keys at the `-`+2 column are past that anchor and join it. In 1.0 this raised at line 3; it is now silent. A non-pattern **later** key (`- name: x\n  Age: 3`) still raises, with hint (a), because it sits at the open mapping's column (red team outer iteration 5) |
 
 Consequences for the text leaves (Contract 06): D23's breaking-change note,
@@ -628,7 +668,12 @@ string, and that a later `#` line at a container's level raises; the
 "loud for third-party files" wording is replaced. D24's note and §6.2/§7.5
 state that columns are code-point counts, so a tab counts as one column. The
 README list stays at eight items in order (FR-015); the silent cases go into
-the wording of items 1, 3, 6, and 7, not a ninth item.
+the wording of items 1, 3, 6, and 7, not a ninth item. The CHANGELOG's
+only-U+0020-indentation item also names the invisible-only line (red team
+outer iteration 8): a line holding only a NBSP, form feed, or other
+non-space character is no longer a blank line; indented under a value it
+joins that value, at a container's column it raises, and as the first line
+of a document or block it makes that document or block one string.
 
 ### Silent one level down (red team outer iteration 5)
 
@@ -837,7 +882,9 @@ depends on the caller's stack and is R-17's to measure, not a promise.
 
 US3's persona loads a file and writes it back. Apart from values `loads`
 cannot return at all (a `- ` chain past the cliff raises `RecursionError`
-before `dumps` sees it), `dumps` refuses exactly three families of values
+before `dumps` sees it; and, the other direction, structure nested past the
+§13.4 cliff, which `dumps` writes but `loads` cannot read back, open question
+9), `dumps` refuses exactly three families of values
 that `loads` can return: a multi-line mapping value whose
 first line is structure-shaped (L1, R-05; `k: note: the door\n  is locked`,
 `notes: - milk\n  - eggs`), a value containing a control character that

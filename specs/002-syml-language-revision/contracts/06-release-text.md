@@ -46,14 +46,14 @@ later leaves delete their entries and the release leaf deletes the table
 | §9.3 | KeyValue row unchanged in text (`level > keyvalue.level`), now true of the code. TextLeaf paragraph: add the text-context rule (a candidate at or past the threshold is accepted as text whatever it lexed as). Delete "`key: \t` has the one-character value `\t`" (R-11). |
 | §10.2 | Add R-09's BOM sentence. State the `str(error)` form (FR-011) and that its rendered filename and line escape non-printable characters (`\xa0`, `\x1b`, `\t`, `\n`, lone surrogates) while `message` and `line_text` stay raw (Contract 03). |
 | §11.1 | "an empty document or a document containing only blank lines". |
-| §11.2.1 | Rewrite to Contract 04's eight items (item 2 including its later-line clause: more than 32 leading `- ` markers, a fixed count); B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). The opening sentence ("a conforming `dumps` has exactly one way to write each string … such that `loads(dumps(x)) == x`") is false under D21, because the L1 family has an inline-first spelling `dumps` does not use: say instead that `dumps` writes each string in one canonical layout, and name the three load-only families (Contract 04 L1–L3) as values `loads` can return that `dumps` refuses (red team outer iteration 7). |
+| §11.2.1 | Rewrite to Contract 04's eight items (item 2 including its later-line clause: more than 32 leading `- ` markers, a fixed count); B/C/D/G letters kept for references; add the inline-first spelling as a v1.x candidate (R-05). The opening sentence ("a conforming `dumps` has exactly one way to write each string … such that `loads(dumps(x)) == x`") is false under D21, because the L1 family has an inline-first spelling `dumps` does not use: say instead that `dumps` writes each string in one canonical layout, and name the three load-only families (Contract 04 L1–L3) as values `loads` can return that `dumps` refuses (red team outer iteration 7). The "MUST raise rather than emit text that would not read back" guarantee covers a value's text; say that structural depth is §13.4's cliff and `dumps` does not check it (a list nested past about 120 levels is written as one `- - …` line that `loads` cannot read; red team outer iteration 8, plan open question 9). |
 | US3 narrative (spec.md, not §11.2.1) | **Applied in `spec.md` by red team outer iteration 3; the spec leaf only checks it still holds.** The closing sentence "the residual unrepresentable set is exactly the values that have no spelling at all" is false by R-05's own finding (the inline-first mapping family, `{"k": "a: 1\nb"}`, has a spelling but stays refused). Reword to something the code actually satisfies, e.g. "the residual unrepresentable set shrinks to the eight families FR-006 names, one of which (a structure-shaped first line at a mapping position) keeps a spelling `dumps` still declines to use." This is a spec-leaf obligation, not a code obligation: FR-006/`dumps` are unchanged by it. The rewording must also not claim that every value `loads` returns can be written: name both load-only families (Contract 04 L1 and L2, the second being rule D's control characters that §4.6.1 reads verbatim). Record the red team's verdict (plan open question 3) in spec.md's Clarifications. |
 | FR-016, US4 scenario 4 (spec.md) | **Applied in `spec.md` by red team outer iteration 3.** Both said the comments item warns that files with `#` lines are "loud"/"change meaning". Reword so the obligation matches the behaviour: a `#`/`//` line that is the first line of a document or block makes that document or block one string, silently; a later one at a container's level raises. Record the correction in spec.md's Clarifications (red team pass 1, plan open question 7). |
 | §11.2.3 | Keys: exactly `[a-z][a-z0-9_-]*`; everything else raises. Delete the quoted-key/`#` v1.2 note or reduce it to the quoted-key candidate. |
 | §11.3 | Contract 05 wording: add `EncodingError`; `DocumentLimitError` reserved. |
 | §12.1 | Remove the `# Application configuration` line. |
 | §13.1–§13.3 | Remove comment and White_Space-in-key references; keep §13.3's LF-only line boundary. |
-| §13.4 | Name the second recursion shape next to the nesting cliff: a line of many `- ` markers raises `RecursionError` from the per-line lex even inside a text value (§5.1), and `dumps` refuses to write a later line with more than 32 (§11.2.1), a fixed bound chosen well under the cliff because the cliff moves with the caller's stack depth. Figures from R-17 measurement 5, including the cliff at a shallow stack and with 500 frames already in use. |
+| §13.4 | Name the second recursion shape next to the nesting cliff: a line of many `- ` markers raises `RecursionError` from the per-line lex even inside a text value (§5.1), and `dumps` refuses to write a later line with more than 32 (§11.2.1), a fixed bound chosen well under the cliff because the cliff moves with the caller's stack depth. Figures from R-17 measurement 5, including the cliff at a shallow stack and with 500 frames already in use. Also state that `dumps` writes a nested list inline (`- - x`), so its output for nesting deeper than measurement 6's figure does not load, and that this depth is lower than the block-nesting cliff (red team outer iteration 8). |
 | §14 | Rewrite the 1.0 row's comment, key, blank-line, D13, and tab clauses to the revised rules (keep it one row). |
 
 ## B. `SYML-SPEC-REVIEW.md` (spec leaf)
@@ -126,7 +126,11 @@ text; NBSP, VT, FF, NEL, U+2028 at a line start are content; a document or
 block whose first line starts with a NBSP, as indentation pasted from a web
 page does, silently loads as one string, red team outer iteration 2; and a
 NBSP, U+200B, or U+3000 left after `key: ` or `- ` is an inline value that
-silently takes in the block under it, red team outer iteration 6). The D24
+silently takes in the block under it, red team outer iteration 6; and a line
+holding only a NBSP, form feed, or other non-space character is no longer a
+blank line: indented under a value it silently joins that value, so
+`k: v\n \xa0\nj: w` loads `k` as `"v\n\xa0"` where 1.0 gave `"v"`, and at a
+container's column it raises, red team outer iteration 8). The D24
 item states the converse edge: only a space or a tab separates; a NBSP after
 `key:` (macOS Option-Space, pasted text) makes the line text, so
 `name:\xa0app\nport: 80` is one string where 1.0 raised at line 2 (red team
@@ -138,8 +142,12 @@ line, (2) the same plus a trailing `z: 1` at column 0, (3) `- - … - x` on one
 line, (4) `dumps` of a nested dict, (5) the same `- ` chain as a continuation
 line of a text value (`k:\n  a\n  - - … - x`), confirming it raises where (3)
 does and that `dumps` refuses the value that would write it (Contract 04
-item 2); also record the depth where `parse()` succeeds but `.as_data()`
-raises.
+item 2); (6) `dumps` of a nested list (`[[…]]`, written as one `- - … x`
+line) and of a list of one-key dicts, bisected on whether `loads` reads the
+output, at a shallow stack and with 500 frames already in use (red team
+outer iteration 8 measured 121 / 58 and 248 / 123 on the planning spike,
+against 496 / 246 for nested dicts); also record the depth where `parse()`
+succeeds but `.as_data()` raises.
 
 ## D. `README.md` (release leaf)
 
