@@ -425,3 +425,62 @@ class TestLineStartOffsetsCaching:
             assert after - before < 100_000
         finally:
             tracemalloc.stop()
+
+
+class TestLineAboveScanScaling:
+    r"""Regression guard for the O(k*n) `_line_above` bug (sp:security-review, syml-s9p9.8).
+
+    `nodes._line_above` walks back over a run of `k` blank or column-0
+    comment lines, calling `basetypes.get_line_text` once per skipped line.
+    Before this fix, `get_line_text` did `text.split('\\n')` -- an O(n) scan
+    of the *whole* document -- on every call, making the walk O(k*n)
+    overall: a document of mostly blank lines (attacker-controlled) made
+    `loads` hang. `get_line_text` now looks the line up via the cached
+    `_line_start_offsets` table instead, so a full split happens at most
+    once per document regardless of how many lines `_line_above` skips.
+    """
+
+    def _misses_for(self, text: str) -> int:
+        real_compute = basetypes._compute_line_start_offsets  # noqa: SLF001
+        misses = 0
+
+        def counting_compute(candidate: str) -> tuple[tuple[int, ...], bool]:
+            nonlocal misses
+            misses += 1
+            return real_compute(candidate)
+
+        with (
+            mock.patch.object(basetypes, '_compute_line_start_offsets', counting_compute),
+            pytest.raises(Exception),  # noqa: PT011 - any OutOfContextNodeError raise
+        ):
+            syml.loads(text)
+        return misses
+
+    def test_it_should_compute_line_start_offsets_at_most_once_over_a_long_blank_run(self) -> None:
+        text = 'k:\n  text\n' + '\n' * 40_000 + '- x\n'
+
+        assert self._misses_for(text) <= 1
+
+    def test_it_should_compute_line_start_offsets_at_most_once_over_a_long_comment_run(self) -> None:
+        text = 'k:\n  text\n' + '#c\n' * 40_000 + '- x\n'
+
+        assert self._misses_for(text) <= 1
+
+    def test_doubling_the_blank_run_should_not_roughly_quadruple_the_time(self) -> None:
+        """A generous bound (< 4x for 2N) that catches quadratic blowup without pinning wall-clock exactly."""
+        import time
+
+        def timed(n: int) -> float:
+            text = 'k:\n  text\n' + '\n' * n + '- x\n'
+            start = time.perf_counter()
+            with pytest.raises(Exception):  # noqa: B017, PT011 - any OutOfContextNodeError raise
+                syml.loads(text)
+            return time.perf_counter() - start
+
+        n = 20_000
+        # Warm up once (import/JIT-ish costs) so the timed runs reflect steady-state cost.
+        timed(n)
+        baseline = timed(n)
+        doubled = timed(n * 2)
+
+        assert doubled < baseline * 4

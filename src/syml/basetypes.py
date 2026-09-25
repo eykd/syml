@@ -137,12 +137,28 @@ def get_line_text(text: str, line_number: int) -> str:
     Splits on ``\n`` only (SYML §13.3): other Unicode line-break characters
     (e.g. U+2028) do not terminate a line, matching `Pos.from_str_index`.
     Returns ``''`` for an out-of-range `line_number`.
+
+    Looks up the line via `_line_start_offsets` (cached for the duration of
+    an enclosing `line_offset_cache_scope()`) instead of `text.split('\n')`,
+    because callers such as `nodes._line_above` invoke this once per
+    skipped blank/comment line while walking back to a would-be-key
+    candidate: an uncached O(n) split per call made that walk O(k*n) over a
+    k-line run of blanks or comments -- algorithmic DoS from a document of
+    attacker-controlled blank lines (sp:security-review remediation,
+    syml-s9p9.8).
     """
-    lines = text.split('\n')
+    starts, ends_without_newline = _line_start_offsets(text)
     index = line_number - 1
-    if 0 <= index < len(lines):
-        return lines[index]
-    return ''
+    if not (0 <= index < len(starts)):
+        return ''
+    start = starts[index]
+    if index + 1 < len(starts):
+        end = starts[index + 1] - 1
+    elif ends_without_newline:
+        end = len(text)
+    else:
+        end = len(text) - 1
+    return text[start:end]
 
 
 @dataclass(slots=True, repr=False, frozen=True)
