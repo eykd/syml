@@ -22,8 +22,8 @@ exception surface. Entities below follow the spec's Key Entities list.
 | **Paragraph break** | new | An empty line inside a multi-line value, one per physical blank line between two lines of the same value (an inline value's text counts as its first line, R-04). | FR-004, D22 |
 | **Comment** | removed | No line is a comment. `#` and `//` are text everywhere. | FR-007, D23 |
 | **Strict child depth** | revised | Every child is strictly deeper than its parent, list items included; the indentless-sequence carve-out is gone. `- key:`'s sibling-column rule (§6.2) is unchanged. | FR-010, D25 |
-| **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key (gated to a line at an open mapping's column, or the open text value's first line), or list at its key's column. The message also names the open text value's baseline when the failing line is below it (Contract 03, text-value clause). | FR-012 |
-| **Unrepresentable set** | shrunk | research.md R-05's eight items; item 2 also covers a later line whose per-line lex raises `RecursionError` (a long `- ` chain; Contract 04, red team outer iteration 3). | FR-006, FR-002 |
+| **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key (gated to a line at an open mapping's column, or the open text value's first line when the failing line itself lexed as a key or list item), or list at its key's column. The message also names the open text value's baseline when the failing line is below it (Contract 03, text-value clause). | FR-012 |
+| **Unrepresentable set** | shrunk | research.md R-05's eight items; item 2 also covers a later line whose leading list-marker chain holds more than 32 markers (a long `- ` chain; a fixed count, not a parse probe, so the answer does not depend on the caller's stack; Contract 04, red team outer iterations 3 and 7). Three load-only families (Contract 04 L1–L3). | FR-006, FR-002 |
 
 ---
 
@@ -140,7 +140,7 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | --- | --- |
 | `dumps(data)` | `''` → `''`. Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
 | `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. Lands in the grammar leaf, which removes the `parsers.key_has_uppercase` it calls today. |
-| `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line `RecursionError` clause (a `-`-led line whose `document`-rule lex recurses too deep is refused). |
+| `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line clause (a line whose leading `(?:-[ \t]+)*-?` run holds more than `MAX_LATER_LINE_MARKERS = 32` `-` characters is refused; counted, never parsed). |
 | `_check_block_line` | Removed (its checks move into R-05's per-value rules). |
 | `_lexes_as_structure(line)` | Matches `SymlParser.grammar['structure']` against `line.lstrip(' ')` with `parse` (full match), no `preprocess`; `RecursionError` still counts as structure. |
 | `_COMMENT_MARKERS` | Removed. |

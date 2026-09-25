@@ -105,9 +105,15 @@ Hints (at most one; (b) is checked first):
   `Mapping` column); the **line above** qualifies only when it is the first
   line of the value at the tip of the spine (the line whose text-ness opened
   the text context, i.e. a bare block's first line; a root scalar never fails),
-  not a later continuation line or an inline value's line. Without the gate, dialogue in a prose value
+  not a later continuation line or an inline value's line, **and** only when
+  the failing node is a `KeyValue` or `ListItem` (the failing line lexed as
+  structure, so the author was writing structure there; red team outer
+  iteration 7). Without the gate, dialogue in a prose value
   (`- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey`) gets
-  `'Alice' is not a key`, which names the wrong fix for a one-space dedent.
+  `'Alice' is not a key`, which names the wrong fix for a one-space dedent;
+  without the failing-node clause, the same dialogue with one line before the
+  dedent (`- scene:\n    Bob: hi\n   Alice: hey`) gets `'Bob' is not a key`,
+  because `Bob: hi` is the value's first line.
 
 ## Behaviour
 
@@ -126,7 +132,9 @@ Hints (at most one; (b) is checked first):
 | text clause | `k: a\n    b\n  c` (US1-18) | description `Line 3, at column 2, does not fit any open block; open blocks are at column 0; the open value continues at column 4.` |
 | text clause | `k:\n  a\n\xa0\n  b` (US2-7) | description `Line 3, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0; the open value continues at column 2.` |
 | gate | `- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey` | no hint (column 3 is not an open `Mapping` column; `Carol: yo` is a continuation, not the value's first line); description ends `; the open value continues at column 4.` |
-| gate | `config:\n  Host: x\n port: 1` | hint (a) names `Host` (the line above is the first line of `config`'s block value) |
+| gate | `config:\n  Host: x\n port: 1` | hint (a) names `Host` (the line above is the first line of `config`'s block value, and the failing line `port: 1` lexed as a key) |
+| gate | `- scene:\n    Bob: hi\n   Alice: hey` | no hint (the failing line lexed as text, so the line above does not qualify even though it is the value's first line); description `Line 3, at column 3, does not fit any open block; open blocks are at columns 0 and 2; the open value continues at column 4.` (red team outer iteration 7) |
+| gate | `config:\n  Host: x\n Port: 1` | no hint (the failing line lexed as text; column 1 is not an open `Mapping` column, so it does not qualify on its own either) |
 | punctuation key | `a: 1\nbooleans?: x` | description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: 'booleans?' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter.` (the README's former lead-example key; US1-8 covers only camelCase, red team outer iteration 4) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
@@ -163,7 +171,9 @@ Hints (at most one; (b) is checked first):
    (US2-9's exact `str(e)` is unchanged) and when the spine ends in a
    container.
 6. Hint (a) fires on the failing line and on the line above; does not fire for
-   `a: 1\nb` or for a line whose colon is followed by a non-space; hint (b)
+   `a: 1\nb` or for a line whose colon is followed by a non-space; does not
+   fire from the line above when the failing line lexed as text (the two
+   outer-iteration-7 gate rows); hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.
 7. SC-007's three cases as acceptance scenarios (US11).
 8. `_printable`: `str(e)` contains no character outside `str.isprintable()`

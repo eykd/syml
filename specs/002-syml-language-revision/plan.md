@@ -17,7 +17,8 @@ value's text, blank lines between its lines are paragraph breaks, and `#`/`//`
 mean nothing. Around that rule the feature tightens keys to
 `[a-z][a-z0-9_-]*`, makes only U+0020 indentation, accepts a tab as separator
 whitespace, rejects indentless sequences, gives errors a `file:line:col`
-form with hints, lets `dumps` write everything the parser reads, and brings the
+form with hints, lets `dumps` write everything the parser reads (bar three
+named load-only families, Contract 04), and brings the
 specification, decision record, changelog, and README into line before
 tagging `1.0.0`.
 
@@ -447,6 +448,15 @@ Clarifications:
    under `when:` on line 23 and `effect:` on line 35) so no one re-indents the
    `- when:` / `- effect:` lines themselves.
 
+10. **FR-006, US3 narrative, FR-012, Edge Cases** (red team outer iteration
+    7): FR-006's lead sentence names its load-only exceptions instead of
+    claiming every loadable value is written; its recursion refusal is a
+    fixed 32-marker count (the stack-dependent probe is gone), which adds a
+    third load-only family that the US3 narrative now names; FR-012 and the
+    hint Edge Case gain the failing-line clause of the line-above gate; the
+    blank-line Edge Case says "spaces and tabs", matching FR-004 and
+    Contract 01.
+
 ## Open Questions for the Principal
 
 The red team (pass 1) returned a verdict on each of the planner's questions;
@@ -473,8 +483,13 @@ on. Question 8 was added by red team outer iteration 2.
    inline-first layout has its own baseline restriction the spike already
    tripped on (`{"a": "k: \n a"}`), and it makes the layout depend on the
    value's shape. The load-then-dump gap this leaves is pinned, not hidden:
-   Contract 04's P8 property allows exactly two load-only families (this one
-   and rule D's control characters) and fails on any third.
+   Contract 04's P8 property allows exactly three load-only families (this
+   one, rule D's control characters, and a later line with more than 32
+   leading `- ` markers, red team outer iteration 7) and fails on any fourth.
+   FR-006's lead sentence ("MUST write every value FR-003 to FR-005 make
+   loadable") contradicted this verdict until outer iteration 7 named the
+   exceptions in it; §11.2.1's "exactly one way to write each string" goes in
+   the spec leaf for the same reason (Contract 06 §A).
 4. **`k: \tv` changes value (R-11, D24).** The ruling said nothing valid
    changes meaning; this one does (`"\tv"` → `"v"`). **Verdict: keep**,
    recorded in D24.
@@ -582,7 +597,9 @@ so no carried-over finding applies).
   `dumps` output** (red team outer iteration 3; Edge Cases & Error Handling).
   A long `- - - …` chain recurses in the per-line lex even where D21 makes
   the line text. The load side stays documented, not fixed; the serializer
-  refuses to write such a line (FR-006, Contract 04 item 2).
+  refuses to write a later line with more than 32 leading markers (FR-006,
+  Contract 04 item 2), a fixed count so its answer does not depend on the
+  caller's stack.
 
 ## Edge Cases & Error Handling
 
@@ -680,6 +697,16 @@ text value's baseline. Two gaps, both fixed in Contract 03 and FR-012:
   column (US1-8's `firstName` still qualifies), or the line above when it is
   the first line of the open text value (the line whose text-ness opened the
   context, `config:\n  Host: x\n port: 1`), never a later continuation.
+- **The line-above gate still let one-line dialogue through (red team outer
+  iteration 7).** `- scene:\n    Bob: hi\n   Alice: hey` is the dialogue
+  example with one line before the dedent. `Bob: hi` is the value's first
+  line, so the gate above passes it and the error says `'Bob' is not a
+  key`, the same wrong fix. What separates it from `config:\n  Host: x\n
+  port: 1` is the failing line: `port: 1` lexed as a key (the author was
+  writing structure), `Alice: hey` lexed as text. The line above now
+  qualifies only when the failing node is a `KeyValue` or `ListItem`
+  (FR-012, Contract 03). The cost: `config:\n  Host: x\n Port: 1` gets no
+  hint, which is the honest answer when both lines could be dialogue.
 
 - **The spine stops at the text value, not its last continuation (red team
   outer iteration 6).** A text value's continuation lines are its
@@ -727,14 +754,31 @@ depends on the caller's stack and is R-17's to measure, not a promise.
   `RecursionError`, an out-of-contract exception that breaks SC-002 and
   §11.2.1's "MUST raise rather than emit text that would not read back". The
   generated SC-002 inputs never reach that depth, so the property alone would
-  not catch it. Fix: Contract 04 item 2 extends its existing
-  `RecursionError`-counts-as-structure rule (obligation 4) from the first
-  line to every later line of a multi-line value that begins with `-` after
-  its leading spaces; such a line is refused with `UnrepresentableValueError`
-  (FR-006). The check parses the line with the full `document` rule, so it
-  recurses at least as deep as `loads` will; a pinned example uses a depth
-  far past the cliff (several hundred) so it does not sit on the
-  stack-dependent boundary.
+  not catch it. Fix: Contract 04 item 2 refuses, with
+  `UnrepresentableValueError` (FR-006), any later line of a multi-line value
+  whose leading list-marker chain holds more than 32 markers (after the
+  line's leading spaces, the match of `(?:-[ \t]+)*-?` has more than 32
+  `-` characters).
+- **The bound is a count, not a parse probe (red team outer iteration 7).**
+  Outer iteration 3 specified a probe: parse the line inside `dumps` and
+  refuse it on `RecursionError`, reasoning that the probe "recurses at least
+  as deep as `loads` will". That holds only at equal stack depth. On the
+  planning spike the cliff is about 122 markers at a shallow stack and
+  about 60 with 500 frames already in use, so `dumps` called from a script
+  would write a 100-marker line that the same code's `loads` inside a deep
+  web-handler stack cannot read, which is the §11.2.1 breach the probe was
+  meant to prevent, and `dumps(x)` would raise or not depending on its call
+  depth. A fixed count of 32 is deterministic, costs O(line) with no
+  recursion in the check, needs no `RecursionError` handling, and leaves
+  `loads` about three quarters of the default recursion limit for the
+  caller. It refuses chains of 33 up to the shallow cliff that `loads` can
+  read, so it adds family L3 to Contract 04's load-only families (the
+  spec's US3 narrative now names three); accepting more later is additive,
+  refusing more later would be breaking. Only a line that **opens** with the
+  chain recurses: `k: - - - … x` as a later line is inline `data`, so it is
+  not counted. The first-line check keeps its parse (a first line refused
+  on `RecursionError` is refused on success too, so its outcome is already
+  stack-independent).
 - **P8's family predicate is `RecursionError`-safe.** A mapping value whose
   first line is a long `- ` chain loads fine (a mapping's inline value is
   `data`, §7.2) and is family L1; the predicate that recognizes L1 uses the
@@ -792,16 +836,27 @@ depends on the caller's stack and is R-17's to measure, not a promise.
 ### Load-then-dump
 
 US3's persona loads a file and writes it back. Apart from values `loads`
-cannot return at all (the `- ` chain above raises `RecursionError` before
-`dumps` sees it), `dumps` refuses exactly two families of values that `loads`
-can return: a multi-line mapping value whose
-first line is structure-shaped (R-05; `k: note: the door\n  is locked`,
-`notes: - milk\n  - eggs`), and a value containing a control character that
-§4.6.1 reads verbatim but rule D refuses (`\x0bx`, `a\x1cb`). Both stay refused
+cannot return at all (a `- ` chain past the cliff raises `RecursionError`
+before `dumps` sees it), `dumps` refuses exactly three families of values
+that `loads` can return: a multi-line mapping value whose
+first line is structure-shaped (L1, R-05; `k: note: the door\n  is locked`,
+`notes: - milk\n  - eggs`), a value containing a control character that
+§4.6.1 reads verbatim but rule D refuses (L2; `\x0bx`, `a\x1cb`), and a
+multi-line value with a later line of more than 32 leading `- ` markers that
+the stack still let `loads` read (L3, outer iteration 7). All stay refused
 (open question 3). A load-first property (Contract 04, P8) pins them: for
 generated documents that load, `dumps` either round-trips the result or raises
-`UnrepresentableValueError` for a value in one of these two families, so any
-third load-only family fails the suite.
+`UnrepresentableValueError` for a document holding a value in one of these
+families, so any fourth load-only family fails the suite.
+
+**P8 must check the rest of the document, not only that a family value is
+present (red team outer iteration 7).** `dumps` stops at the first value it
+refuses. As written before this pass, P8 passed whenever `dumps` raised and
+`x` held some L1 or L2 value; a generated document with an L1 value and a
+second value `dumps` wrongly refuses would pass, so a new load-only family
+could hide behind any L1 value in the same document, which is the one
+failure P8 exists to catch. Contract 04 obligation 2 now also replaces every
+L1/L2/L3 scalar in `x` with `"x"` and requires the result to round-trip.
 
 ## Performance Considerations
 

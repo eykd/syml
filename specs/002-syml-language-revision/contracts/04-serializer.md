@@ -43,7 +43,7 @@ type-checks today.
 | # | Condition | Positions |
 | --- | --- | --- |
 | 1 | a control character other than LF and TAB (includes `\r`) | all |
-| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing (a `RecursionError` counts as structure). **Also (red team outer iteration 3):** any later line of a multi-line value that begins with `-` after its leading spaces and whose lex raises `RecursionError` (a long `- - - …` chain: D21 makes it text, but the per-line lex still recurses once per `- `, so `loads` cannot read it back). The later-line check parses the line with the full `document` rule | first line: list (single- or multi-line); mapping (multi-line only); root. Later line: all |
+| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing (a `RecursionError` counts as structure). **Also (red team outer iterations 3 and 7):** any later line of a multi-line value whose leading list-marker chain holds more than `MAX_LATER_LINE_MARKERS = 32` markers: after the line's leading spaces, the match of `(?:-[ \t]+)*-?` contains more than 32 `-` characters (a long `- - - …` chain: D21 makes it text, but the per-line lex still recurses once per marker). The check is a count, never a parse: the lex cliff moves with the caller's stack (about 122 markers at a shallow stack, about 60 with 500 frames in use, on the planning spike), so a parse probe run inside `dumps` would make `dumps`' answer depend on where it is called and could write a line that a deeper `loads` cannot read. 32 markers costs `loads` roughly a quarter of the default recursion limit (R-17 measures it) | first line: list (single- or multi-line); mapping (multi-line only); root. Later line: all |
 | 3 | first line begins with a space | mapping, list |
 | 4 | any line's leading run of spaces and tabs contains a tab | all |
 | 5 | any line is non-empty and consists only of spaces and tabs | all |
@@ -73,17 +73,23 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 | R-05 | `{"k": "# x"}`, `"# x\n// y"`, `{"k": "a\n# b"}` | `k: # x\n`, `# x\n// y\n`, `k:\n  a\n  # b\n` | yes |
 | R-05 | `{"k": "a: 1\nb"}` | `UnrepresentableValueError` (item 2; see R-05 "one family refused despite having a spelling") | — |
 | recursion | `{"k": "a\n" + "- " * 1000 + "x"}`, `["a\n" + "- " * 1000 + "x"]`, `"a\n" + "- " * 1000 + "x"` | `UnrepresentableValueError` (item 2, later line); `loads` of the same text written by hand raises `RecursionError` (documented, not fixed: plan § Edge Cases, "A `- ` chain is text but still recurses") | — |
-| recursion | `{"k": "a\n" + "- " * 20 + "x"}` | `k:\n  a\n  - - … x\n` (a short chain is an ordinary later line) | yes |
+| recursion | `{"k": "a\n" + "- " * 32 + "x"}` / `{"k": "a\n" + "- " * 33 + "x"}` | written and round-trips / `UnrepresentableValueError` (item 2, later line): the bound is exact and does not move with the stack | yes / — |
+| recursion | `{"k": "a\n" + "-\t" * 33 + "x"}`, `{"k": "a\n  " + "- " * 32 + "-"}` (33 markers, the last bare) | `UnrepresentableValueError` (item 2; tabs separate markers too, and a final bare `-` counts) | — |
+| recursion | `{"k": "a\nk: " + "- " * 100 + "x"}`, `{"k": "a\n" + "- " * 20 + "x"}` | written; round-trips (a chain after `k: ` is inline `data` and does not recurse; a short chain is an ordinary later line) | yes |
+| load-only | `dumps(loads("k:\n  a\n  " + "- " * 40 + "x"))` | `UnrepresentableValueError` (item 2, later line): `loads` reads a 40-marker chain at a shallow stack, `dumps` refuses it at every stack (family L3) | — |
 | load-only | `dumps(loads("k: note: the door\n  is locked"))`, `dumps(loads("notes: - milk\n  - eggs"))` | `UnrepresentableValueError` (item 2): values `loads` returns that `dumps` refuses (red team pass 1; kept, plan open question 3) | — |
 | load-only | `dumps(loads("\x0bx"))`, `dumps(loads("k: a\x1cb"))` | `UnrepresentableValueError` (item 1): §4.6.1 reads controls verbatim, rule D still refuses them (US3 scenario 10) | — |
 
 ### Load-only families
 
-Exactly two families of values can come out of `loads` and be refused by
+Exactly three families of values can come out of `loads` and be refused by
 `dumps`: (L1) a multi-line value at a mapping position whose first line is
-structure-shaped (item 2 at a mapping position), and (L2) a value containing a
-character rule D refuses (item 1). Every other value `loads` returns is
-written by `dumps` and round-trips. P8 below pins this.
+structure-shaped (item 2 at a mapping position), (L2) a value containing a
+character rule D refuses (item 1), and (L3) a multi-line value with a later
+line whose leading marker chain holds more than 32 markers but that the
+caller's stack still let `loads` read (item 2, later-line clause; red team
+outer iteration 7). Every other value `loads` returns is written by `dumps`
+and round-trips. P8 below pins this.
 
 ## Test obligations
 
@@ -96,12 +102,18 @@ written by `dumps` and round-trips. P8 below pins this.
    (the P3 strategy: lines built from indentation, markers, keys, `#`, `//`,
    NBSP, BOM, tabs, controls, and text) for which `loads(t)` returns `x`,
    either `loads(dumps(x)) == x`, or `dumps(x)` raises
-   `UnrepresentableValueError` and `x` contains a value in family L1 or L2
+   `UnrepresentableValueError`, `x` contains a value in family L1, L2 or L3
    (checked by a predicate written against the definitions above, not by
    calling `dumps`; the L1 predicate uses `_lexes_as_structure`, so a long
    `- ` chain as a mapping value's first line is classified as structure
-   rather than raising `RecursionError` in the test). A third load-only family
-   fails P8.
+   rather than raising `RecursionError` in the test), **and** `x'`, the value
+   with every L1/L2/L3 scalar replaced by `"x"`, round-trips
+   (`loads(dumps(x')) == x'`). The last clause is what makes P8 an oracle
+   (red team outer iteration 7): `dumps` stops at the first value it refuses,
+   so "`x` contains an L1 value" alone would pass a document that also holds
+   a wrongly refused value elsewhere, and the one family P8 exists to catch
+   (a third, unplanned load-only family) would hide behind any L1 value in
+   the same document. A fourth load-only family fails P8.
    **Hypothesis settings** (plan § Performance Considerations): a `gate`
    profile (`deadline=None`, `derandomize=True`, a few hundred examples per
    property) registered in `tests/conftest.py` and loaded by default, a
@@ -111,11 +123,14 @@ written by `dumps` and round-trips. P8 below pins this.
 3. `key_is_representable` agrees with `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`
    (P7) and with the grammar: a key it accepts round-trips as a key.
 4. `_lexes_as_structure` does not strip a BOM or NBSP and treats a
-   `RecursionError` as structure. The later-line recursion check (item 2)
-   runs only on lines that begin with `-` after their leading spaces, and its
-   pinned examples use a depth of several hundred `- ` markers, far from the
-   stack-dependent cliff, so the test does not flake with the caller's stack
-   depth.
+   `RecursionError` as structure (only the first-line check parses; a first
+   line refused at one stack depth is refused at every depth, because both a
+   successful structure match and a `RecursionError` refuse it). The
+   later-line check (item 2) is the marker count, with no parse and no
+   `RecursionError` handling: the 32/33 boundary rows above are exact, and a
+   test calls `dumps` on the 33-marker row from inside a helper that has
+   already used 500 frames and from a shallow stack and gets the same
+   result.
 5. The existing `tests/serialization_corpus.py` rows that pinned D12, D13,
    comments, and D19 are rewritten to the rows above (plan § Inverted tests).
    By name, besides those the plan lists: `lowercase_roman_numeral_key`
