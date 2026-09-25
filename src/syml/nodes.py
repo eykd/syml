@@ -269,7 +269,13 @@ class Root(ContainerNode):
             comment_shaped=comment_shaped,
             document_marker=document_marker,
         )
-        raise OutOfContextNodeError(description, pos, line, filename=self.filename)
+        raise OutOfContextNodeError(
+            description,
+            pos,
+            line,
+            filename=self.filename,
+            bom_offset=PositionMap.line1_bom_offset(self.position_map, pos.line),
+        )
 
 
 def _walk_open_spine(root: Root) -> tuple[dict[int, str], SymlNode]:
@@ -438,6 +444,7 @@ class Mapping(ParentNode):
                 key=key,
                 first_position=first.source.start,
                 filename=node.filename,
+                bom_offset=PositionMap.line1_bom_offset(node.position_map, node.source.start.line),
             )
         return True
 

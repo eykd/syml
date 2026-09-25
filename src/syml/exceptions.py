@@ -235,6 +235,7 @@ class ParseError(ValueError):
         line_text: str,
         *extra: object,
         filename: StrPath | None = None,
+        bom_offset: int = 0,
     ) -> None:
         """Store `message`, `position`, and `line_text`, preserving `.args`.
 
@@ -242,6 +243,19 @@ class ParseError(ValueError):
         when given, is normalized with `os.fspath` (`''` normalizes to
         `None`) and used both to build the prefixed `.message` and to render
         `__str__`'s `<filename>:` segment.
+
+        `bom_offset` is private (not stored as a public attribute; it isn't
+        part of Contract 05 §Surface's `message`/`position`/`line_text`
+        contract). `line_text` reflects the §9.0-normalized (BOM-stripped)
+        line for every error raised after preprocessing, while `position`
+        keeps the caller's original-text coordinates (FR-013), so on line 1
+        of a BOM-led document `position.column` counts the stripped BOM and
+        is one greater than its index into `line_text` (D33, syml-cjk2.17).
+        `bom_offset` — 1 on such a line, 0 everywhere else — lets `__str__`
+        centre its excerpt window on the right `line_text` index without
+        moving `position` itself. `EncodingError` is raised before step 1
+        of preprocessing (§9.0) and its `line_text` is the replace-decoded
+        raw prefix, BOM included literally, so it never needs this offset.
         """
         normalized_filename = os.fspath(filename) if filename else None
         full_message = error_message(message, normalized_filename)
@@ -251,6 +265,7 @@ class ParseError(ValueError):
         self.line_text = line_text
         self._description = message
         self._filename = normalized_filename
+        self._bom_offset = bom_offset
 
     def __str__(self) -> str:
         r"""Render `<filename>:<line>:<column>: <description>\n<line_text>` (Contract 03 §Surface).
@@ -262,15 +277,18 @@ class ParseError(ValueError):
         newline in a caller-supplied filename) escapes into the two-line
         shape this format promises. The filename is first windowed through
         `_truncated_window(self._filename, center=0)` and the line text
-        through `_truncated_window(self.line_text, center=self.position.column)`,
-        so a hostile multi-megabyte filename or `line_text` (both unbounded,
-        per `.line_text`'s own attribute contract, and `filename` normally
-        being caller-controlled) still yields a bounded `str(e)`
-        (Contract 03 §Surface, syml-s9p9.9, syml-cjk2.5); `self.line_text`
-        itself is untouched.
+        through `_truncated_window(self.line_text, center=self.position.column - self._bom_offset)`
+        — `self._bom_offset` re-anchors the window's center onto
+        `self.line_text`'s own index space, since `self.position.column`
+        counts a BOM-stripped-before-`line_text` BOM on line 1 (D33,
+        syml-cjk2.17) — so a hostile multi-megabyte filename or `line_text`
+        (both unbounded, per `.line_text`'s own attribute contract, and
+        `filename` normally being caller-controlled) still yields a bounded
+        `str(e)` (Contract 03 §Surface, syml-s9p9.9, syml-cjk2.5);
+        `self.line_text` itself is untouched.
         """
         prefix = f'{_printable(_truncated_window(self._filename, center=0))}:' if self._filename else ''
-        windowed_line_text = _truncated_window(self.line_text, center=self.position.column)
+        windowed_line_text = _truncated_window(self.line_text, center=self.position.column - self._bom_offset)
         return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(windowed_line_text)}'
 
 
@@ -298,9 +316,10 @@ class DuplicateKeyError(ParseError):
         first_position: Pos,
         *,
         filename: StrPath | None = None,
+        bom_offset: int = 0,
     ) -> None:
         """Store the repeated key and the position of its first occurrence."""
-        super().__init__(message, position, line_text, key, first_position, filename=filename)
+        super().__init__(message, position, line_text, key, first_position, filename=filename, bom_offset=bom_offset)
         self.key = key
         self.first_position = first_position
 

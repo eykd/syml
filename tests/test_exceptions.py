@@ -298,6 +298,18 @@ class TestParseErrorStr:
         assert str(error) == '1:0: boom\na\\xa0b'
         assert error.line_text == 'a\xa0b'
 
+    def test_bom_offset_shifts_the_window_center_back_to_the_line_text_index(self) -> None:
+        """`bom_offset` centres the excerpt on `column - bom_offset`, not raw `column` (D33, syml-cjk2.17)."""
+        # `line_text` has no BOM (it's the normalized line); a BOM-led line 1's
+        # `column` counts the stripped BOM, so it is one past its `line_text` index.
+        long_line = ' ' * 100 + '\tx: y'
+        with_bom_offset = ParseError('boom', Pos(101, 1, 101), long_line, bom_offset=1)
+        without_bom_offset = ParseError('boom', Pos(100, 1, 100), long_line, bom_offset=0)
+
+        # Both errors point at the same tab in `line_text` (index 100); the
+        # rendered excerpt window must be identical for both.
+        assert str(with_bom_offset).splitlines()[1] == str(without_bom_offset).splitlines()[1]
+
     def test_filename_is_rendered_through_printable_escaping(self) -> None:
         r"""A `\n`, an ANSI escape, and a lone surrogate in `filename` do not break the two-line shape."""
         error = ParseError('boom', Pos(2, 2, 0), 'a: 2', filename='x\n\x1b[2J\udcff.syml')

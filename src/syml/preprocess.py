@@ -34,6 +34,20 @@ class PositionMap:
         return Pos(index, pos.line, column)
 
     @staticmethod
+    def line1_bom_offset(position_map: PositionMap | None, line: int) -> int:
+        """Return `position_map.bom_offset` on line 1, `0` everywhere else (including `position_map is None`).
+
+        The one `original-coordinate line/BOM -> ParseError(bom_offset=...)`
+        step shared by every raise site that constructs a `ParseError` on
+        possibly-BOM-shifted coordinates, so `ParseError.__str__` can centre
+        its excerpt window on the right `line_text` index (D33, syml-cjk2.17).
+        Off line 1 (or a normalized-text document with no BOM), the offset
+        is always `0` and `position.column` already indexes `line_text`
+        directly.
+        """
+        return position_map.bom_offset if position_map is not None and line == 1 else 0
+
+    @staticmethod
     def map(pos: Pos, position_map: PositionMap | None) -> Pos:
         """Translate `pos` through `position_map.to_original`, or return it unchanged when there is no map.
 
@@ -106,6 +120,7 @@ def _scan_for_tab_indentation(
                 position_map.to_original(Pos(index=offset + column, line=line_number, column=column)),
                 line,
                 filename=filename,
+                bom_offset=PositionMap.line1_bom_offset(position_map, line_number),
             )
         offset += len(line) + 1
 

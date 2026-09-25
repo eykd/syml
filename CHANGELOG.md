@@ -9,7 +9,8 @@ change from 0.6.2 is listed below, numbered to match Contract 06's audit
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
 § FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
 25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 32
-the 2026-09-25 D32 `DuplicateKeyError` message addition (see
+the 2026-09-25 D32 `DuplicateKeyError` message addition, item 33 the
+2026-09-25 D33 `ParseError.__str__` BOM-offset fix (see
 `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in this one
 1.0.0 release.
 
@@ -316,6 +317,20 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     of the key's earlier, already-incorporated occurrence
     (`.first_position.line`, attribute unchanged) (D32, syml-cjk2.16,
     break-testing round 2 lane 4).
+33. **Bug fix: `str(e)`'s excerpt line no longer misaligns by one character
+    on a long line 1 of a BOM-led document.** `ParseError.line_text` is the
+    §9.0-normalized (BOM-stripped) line, while `.position` keeps the
+    caller's original-text coordinates (FR-013); on a BOM-led document's
+    line 1 this makes `.position.column` one greater than its index into
+    `.line_text` (documented in `.line_text`'s own attribute contract and
+    §10.2, unchanged by this fix). Until this fix, `__str__`'s excerpt
+    window centred on the raw `.position.column`, so a `line_text` longer
+    than 80 characters rendered a window shifted one character from the
+    equivalent non-BOM document's. `__str__` now centres on
+    `.position.column` minus the BOM offset, so the rendered excerpt
+    matches the non-BOM case exactly; `.position` and `.line_text`
+    themselves are unchanged (D33, syml-cjk2.17, break-testing round 2
+    lane 1).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`
