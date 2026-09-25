@@ -25,6 +25,7 @@ Signatures unchanged. `syml.__all__` unchanged (no `DocumentLimitError`).
 | `load(h)` with `h.name` an `int` or `bytes` | no filename (unchanged) |
 | `load(h)` with `h.name = pathlib.PurePosixPath(os.fsdecode(b"\xff.syml"))` and a duplicate key | `.message` begins `\udcff.syml: ` (raw); `str(e)` begins `\\udcff.syml:` (escaped by `_printable`, Contract 03) and encodes to UTF-8 |
 | `parse("\n").as_source().start` | `Pos(index=1, line=2, column=0)` |
+| `parse("# x\n").as_source().start` | `Pos(index=4, line=2, column=0)` (a comment-only document is zero-width again under the column-0 comment rule, R-18; this is `syml-xreq.11`'s original input) |
 | `parse("").as_source().start` | `Pos(index=0, line=1, column=0)` (unchanged) |
 
 Order inside `load`: resolve the filename; call `read()`; a

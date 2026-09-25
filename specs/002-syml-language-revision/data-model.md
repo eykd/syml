@@ -18,12 +18,12 @@ exception surface. Entities below follow the spec's Key Entities list.
 | **Blank line** | revised | A line consisting only of U+0020 and U+0009 (or empty). Classified by the line visitor, not a grammar rule. A NBSP-only line is **not** blank (nor is a line of only FF, VT, U+3000, or any other non-space character): at or past an open value's threshold it is a content line of that value, silently where 1.0 read it as blank (red team outer iteration 8). | §4.4, §9.0 step 3, FR-009 |
 | **Key** | revised | Exactly `[a-z][a-z0-9_-]*`, preceded by nothing but indentation, followed by `:`. The whole rule; no out-of-PEG check. | FR-001, D20 |
 | **Separator whitespace** | revised | `ws = ~"[ \t]+"`: the run of spaces or tabs after `key:` or `-`. A marker followed only by separator whitespace is bare (D6). A column is a code-point count, so a separator tab is one column: after `-\tk: v`, `k`'s sibling column is 2 (§6.2). | FR-008, D24 |
-| **Text context** | new | The state a value is in once its first own line is text (for a root or a block, that includes a first line shaped like a former comment, `---`, or a would-be key outside the key pattern, so the whole root or block is one string, with no error). While the value's `TextLeafNode` is the tip, every non-blank line at or past its threshold (baseline, or `> anchor_level` before a baseline exists) is that value's text, whatever it lexes as. A line below the threshold closes it and is re-offered (§5.3). | FR-003, D21 |
-| **Paragraph break** | new | An empty line inside a multi-line value, one per physical blank line between two lines of the same value (an inline value's text counts as its first line, R-04). | FR-004, D22 |
-| **Comment** | removed | No line is a comment. `#` and `//` are text everywhere. | FR-007, D23 |
+| **Text context** | new | The state a value is in once its first own line is text (for a root or a block, that includes an indented first line that starts with `#` or `//`, a first line `---`, or a would-be key outside the key pattern, so the whole root or block is one string, with no error; a column-0 comment line is not a first line, it is skipped). While the value's `TextLeafNode` is the tip, every line that is neither blank nor a column-0 comment and sits at or past its threshold (baseline, or `> anchor_level` before a baseline exists) is that value's text, whatever it lexes as. A line below the threshold closes it and is re-offered (§5.3). | FR-003, D21 |
+| **Paragraph break** | new | An empty line inside a multi-line value, one per physical blank line between two lines of the same value (an inline value's text counts as its first line, R-04). A column-0 comment line between them is not counted (R-18). | FR-004, D22 |
+| **Comment** | revised | A line whose first character, with no indentation, is `#`, or whose first two characters are `//` (grammar: `line = comment / (indent (structure / data))`). Skipped as if absent, anywhere in the document; never a line of a value and never a blank line. Every indented or inline `#`/`//` is text. No node represents it: the line visitor returns `None` (principal ruling 2026-09-24, R-18). | FR-007, D23 |
 | **Strict child depth** | revised | Every child is strictly deeper than its parent, list items included; the indentless-sequence carve-out is gone. `- key:`'s sibling-column rule (§6.2) is unchanged. | FR-010, D25 |
 | **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key (gated to a line at an open mapping's column, or the open text value's first line when the failing line itself lexed as a key or list item), or list at its key's column. The message also names the open text value's baseline when the failing line is below it (Contract 03, text-value clause). | FR-012 |
-| **Unrepresentable set** | shrunk | research.md R-05's eight items; item 2 also covers a later line whose leading list-marker chain holds more than 32 markers (a long `- ` chain; a fixed count, not a parse probe, so the answer does not depend on the caller's stack; Contract 04, red team outer iterations 3 and 7). Three load-only families (Contract 04 L1–L3). | FR-006, FR-002 |
+| **Unrepresentable set** | shrunk | research.md R-05's nine items (item 9, a root scalar with a line that begins with `#` or `//`, from R-18); item 2 also covers a later line whose leading list-marker chain holds more than 32 markers (a long `- ` chain; a fixed count, not a parse probe, so the answer does not depend on the caller's stack; Contract 04, red team outer iterations 3 and 7). Three load-only families (Contract 04 L1–L3). | FR-006, FR-002 |
 
 ---
 
@@ -36,7 +36,7 @@ exception surface. Entities below follow the spec's Key Entities list.
 | `pnode` | unchanged | The node's own parse node. |
 | `level` | unchanged | The node's own column (R-11 of 001). |
 | `parent`, `children`, `filename`, `position_map`, `source` | unchanged | |
-| `comments` | **removed** | FR-007. |
+| `comments` | **removed** | FR-007: a column-0 comment line is dropped by the visitor, so nothing records it. |
 | `content_pnode: PNode \| None = None` | **new**, `repr=False` | Set by `visit_line` on the node a physical line lexes to: the parse node spanning the line's content after the indentation. Used only by `TextLeafNode.incorporate_node` to re-read a structure-shaped line as text (R-01). `None` on inline sub-nodes. |
 | `line_pnode: PNode \| None = None` | **new**, `repr=False` | Set by `visit_line`: the parse node of the whole line including indentation. Used only by `Root` to build a root scalar's first line with its indentation (R-12). |
 
@@ -55,7 +55,9 @@ line-above gate), and the line above from `full_text` (R-08), and raises `OutOfC
   covers `SymlNode`'s base stubs (`tests/test_nodes.py::TestSymlNodeBaseStubs`);
   the grammar leaf moves those tests to a bare `SymlNode` subclass in the
   same commit (Contract 01 obligation 5).
-- **`Comment`**: FR-007.
+- **`Comment`**: FR-007. Column-0 comments survive as a grammar
+  alternative, but `visit_line` drops the line, so no node carries it
+  (R-18).
 
 ### `ContainerNode` / `KeyValue` / `ListItem` / `Root`
 
@@ -77,7 +79,7 @@ line-above gate), and the line above from `full_text` (R-08), and raises `OutOfC
 | `accepts_level(level) -> bool` | **new** | Factored out of `can_add_node`: `level > anchor_level` while `baseline is None`, else `level >= baseline`. `None` level → `False`. |
 | `can_add_node(node)` | refactored | `isinstance(node, TextLeafNode) and self.accepts_level(node.level)`. |
 | `incorporate_node(node)` | **new override** | If `node` is not a `TextLeafNode`, has a `content_pnode`, and `accepts_level(node.level)`, replace it with `TextLeafNode(pnode=node.content_pnode, filename=node.filename, position_map=node.position_map)`; either way, call `super().incorporate_node(node)` (`SymlNode.incorporate_node`), which re-checks `can_add_node` and appends via `add_node`, or — when the substitution did not fire — delegates the original node to `self.parent.incorporate_node(node)` unchanged (R-01; exact code in Contract 02 rule 1). |
-| `add_node(node)` | extended | Also computes `node.blank_lines_before`. |
+| `add_node(node)` | extended | Also computes `node.blank_lines_before`: the number of blank lines (`preprocess.is_blank`) strictly between the value's previous line and `node`, `sum(1 for line in full_text[prev.pnode.end : node.pnode.start].split("\n")[1:-1] if is_blank(line))`, so a column-0 comment line in the gap is not counted (R-03, R-18). |
 | `as_data()` | extended | Emits `blank_lines_before` empty strings before each continuation. |
 | `as_source()` | unchanged shape | `text` mirrors `as_data()` (paragraph breaks included); `start` is the first line's first character (column 0 for a root scalar, R-12); `end` is the last continuation's end. |
 
@@ -88,6 +90,7 @@ State transitions of a value (per text leaf):
  (empty) ─────────────────────────────▶ OPEN(baseline fixed | unset for inline)
                                            │  line ≥ threshold (any shape) → append (+ blank_lines_before)
                                            │  blank line                  → skipped (counted later)
+                                           │  column-0 comment line       → skipped (never counted)
                                            ▼
                                   line < threshold → CLOSED; line re-offered up the tree
 ```
@@ -103,12 +106,13 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | Element | Change |
 | --- | --- |
 | `SymlParser.grammar` | Replaced by research.md R-02's rule set (Contract 01), with `eol`'s regex as the raw literal `~r"\Z"` (a non-raw `\Z` is a `SyntaxWarning`, an error under the repository's pytest policy). |
-| `visit_line` | Returns `None` for a blank content span; otherwise returns the lexed node with `content_pnode`/`line_pnode` set. |
+| `visit_line` | Returns `None` for a comment line (the chosen alternative is `comment`) or a blank content span; otherwise returns the lexed node with `content_pnode`/`line_pnode` set. |
+| `comment` rule, `visit_comment` | **Narrowed**, not removed: `comment = ~"(?:#|//)[^\n]*"`, the first alternative of `line`, so it can only match at column 0; `visit_comment` returns `None` (R-18). |
 | `visit_document` | Replaces `visit_lines`: flattens the visited children and incorporates each line into the tip, starting at a new `Root`. |
 | `visit_key_value`, `visit_section` | Lose the D19 text fallthrough. |
 | `visit_key_colon` | Renamed from `visit_section`: the rule `section = key ":"` becomes `key_colon = key ":"` (Contract 01). |
 | `visit_section` | Renamed from `visit_section_line`: the rule `section_line = section &eol` becomes `section = key_colon &eol`. No `visit_section_line` or `section_line` rule survives; a leftover visitor for a rule the grammar no longer has is dead code that fails the coverage gate, and the §4.1 identity test compares rule names (red team outer iteration 9). |
-| `visit_blank`, `visit_comment`, `visit_indent`, `key_has_uppercase`, `_is_text_line`, `_text_leaf` | Removed. |
+| `visit_blank`, `visit_indent`, `key_has_uppercase`, `_is_text_line`, `_text_leaf` | Removed. |
 
 ---
 
@@ -141,10 +145,10 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | --- | --- |
 | `dumps(data)` | `dumps('')`: `'\n'` → `''` (Contract 04: "changed, was `'\n'`"). Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
 | `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. Lands in the grammar leaf, which removes the `parsers.key_has_uppercase` it calls today. |
-| `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line clause (a line whose leading `(?:-[ \t]+)*-?` run holds more than `MAX_LATER_LINE_MARKERS = 32` `-` characters is refused; counted, never parsed). |
+| `_render_scalar_lines` | Enforces R-05's list, including item 9 (at the root, any line that begins with `#` or `//` is refused); writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line clause (a line whose leading `(?:-[ \t]+)*-?` run holds more than `MAX_LATER_LINE_MARKERS = 32` `-` characters is refused; counted, never parsed). |
 | `_check_block_line` | Removed (its checks move into R-05's per-value rules). |
 | `_lexes_as_structure(line)` | Matches `SymlParser.grammar['structure']` against `line.lstrip(' ')` with `parse` (full match), no `preprocess`; `RecursionError` still counts as structure. |
-| `_COMMENT_MARKERS` | Removed. |
+| `_COMMENT_MARKERS` | Kept, for item 9's root check only (`line.startswith(_COMMENT_MARKERS)`); no longer used by `key_is_representable` or the later-line checks. |
 
 ---
 
@@ -166,8 +170,8 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 | Text value absorbs lines at/past its threshold | `TextLeafNode.incorporate_node` | FR-003 |
 | Blank lines inside a value kept one for one | `TextLeafNode.add_node` / `as_data` | FR-004 |
 | Root scalar keeps leading indentation, baseline 0 | `Root.incorporate_node` / `add_node` | FR-005 |
-| `dumps` residual set | `_render_scalar_lines` | FR-006 |
-| No comments | grammar (no `comment` rule) | FR-007 |
+| `dumps` residual set (incl. a root scalar line beginning `#`/`//`) | `_render_scalar_lines` | FR-006, FR-007 |
+| Comments at column 0 only, skipped anywhere | grammar `line = comment / (indent (structure / data))`; `visit_line` drops the line; `TextLeafNode.add_node` counts only blank lines | FR-007 |
 | Tab is separator whitespace | grammar `ws` | FR-008 |
 | Only U+0020 is indentation | grammar `indent`; line visitor's blank check | FR-009 |
 | Children strictly deeper | `ContainerNode.can_add_node` (no `KeyValue` override) | FR-010 |

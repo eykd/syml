@@ -1,6 +1,6 @@
 # Contract 03 — Error Text, Hints, Filenames, and Positions
 
-**Requirements**: FR-011, FR-012, FR-013, FR-016 (§8.3 example) | **Decisions**: D7 affirmed (one class for §8.1/§8.2) | **Findings closed**: `syml-xreq.4`, `.5`, `.9` (§8.3 half), `.17` (hint half), `.18`, `.3` (hint half) | **Research**: R-07, R-08, R-09
+**Requirements**: FR-011, FR-012, FR-013, FR-016 (§8.3 example) | **Decisions**: D7 affirmed (one class for §8.1/§8.2) | **Findings closed**: `syml-xreq.4`, `.5`, `.9` (§8.3 half), `.17` (hint half), `.18`, `.3` (hint half) | **Research**: R-07, R-08, R-09, R-18
 
 ## Surface
 
@@ -74,7 +74,12 @@ descend into them and return the last continuation, which the gate below
 must not mistake for the value's first line (red team outer iteration 6).
 "Previous non-blank line" and every other blankness test on the failure path
 use `preprocess.is_blank` (spaces and tabs only), never `str.strip()`, so a
-NBSP-only continuation counts as a line (FR-009). The
+NBSP-only continuation counts as a line (FR-009). The previous line also
+skips column-0 comment lines (FR-007, principal ruling 2026-09-24): "the
+line above" is the nearest earlier line that is neither blank nor a line
+whose first character is `#` or whose first two are `//`. The failing line
+itself is never a comment, because the visitor drops a comment line before
+the builder sees it. The
 list is never empty: `Root` can only fail once its first child is a `List` or
 `Mapping` (a root scalar absorbs every later line).
 
@@ -134,6 +139,8 @@ Hints (at most one; (b) is checked first):
 | gate | `- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey` | no hint (column 3 is not an open `Mapping` column; `Carol: yo` is a continuation, not the value's first line); description ends `; the open value continues at column 4.` |
 | gate | `config:\n  Host: x\n port: 1` | hint (a) names `Host` (the line above is the first line of `config`'s block value, and the failing line `port: 1` lexed as a key) |
 | gate | `- scene:\n    Bob: hi\n   Alice: hey` | no hint (the failing line lexed as text, so the line above does not qualify even though it is the value's first line); description `Line 3, at column 3, does not fit any open block; open blocks are at columns 0 and 2; the open value continues at column 4.` (red team outer iteration 7) |
+| gate | `config:\n  Host: x\n# c\n port: 1` | hint (a) names `Host` (the column-0 comment between them is skipped when finding the line above; R-18) |
+| position | `a: 1\n# c\n- x` | raises at `Pos(9, 3, 0)`; description `Line 3, at column 0, is a list item, but the open block at column 0 holds keys; open blocks are at column 0.` (the dropped comment line keeps its number, so line numbers are the original text's) |
 | gate | `config:\n  Host: x\n Port: 1` | no hint (the failing line lexed as text; column 1 is not an open `Mapping` column, so it does not qualify on its own either) |
 | punctuation key | `a: 1\nbooleans?: x` | description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: 'booleans?' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter.` (the README's former lead-example key; US1-8 covers only camelCase, red team outer iteration 4) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |

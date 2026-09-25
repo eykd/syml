@@ -14,7 +14,8 @@ Revise SYML 1.0 (unreleased) around one rule: **values are just text**.
 Structure is decided at the first line of a block and at inline positions;
 once a value is text, every later line at or past its baseline is that
 value's text, blank lines between its lines are paragraph breaks, and `#`/`//`
-mean nothing. Around that rule the feature tightens keys to
+mark a comment only at column 0 (a comment line is skipped as if absent; an
+indented or inline `#` is text). Around that rule the feature tightens keys to
 `[a-z][a-z0-9_-]*`, makes only U+0020 indentation, accepts a tab as separator
 whitespace, rejects indentless sequences, gives errors a `file:line:col`
 form with hints, lets `dumps` write everything the parser reads (bar three
@@ -26,7 +27,8 @@ The technical approach is small in code and large in text:
 
 1. **One grammar swap** (Contract 01): adopt the spec's own
    `document = (line "\n")* line?` top rule so `indent` can be spaces-only,
-   drop the `comment` rule, and narrow `key` and widen `ws`. Lexing stays
+   narrow the `comment` rule to column 0 (`line = comment / (indent (structure
+   / data))`), and narrow `key` and widen `ws`. Lexing stays
    per-line and context-free.
 2. **Three tree-builder rules** (Contract 02), all riding on state the builder
    already has: the tip. A text tip re-reads any line at or past its threshold
@@ -36,7 +38,7 @@ The technical approach is small in code and large in text:
 3. **Error text** (Contract 03): `ParseError.__str__`, a message naming the
    open columns read off `Root`'s rightmost spine, two hints, filenames on
    every error, and original-text positions from the tab scan.
-4. **The serializer** (Contract 04) shrinks its refusal set to R-05's eight
+4. **The serializer** (Contract 04) shrinks its refusal set to R-05's nine
    items, verified by a Hypothesis round trip with no excluded family.
 5. **Release text** (Contract 06): spec first (principle IV), changelog,
    README, and the tag last.
@@ -64,7 +66,7 @@ Not an acceptance criterion.
 walk-up stays recursive; the recursion cliff is measured and documented
 (R-17). Version stays `1.0.0`; specification stays "Version 1.0" (FR-018).
 **Scale/Scope**: ~1,330 lines of `src/`; every module touched, none added;
-18 FRs; 4 user stories, 50 acceptance scenarios; 24 findings to close;
+18 FRs; 4 user stories, 59 acceptance scenarios; 24 findings to close;
 ~60 specification examples to re-verify.
 
 ### Constraints carried from the brainstorm (Key Decisions)
@@ -75,7 +77,9 @@ walk-up stays recursive; the recursion cliff is measured and documented
   `line_pnode`, R-01).
 - Strict indentation (R10): the spec as written over the YAML habit; the
   fixture is edited.
-- Comments removed (R7): delete the feature rather than rule on its edges.
+- Comments (R7): the brainstorm deleted the feature; the principal's ruling of
+  2026-09-24 keeps it at column 0 only (`#` or `//` as a line's first
+  characters), skipped anywhere, and makes every other `#`/`//` text (R-18).
 - ASCII keys with a leading letter (R1); non-ASCII keys are a knowing exclusion.
 - Ship as 1.0.0 (R16): one breaking release, one spec version.
 - Hints over new API (R12): message text only; no `reason` code or
@@ -85,9 +89,8 @@ walk-up stays recursive; the recursion cliff is measured and documented
 settled in research.md R-01–R-05 (with R-04 settling a sub-question of item
 c), and R-06–R-12 settle seven more questions that planning surfaced. The
 distinct "Open Questions for the Principal" section below records verdicts
-the red team reached on the planner's questions, three of which (7, 8, 9)
-still want the principal's confirmation before the spec leaf lands; none
-blocks drafting the plan.
+the red team reached on the planner's questions; the principal answered the
+last three (7, 8, 9) on 2026-09-24, and none is open.
 
 ## Brainstorm Context
 
@@ -98,7 +101,8 @@ blocks drafting the plan.
 - Values are just text: once a value is text it is never reinterpreted
   (`syml-xreq.22`, option b generalized).
 - Strict indentation, spec over YAML habit (`syml-xreq.3`).
-- Comments deleted, not ruled on (`syml-xreq.21`).
+- Comments deleted, not ruled on (`syml-xreq.21`). **Superseded 2026-09-24**:
+  the principal kept comments at column 0 only (open question 7, R-18).
 - Key pattern `[a-z][a-z0-9_-]*` (`syml-xreq.16`, amended ruling).
 - Ship as 1.0.0; the tag is the end state.
 - Error improvements stay in the message string (`syml-xreq.18`).
@@ -115,12 +119,13 @@ blocks drafting the plan.
   its first line (R-04).
 - The residual unrepresentable set → eight items; FR-006 missed interior
   whitespace-only lines and later-line tab runs; one family with a spelling is
-  still refused (R-05).
+  still refused (R-05). The principal's comment ruling adds a ninth: a root
+  scalar with a line that begins with `#` or `//` (R-18).
 
 ### Scope Boundaries (non-goals)
 
 No new syntax (quoting, escapes, block-scalar indicators, document markers,
-comments, empty-container tokens); no limit enforcement or
+indented or trailing comments, empty-container tokens); no limit enforcement or
 `DocumentLimitError`; no iterative walk-up; `Source` stays a non-`str` class;
 `syml-xe9b.5`–`.7` excluded; no PyPI upload; Dependabot alert 8 untouched.
 
@@ -133,7 +138,7 @@ v2.0.0 (amended 2026-09-23)._
 | --- | --- | --- | --- |
 | I. Test-Driven Development | PASS | PASS | Every contract ends in test obligations; `sp:05-tasks` turns them into a beads Test List; RED commits via `.venv/bin/python -m tools.commit_red`. The spec-example oracle and the round-trip property are RED before the code leaves that satisfy them. |
 | II. Type Safety | PASS | PASS | New fields are typed (`content_pnode: PNode \| None`, `blank_lines_before: int`); `ParseError`'s new keyword is `StrPath \| None`; the property tests are annotated (`-> None`, typed strategies). |
-| III. Coverage and Lint Gates | PASS | PASS | No new pragma. Code made unreachable by the change is deleted, not exempted (Contract 03 on `SymlNode.fail_to_incorporate_node`; the D19 and comment paths). |
+| III. Coverage and Lint Gates | PASS | PASS | No new pragma. Code made unreachable by the change is deleted, not exempted (Contract 03 on `SymlNode.fail_to_incorporate_node`; the D19 path; the `Comment` node and the `comments` list, since the visitor now drops a comment line). |
 | IV. Spec vs Implementation Discipline | PASS | PASS | Every behaviour change cites an FR (FR-001–FR-018) and a new decision (D20–D25). The spec and review-document edits are the **first** leaf, so no code commit cites a decision that does not yet exist. The spec contradictions found in planning are settled here, not left for implementation (R-04, R-06, R-11). |
 | V. Simplicity / YAGNI | PASS | PASS | Every leaf is still a plain `str`. **Lexing stays line-oriented and context-free**: each line lexes on its own characters; only the tree builder decides that an open text value absorbs it (R-01). No new runtime dependency; `hypothesis` is test-only (Complexity Tracking). Two classes, one visitor, and four helper functions are deleted. |
 | VI. Public API Stability | PASS with declared breaks | PASS with declared breaks | Signatures of `loads`/`load` are unchanged. Behaviour breaks are listed below; all ship inside the 0.6.2 → 1.0.0 major bump, since 1.0.0 is not yet released. |
@@ -142,7 +147,7 @@ v2.0.0 (amended 2026-09-23)._
 
 | # | Change | FR | Non-breaking alternative rejected |
 | --- | --- | --- | --- |
-| 1 | The language itself: keys (D20), text context (D21), paragraph breaks (D22), no comments (D23), tab separator (D24), strict depth (D25). Documents valid under the 1.0 draft change value or start raising. | FR-001, -003, -004, -007, -008, -010 | Opt-in flags per rule. Rejected: 1.0 is unreleased, and a flag per rule is a second language to maintain. |
+| 1 | The language itself: keys (D20), text context (D21), paragraph breaks (D22), column-0-only comments (D23), tab separator (D24), strict depth (D25). Documents valid under the 1.0 draft change value or start raising. | FR-001, -003, -004, -007, -008, -010 | Opt-in flags per rule. Rejected: 1.0 is unreleased, and a flag per rule is a second language to maintain. |
 | 2 | `str(ParseError)` changes from the args tuple to `file:line:col: message` + line text; `DuplicateKeyError.message` becomes `Duplicate key '<key>'`. `.message`, `.position`, `.line_text`, `.args` layout kept. | FR-011, FR-016 | A new `format()` method leaving `str()` alone. Rejected: `str(e)` is what a traceback shows, which is the complaint in `syml-xreq.18`. |
 | 3 | `TabIndentationError.position` moves to original-text coordinates (a bug fix against CHANGELOG 10/11's promise). | FR-013 | None: the old value was wrong. |
 | 4 | `load()` on a closed handle raises `TypeError`, not `ValueError`; `loads(bytes)` raises a clear `TypeError`. | FR-017 | Let `ValueError` through. Rejected: `except ValueError` catches it as a parse error (`syml-xreq.13`). |
@@ -161,7 +166,7 @@ D25 restores §4.2 rule 5 and §9.3's KeyValue row over the code's undocumented
 carve-out (commit `a22bdfa`); D11 (baseline), D14 (spaces-and-tabs leading
 run), D16 (document top rule, now adopted in code), D6 (zero-length value), D7
 (one error class for §8.1/§8.2), and D18 (no quoting) are affirmed and
-constrain the design. **Findings**: M6 closed by D23, M20 by D22, M24 changed
+constrain the design. **Findings**: M6 closed by D23 (an indented `#` continuation is text), M20 by D22, M24 changed
 by D21, M21 and B9 moot under D20/D23. The review's open v1.2 candidates:
 candidate 4 (post-marker tab as error) is rejected by D24; candidates 1–3 stay
 open. No open spec question in the review document is touched.
@@ -191,7 +196,7 @@ uses to wire each `syml-xreq` child to its task; see Ready-queue hazard):
 | .18 | `str(e)`, open columns, hints | 03 | US11 |
 | .19 | tab as separator | 01 | US11 |
 | .20 | `- key:` sibling column (keep) | 02 (pin), 06 (README) | US11, US13 |
-| .21 | no comments | 01, 02, 04 | US10 |
+| .21 | comments at column 0 only (principal ruling 2026-09-24) | 01, 02, 04 | US10 |
 | .22 | text context | 02, 04 | US10, US12 |
 | .23 | `dumps` accepts `Source`; docs | 04, 05 | US12, US13 |
 | .24 | README "Coming from YAML" | 06 | US13 |
@@ -206,7 +211,7 @@ All 24 repros were re-run on this branch at `3bda444` and still reproduce
 ```text
 specs/002-syml-language-revision/
 ├── plan.md              # this file
-├── research.md          # R-01..R-17
+├── research.md          # R-01..R-18
 ├── data-model.md        # node, parser, exception, serializer changes
 ├── quickstart.md        # manual and suite verification
 ├── contracts/
@@ -229,8 +234,9 @@ src/syml/
 ├── basetypes.py         # Pos.from_str_index end-of-text fix; Source docstring (05)
 ├── exceptions.py        # ParseError filename kw, __str__, error_message('') (03)
 ├── nodes.py             # TextLeafNode text context + paragraph breaks, Root root-scalar + failure message,
-│                        #   KeyValue carve-out removed, IndentNode/Comment/comments removed (02, 03)
-├── parsers.py           # grammar swap, visit_document/visit_line, D19 + comment code removed (01)
+│                        #   KeyValue carve-out removed, IndentNode/Comment/comments removed (02, 03),
+│                        #   paragraph-break count skips comment lines (02)
+├── parsers.py           # grammar swap, visit_document/visit_line, D19 code removed, column-0 comment rule (01)
 ├── preprocess.py        # PositionMap before tab scan, filename into scan (03)
 └── serializer.py        # residual set, Source, dumps(''), key regex, structure match w/o preprocess (04)
 
@@ -239,7 +245,7 @@ tests/
 ├── fixtures/lane4/               # the four SC-004 documents (02)
 ├── test_roundtrip_property.py    # new: lane-1 probe as Hypothesis tests (04, R-14)
 ├── test_spec_examples.py         # new count + §4.1 grammar identity + §11.3 exports (01, 05, 06)
-└── test_*.py                     # rewritten where they pinned D5/D12/D13/D19/comments/carve-out
+└── test_*.py                     # rewritten where they pinned D5/D12/D13/D19/indented comments/carve-out
 
 tests/acceptance/
 ├── test_us10_text_values.py
@@ -296,9 +302,21 @@ independent.
    leaf lands. The prose after the code span (`— child2 is indented…`) stays
    unchecked.
 2. **Grammar leaf** (Contract 01), atomic: top rule, `indent`, `ws`, `key`,
-   `eol` (written `~r"\Z"`, Security Considerations), comment removal, D19 removal, `IndentNode`/`Comment` removal, grammar
+   `eol` (written `~r"\Z"`, Security Considerations), the column-0 comment rule
+   (`line = comment / (indent (structure / data))` with
+   `comment = ~"(?:#|//)[^\n]*"`, and `visit_line` returning `None` for a
+   comment line; R-18), D19 removal, `IndentNode`/`Comment` removal, grammar
    identity test, and the rewrite of existing tests that pinned D5, D15, D19,
-   or comments. Also `serializer.key_is_representable` as the key regex
+   or indented comments. **The grammar leaf owns the comment rule**
+   (principal ruling 2026-09-24): `comment` exists in 1.0's grammar, and this
+   leaf narrows it to column 0 instead of deleting it. It pins US1-19, -20,
+   -21, the `hello\n# note\nworld` half of US1-25, US1-26, US1-27, and
+   Contract 01's comment table; all of them hold under the 1.0 tree builder,
+   because a dropped line never reaches it. The comment-aware blank count
+   (Contract 02 rule 4) belongs to the paragraph-break leaf: at the
+   grammar-leaf commit the 1.0 builder still drops blank lines, so
+   `k:\n  a\n# n\n  b` already gives `{"k": "a\nb"}`, and US1-22 lands with
+   the count. Also `serializer.key_is_representable` as the key regex
    (it calls the removed `key_has_uppercase`), the grammar-driven corpus rows,
    and the README lead example's key with its two `test_parsers.py` tests
    (Existing tests that invert, below). The rule names follow Contract 01:
@@ -323,27 +341,25 @@ independent.
    a leaf's tests expect only what that leaf and the ones before it produce.
    The root-scalar leaf lands **before** text context, and Contract 02 rule 5's
    "the document is then text throughout" is rule 1's work, not rule 5's: with
-   rule 5 alone, `Given:
-  a: 1` (US1-9), `hello
-k: v`, and `---
-k: v`
+   rule 5 alone, `Given:\n  a: 1` (US1-9), `hello\nk: v`, and `---\nk: v`
    still raise, because their later lines lex as structure. Conversely, text
    context alone already makes those three rows pass (1.0's `Root.add_node`
    fixes a column-0 root scalar's baseline at 0). So the **root-scalar leaf**
-   pins only the rows about an **indented** first line (US1-10 and the
-   `Source` start row `Pos(0, 1, 0)`); the **text-context leaf** pins every
-   row whose later line lexes as structure (US1-3, -4, -7, -9, -16, -17, the
-   R-06 rows, the `hello`/`---` edge rows, and the `silent` rows); the
-   **paragraph-break leaf** pins US1-1, -2, -11 and the R-03 and R-04 rows;
-   the **strict-depth leaf** pins US2-1, US2-2, and the `- key:
-    - x`
-   edge row. Rows that already hold at the grammar-leaf commit (US1-12, -13,
-   -14, -15, -18, US2-3, -7, -14, and the NBSP-only row `k: v
-  
-j: w`,
+   pins only the rows about an **indented** first line (US1-10, US1-14, the
+   `# c\n  hello` half of US1-25, and the `Source` start row
+   `Pos(0, 1, 0)`); the **text-context leaf** pins every row whose later line
+   lexes as structure (US1-3, -4, -7, -9, -16, -17, -24, the R-06 rows, the
+   `hello`/`---` edge rows, and the `silent` rows); the **paragraph-break
+   leaf** pins US1-1, -2, -11, -22 and the R-03 and R-04 rows, and keeps
+   US1-21 green while it changes the count (Contract 02 rule 4); the
+   **strict-depth leaf** pins US2-1, US2-2, and the `- key:\n    - x` edge
+   row. Rows that already hold at the grammar-leaf commit (US1-12, -13, -15,
+   -18, -23, US2-3, -7, -14, and the NBSP-only row `k: v\n \xa0\nj: w`,
    which 1.0's builder already joins because the line lexes as text) may sit
-   in any of these leaves. Contract 02 carries the same assignment as a
-   `Leaf` note under its table.
+   in any of these leaves. US1-14 moved out of that list with the principal's
+   comment ruling: its value is now the indented root scalar `"  # three"`,
+   which needs the root-scalar leaf. Contract 02 carries the same assignment
+   as a `Leaf` note under its table.
 4. **Error leaves** (Contract 03): `ParseError` filename/`__str__`; tab-scan
    positions; out-of-context message and hints (needs 3 for the new shapes).
 5. **Serializer leaves** (Contract 04), after 2–3: structure match
@@ -359,20 +375,37 @@ j: w`,
 
 - `specs/acceptance-specs/US03-line-lexing.feature`: `key:\tv` (now a
   mapping) and `key: \tv` (now `"v"`).
-- `specs/acceptance-specs/US04-empty-values.feature`: "A comment-only document
-  yields the empty string" (now the root scalar `"# just a comment"`).
 - `specs/acceptance-specs/US07-serialization.feature` and
   `tests/serialization_corpus.py`: rows `contains_blank_line`,
-  `block_line_begins_with_comment_marker`, `comment_marker_root_scalar`,
-  `uppercase_key`, the key-rule and root-scalar-refusal scenarios.
+  `block_line_begins_with_comment_marker` (`{"k": "a\n# c"}` is now written
+  as `k:\n  a\n  # c\n` and round-trips), `uppercase_key`, the key-rule and
+  root-scalar-refusal scenarios.
 - `specs/acceptance-specs/US09-release-readiness.feature`: CHANGELOG item
   assertions.
 - `tests/test_parsers.py`, `tests/test_nodes.py`, `tests/test_serializer.py`,
   `tests/test_preprocess.py`, `tests/test_documents.py`, `tests/test_exceptions.py`:
-  comment, D19 uppercase, tab-separator, indentless-sequence, `IndentNode`,
-  message-text assertions (about 90 matching lines by a rough grep; 05-tasks
-  greps for `comment`, `uppercase`, `Listen`, `IndentNode`, `\t`, `>=`,
-  `Failed to incorporate`).
+  indented-comment, D19 uppercase, tab-separator, indentless-sequence,
+  `IndentNode`, message-text assertions (about 90 matching lines by a rough
+  grep; 05-tasks greps for `comment`, `uppercase`, `Listen`, `IndentNode`,
+  `\t`, `>=`, `Failed to incorporate`).
+
+**Comment tests after the principal's ruling (2026-09-24).** Column-0
+comments keep 1.0's behaviour, so several 1.0 comment tests now stay green
+and must not be inverted: `US04-empty-values.feature` "A comment-only document
+yields the empty string" (`# just a comment` is still `""`);
+`serialization_corpus.py`'s `comment_marker_root_scalar` (`"# c"` is still
+refused, now by Contract 04 item 9); `test_serializer.py`'s `('# c', 'a line
+begins with a comment marker')` refusal row (item 9 keeps that reason text);
+`test_nodes.py`'s empty-and-comment-only `Root` test; the `#comment` and
+`//comment` unrepresentable-key rows; and
+`test_parsers.py::TestVisitCommentWithNoTrailingText` (`####` still loads as
+`""`). What still inverts is every test that pinned an **indented** `#`/`//`
+line as a comment: `test_parsers.py::test_it_should_parse_comments_and_blanks`
+(its `  # Something else entirely` line is now text at a list's column; it
+also has an indentless list under `- foo:`, D25), and the
+`test_serializer.py` refusal rows `({'k': 'a\n# c'}, …)` and
+`('x\n  //c', …)`, which are now written and round-trip. The `Comment` node
+test in `test_nodes.py` is deleted with the class (Contract 01 obligation 5).
 
 **The grep is a floor, not the inventory (red team outer iteration 4).**
 Running the current suites against the planning spike finds inversions that
@@ -440,7 +473,7 @@ change") is pinned by a US11 scenario and a README leaf, not by code.
 
 | User Story | Acceptance Spec File | Bindings | Scenarios |
 | --- | --- | --- | --- |
-| US1: Prose, dialogue, and headers are text | `specs/acceptance-specs/US10-text-values.feature` | `tests/acceptance/test_us10_text_values.py` | 18 |
+| US1: Prose, dialogue, and headers are text | `specs/acceptance-specs/US10-text-values.feature` | `tests/acceptance/test_us10_text_values.py` | 27 |
 | US2: Strict structure, honest whitespace, errors say why | `specs/acceptance-specs/US11-strict-structure-errors.feature` | `tests/acceptance/test_us11_strict_structure_errors.py` | 14 |
 | US3: The serializer writes everything the parser reads | `specs/acceptance-specs/US12-serializer-round-trip.feature` | `tests/acceptance/test_us12_serializer_round_trip.py` | 10 |
 | US4: Documents describe what ships; 1.0.0 tagged | `specs/acceptance-specs/US13-release-documents.feature` | `tests/acceptance/test_us13_release_documents.py` | 8 |
@@ -543,12 +576,29 @@ Clarifications:
     sentence now says both halves and names FF and the other invisible
     characters (silent table above).
 
+12. **Comments at column 0 (principal ruling, 2026-09-24; open questions
+    7–9).** FR-007 is rewritten from "SYML has no comments" to the
+    column-0 rule, and the spec now binds it: US1 gains scenarios 19–27
+    (a `#` and a `//` header line, a comment inside an open value, a
+    comment between blank lines, an indented `#` line, `server: # prod`, a
+    comment inside a root scalar, a BOM-led `#` line, and the 0.6.2
+    between-entries case), US1-14's expected value changes to `"  # three"`
+    and `""`, and FR-003, FR-004, FR-006, FR-012, FR-015, FR-016, US4
+    scenarios 2–5, Edge Cases, Key Entities, and Scope Boundaries follow.
+    The mechanism (a grammar alternative matched only at column 0, a
+    blank-line count that skips comment lines, and a root-scalar refusal in
+    `dumps`) is recorded in research.md R-18 and Contracts 01, 02, 04, and
+    06. The US1 scenario count moves from 18 to 27, and the total from 50 to
+    59.
+
 ## Open Questions for the Principal
 
 The red team (pass 1) returned a verdict on each of the planner's questions;
 the principal may still overrule any. Question 7 is new and is the one that
 most deserves the principal's eye, because it corrects a fact a ruling rested
-on. Question 8 was added by red team outer iteration 2.
+on. Question 8 was added by red team outer iteration 2. **The principal
+answered questions 7, 8, and 9 on 2026-09-24** (verdicts below each; spec.md
+Clarifications, "Principal rulings").
 
 1. **Silent absorption (R-06, D21).** `parent:\n  child1: a\n   child2: b`
    now loads `child2: b` as part of `child1`'s value instead of raising.
@@ -603,6 +653,17 @@ on. Question 8 was added by red team outer iteration 2.
    D21), and the release text is corrected (Contract 06 §A, §B, §C, §D).
    **Ask the principal** to confirm D23 with the corrected consequence before
    the spec leaf lands, since the tag makes it a 1.0 promise.
+   **Principal's verdict (2026-09-24): overruled; comments stay at column 0
+   only.** A line whose first character, with no indentation, is `#`, or
+   whose first two characters are `//`, is a comment, skipped as if absent
+   anywhere in the document, including between two lines of an open text
+   value (not a paragraph break). Every indented `#`/`//` line and every `#`
+   after a key or marker stays text. The principal chose `#` and `//` over
+   `#` alone, and "anywhere" over "only between structure entries" (R-18
+   records the alternatives). The file-header row of the silent table is gone
+   (US1-19); the indented first line of a block (`a:\n  # section`) and the
+   trailing-comment shape (`server: # prod`) stay silent and are named in the
+   release text. FR-007, D23, and Contract 06 carry the new rule.
 
 8. **No hint for a former comment line (new, red team outer iteration 2).**
    A 0.6.2 user's `a: 1\n# note\nb: 2` now raises "Line 2, at column 0, is
@@ -622,6 +683,12 @@ on. Question 8 was added by red team outer iteration 2.
    ("a value under a key must be indented past the key's column") is message
    text only; **not added** (FR-012's list is closed), for the principal to
    decide with this question.
+   **Principal's verdict (2026-09-24): resolved by the ruling on question 7.**
+   The primary case now loads (`a: 1\n# note\nb: 2` → `{"a": "1", "b": "2"}`,
+   US1-27), so no comment hint is added and FR-012's list stays closed. The
+   flush-prose companion case stays without a hint. The one hint rule the
+   ruling does touch is hint (a)'s "line above": it is now the nearest
+   earlier line that is neither blank nor a column-0 comment (Contract 03).
 
 9. **`dumps` writes nested lists that `loads` cannot read (new, red team
    outer iteration 8).** `dumps` writes a list whose first item is a list
@@ -647,6 +714,9 @@ on. Question 8 was added by red team outer iteration 2.
    since `loads` reads up to about 121); adding the refusal later would be
    breaking for values between 33 and the cliff, which is the argument for
    deciding before the tag.
+   **Principal's verdict (2026-09-24): document only.** This confirms the
+   plan position: no depth refusal, §13.4 gains the nested-list figures, and
+   no test pins the deep case either way (Contract 04, "Not checked").
 
 ## Security Considerations
 
@@ -716,7 +786,8 @@ so no carried-over finding applies).
   count above does not look at it: `dumps` of a list nested 130 deep succeeds
   and `loads` of the output raises `RecursionError`; at about 58 to 121
   levels the answer depends on the caller's stack. Pre-existing in 1.0 and
-  left documented as part of the §13.4 nesting cliff (open question 9).
+  left documented as part of the §13.4 nesting cliff (open question 9; the
+  principal ruled "document only" on 2026-09-24).
 
 ## Edge Cases & Error Handling
 
@@ -727,8 +798,7 @@ kept, but no document may call it loud:
 
 | Input | Result | Why silent |
 | --- | --- | --- |
-| `# Application config\nname: app\nport: 80` | the `str` `"# Application config\nname: app\nport: 80"` | the first line is text, so the root is text throughout (D21, D23) |
-| `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` | the block's first line is text (D21, D23) |
+| `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` | the block's first line is an **indented** `#` line, which is text, not a comment (D21, D23 as revised) |
 | `Name: app\nport: 80`, `---\nname: app` | one `str` each | same, via D20 and the no-document-markers rule |
 | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` | a tab after `-` counts as **one** column, so `k` is at column 2 and a line an editor shows aligned under `k` (tab stop 8) is past it and joins the inline value (D24 × §6.2 × D21) |
 | `parent:\n  child1: a\n   child2: b` | `{"parent": {"child1": "a\nchild2: b"}}` | R-06 |
@@ -739,10 +809,22 @@ kept, but no document may call it loud:
 | `k: v\n \xa0\nj: w`, `k:\n  a\n  \xa0\n  b`, `k:\n  \x0c\n  b: 1` | `{"k": "v\n\xa0", "j": "w"}`, `{"k": "a\n\xa0\nb"}`, `{"k": "\x0c\nb: 1"}` | a line holding only an invisible non-space character (NBSP, FF, VT, U+3000, U+200B; a NBSP left on an otherwise blank line by a paste, a `^L` page break) is not blank under FR-009, so when it is indented at or past an open value's threshold it is a content line of that value, and as a block's first line it makes the block text. 1.0's `indent = \s*` swallowed all three as blank lines (`{"k": "v", "j": "w"}`, `{"k": "a\nb"}`, `{"k": {"b": "1"}}`, verified on `master`); now silent, and the kept character is invisible in an editor. Only the column-0 form raises (US2-7) (red team outer iteration 8) |
 | `ports:\n  - containerPort: 80\n    protocol: TCP` | `{"ports": ["containerPort: 80\nprotocol: TCP"]}` | the item's **first** key is outside D20's pattern, so `containerPort: 80` is the item's inline text value, anchored at the `-` column; the conforming sibling keys at the `-`+2 column are past that anchor and join it. In 1.0 this raised at line 3; it is now silent. A non-pattern **later** key (`- name: x\n  Age: 3`) still raises, with hint (a), because it sits at the open mapping's column (red team outer iteration 5) |
 
+**The principal's comment ruling (2026-09-24) removed one row.** The table
+used to open with `# Application config\nname: app\nport: 80` → the `str`
+`"# Application config\nname: app\nport: 80"`. A column-0 `#` line is now a
+comment, so that document loads as `{"name": "app", "port": "80"}` (US1-19),
+and a column-0 `# section` line under a key is skipped the same way
+(`a:\n# section\n  b: 1\n  c: 2` → `{"a": {"b": "1", "c": "2"}}`, verified on
+the planning spike with R-18's change). The rows that remain are the
+**indented** `#` shapes: a block whose first line is `  # section`, and a
+`#` after `key:` or `-` (below). Both are text by the ruling.
+
 Consequences for the text leaves (Contract 06): D23's breaking-change note,
 the CHANGELOG D23 item, and README "Coming from YAML" item 1 state that a
-`#`/`//` first line of a document or block makes that document or block one
-string, and that a later `#` line at a container's level raises; the
+column-0 `#`/`//` line is a comment, skipped anywhere; that an **indented**
+`#`/`//` line is text, so as the first line of a block it makes that block
+one string, silently, and after a container's first entry it raises; and
+that a `#`/`//` after `key:` or `-` takes in the block under it. The
 "loud for third-party files" wording is replaced. D24's note and §6.2/§7.5
 state that columns are code-point counts, so a tab counts as one column. The
 README list stays at eight items in order (FR-015); the silent cases go into
@@ -765,7 +847,9 @@ consequences for the release text (Contract 06):
   told a 0.6.2 user to check `isinstance(loads(text), dict)`. That check
   passes for `server: # production\n  host: x`, whose top level is still a
   `dict`. The CHANGELOG D23 item instead tells the user to search the file:
-  every line whose first non-space characters are `#` or `//`, and every
+  every **indented** line whose first non-space characters are `#` or `//`
+  (a line that starts with one at column 0 is still a comment, principal
+  ruling 2026-09-24, so it needs no change), and every
   `key:` or `-` followed by separator whitespace and `#` or `//` with a
   deeper block under it, changes meaning (`k: # x` alone was already the
   string `"# x"` in 1.0, US1-5; red team outer iteration 5 pass 2). D23's breaking-change note (Contract 06 §B) and README item 1
@@ -911,14 +995,18 @@ depends on the caller's stack and is R-17's to measure, not a promise.
 
 - **NBSP-led first line is silent too.** `\xa0\xa0name: app\nport: 80`
   (indentation pasted from a web page) is a root scalar with no error, by
-  FR-009 and D21. It belongs to the same family as the silent `#` first line.
+  FR-009 and D21. It belongs to the same family as the silent indented `#`
+  first line of a block.
   The CHANGELOG's only-U+0020-is-indentation item (Contract 06 §C) should name
   that consequence ("a document or block whose first line starts with a
   non-breaking space is one string"); no ninth README item is needed. Later
   NBSP-led lines raise, and `str(e)` shows `\xa0`.
-- **The spike's `check.py` is stale on three rows.** It still expects
+- **The spike's `check.py` is stale on five rows.** It still expects
   `OutOfContextNodeError` for `k:\n  a: 1\n   b: 2`, `a: 1\n  - x`, and
-  `parent:\n  child1: value\n   child2: value`, which R-06 made valid text.
+  `parent:\n  child1: value\n   child2: value`, which R-06 made valid text,
+  and it expects US1-14's pre-ruling values (`"# one\n// two\n  # three"`,
+  `"# c"`), which the column-0 comment rule changes to `"  # three"` and
+  `""` (R-18).
   `/sp:05-tasks` takes expected values from spec.md and the contracts, never
   from the spike's scripts.
 - **P8 holds on the spike.** A 20,000-example load-first run (documents
@@ -950,7 +1038,7 @@ depends on the caller's stack and is R-17's to measure, not a promise.
   FR-015 covers only the new "Coming from YAML" section, so Contract 06 §D
   gains an item that rewrites the paragraph to Contract 04's layout (paragraph
   breaks written as empty lines; a root scalar keeps its leading spaces) and
-  its eight refusal items, and adds `Source` to the accepted types.
+  its nine refusal items, and adds `Source` to the accepted types.
 - **The `doc01b` ruled value has a lowercase key.** The lane-4
   `doc01b_scene_taxi.expected.py` `AUTHOR` has `'Given'`; SC-004 loads the
   document with the header lowercased, so the pinned value's key is `'given'`
@@ -962,7 +1050,7 @@ US3's persona loads a file and writes it back. Apart from values `loads`
 cannot return at all (a `- ` chain past the cliff raises `RecursionError`
 before `dumps` sees it; and, the other direction, structure nested past the
 §13.4 cliff, which `dumps` writes but `loads` cannot read back, open question
-9), `dumps` refuses exactly three families of values
+9, documented only by the principal's ruling), `dumps` refuses exactly three families of values
 that `loads` can return: a multi-line mapping value whose
 first line is structure-shaped (L1, R-05; `k: note: the door\n  is locked`,
 `notes: - milk\n  - eggs`), a value containing a control character that
@@ -972,7 +1060,11 @@ the stack still let `loads` read (L3, outer iteration 7). All stay refused
 (open question 3). A load-first property (Contract 04, P8) pins them: for
 generated documents that load, `dumps` either round-trips the result or raises
 `UnrepresentableValueError` for a document holding a value in one of these
-families, so any fourth load-only family fails the suite.
+families, so any fourth load-only family fails the suite. The column-0
+comment rule adds a refusal (Contract 04 item 9: a root scalar with a line
+that begins with `#` or `//`) but no load-only family: `loads` never returns
+such a root scalar, because a root scalar's line that begins with `#` or `//`
+at column 0 is a comment and never becomes text (R-18).
 
 **P8 must check the rest of the document, not only that a family value is
 present (red team outer iteration 7).** `dumps` stops at the first value it

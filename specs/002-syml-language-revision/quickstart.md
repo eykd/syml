@@ -30,8 +30,11 @@ syml.loads('k:\n  some prose\n  - used as a dash\n  more')
 syml.loads('- Share is\n  //server/share')
 # ['Share is\n//server/share']
 
-syml.loads('# not a comment')
-# '# not a comment'
+syml.loads('# a comment\nk: v')
+# {'k': 'v'}                         (a column-0 # line is a comment)
+
+syml.loads('k:\n  a\n  # not a comment')
+# {'k': 'a\n# not a comment'}        (an indented # line is text)
 
 syml.loads('env:\n  HOME: /h\n  PATH: /p')
 # {'env': 'HOME: /h\nPATH: /p'}      (uppercase would-be keys are text)

@@ -164,6 +164,19 @@ Added by `/sp:02-specify` for `specs/002-syml-language-revision/spec.md`. The
 entries above that describe comments (`comment` in the line-node rule, the
 "comment lines are skipped" clauses) and quoted values predate D18 and this
 revision; they are corrected when the corresponding code lands, not here.
+Under the principal's ruling of 2026-09-24 the "comment lines are skipped"
+clauses stay true for column-0 comments only (see **Comment** below).
+
+- **Comment** (revised 2026-09-24) — a line whose first character, at column
+  0 with no indentation, is `#`, or whose first two characters are `//`
+  (FR-007, D23 as revised). It is skipped as if it were not in the document,
+  anywhere: between entries, before a block's first line, and between two
+  lines of an open text value, where it is neither a line of the value nor a
+  paragraph break. An indented `#`/`//` line, and a `#` after a key or
+  marker (`server: # prod`), is text. The grammar lexes it as the first
+  alternative of `line = comment / (indent (structure / data))`, so it can
+  only match at column 0; the line visitor drops it, and no node represents
+  it. Not "no comments": that was the pre-ruling reading of `syml-xreq.21`.
 
 - **Text context** — the state a block or root position enters when its first
   own line is text (FR-003). While open, every line at or past the value's
@@ -173,7 +186,7 @@ revision; they are corrected when the corresponding code lands, not here.
 
 - **Paragraph break** — an empty line inside a multi-line value, written as a
   physical blank line between two continuation lines and kept one for one
-  (FR-004). Blank lines before the first or after the last continuation line
+  (FR-004). A column-0 comment line between them is not counted. Blank lines before the first or after the last continuation line
   stay inert, so no value begins or ends with a paragraph break.
 
 - **Key pattern** — `[a-z][a-z0-9_-]*` (FR-001): the whole rule for what may

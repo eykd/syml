@@ -6,7 +6,8 @@ Every open item the spec carried into planning is settled here. R-01 to R-04
 are the four "Deferred to Planning" items from the brainstorm (spec
 Assumptions (a)–(d)). R-05 to R-12 are spec questions that surfaced while
 planning, including three places where the spec contradicted itself. R-13 to
-R-17 record tooling and process decisions.
+R-17 record tooling and process decisions. R-18 records the principal's
+comment ruling of 2026-09-24 and the mechanism chosen for it.
 
 Evidence for the design decisions comes from a throwaway spike: a copy of
 `src/syml` in the session scratchpad with the R-01/R-02/R-03 changes applied
@@ -79,7 +80,8 @@ Constitution Check says so.
 
 **Decision**: Adopt the spec's top rule and make the code's grammar the one
 §4.1 prints. The grammar changes land as **one atomic leaf** (top rule,
-`indent`, `ws`, `key`, `eol`, `comment` removal), because intermediate states
+`indent`, `ws`, `key`, `eol`, and the `comment` change: removal as first
+planned, narrowed to column 0 by R-18), because intermediate states
 stall the parse (lane 2 verified that swapping `indent` alone stops after
 line 1).
 
@@ -87,7 +89,8 @@ The revised rule set (full text in Contract 01):
 
 ```peg
 document        = (line "\n")* line?
-line            = indent (structure / data)
+line            = comment / (indent (structure / data))
+comment         = ~"(?:#|//)[^\n]*"
 structure       = list_item / key_value / section
 indent          = ~" *"
 list_item       = value_list_item / guard_list_item
@@ -121,8 +124,9 @@ Consequences the implementation must handle (all confirmed in the spike):
   `section`. The spec adopts the code's two *named* `list_item` alternatives
   (`value_list_item`, `guard_list_item`), because the visitor needs a hook
   for each and an anonymous parenthesized alternative has none.
-- **Deleted with the grammar**: `visit_blank`, `visit_comment`,
-  `visit_indent`, `IndentNode`, `Comment`, `SymlNode.comments`,
+- **Deleted with the grammar**: `visit_blank`, `visit_indent`, `IndentNode`,
+  `Comment`, `SymlNode.comments` (`visit_comment` stays and returns `None`,
+  R-18),
   `key_has_uppercase`, `_is_text_line`, `_text_leaf`, `_UPPERCASE_CATEGORIES`,
   and the `unicodedata` import (FR-001 makes D19's out-of-PEG check
   unnecessary: the key class is ASCII lowercase by construction).
@@ -155,21 +159,22 @@ ignores comments and alignment, which the spec keeps for readers.
 **Decision**: Reconstruct from positions at attach time; never buffer.
 
 Blank lines never reach the tree builder (R-02: `visit_line` drops them).
-When `TextLeafNode.add_node` appends a continuation, it counts the line
-breaks in the normalized text between the previous line of the value and the
+When `TextLeafNode.add_node` appends a continuation, it counts the blank
+lines in the normalized text between the previous line of the value and the
 new one:
 
 ```text
 previous = self.children[-1] if self.children else self
-gap = full_text[previous.pnode.end : node.pnode.start].count("\n") - 1
-node.blank_lines_before = gap
+gap = full_text[previous.pnode.end : node.pnode.start]
+node.blank_lines_before = sum(1 for line in gap.split("\n")[1:-1] if is_blank(line))
 ```
 
 `as_data` emits `blank_lines_before` empty lines before each continuation.
-The normalized text is LF-only, so the count is exact whatever the original
-line endings or BOM. Between two lines of the same value every intermediate
-line must be blank: a non-blank line at or past the threshold would have been
-absorbed as a continuation (R-01), and one below it would have ended the
+(R-18 replaced this pass's `gap.count("\n") - 1`, which counted a column-0
+comment line as a blank line.) The normalized text is LF-only, so the count
+is exact whatever the original line endings or BOM. Between two lines of the
+same value every intermediate line must be blank or a column-0 comment: any
+other line at or past the threshold would have been absorbed as a continuation (R-01), and one below it would have ended the
 value, after which the tip never returns to it.
 
 Inertness at the edges comes for free: a blank line before a block value's
@@ -253,9 +258,14 @@ layouts the unrepresentable set of §11.2.1 is exactly:
    `"\n"`): FR-004 makes such blank lines inert.
 7. **Keys** outside `[a-z][a-z0-9_-]*`, including `""` (FR-002).
 8. **Empty containers** (§11.2.2, unchanged).
+9. **A root scalar with a line that begins with `#` or `//`** (added by
+   R-18, principal ruling 2026-09-24): at column 0 such a line is a comment,
+   so it would be dropped on the way back.
 
 Everything else is written, including every value that was refused only for a
-blank, `#`/`//`-led, or structure-shaped *later* line, a BOM- or NBSP-led line
+blank, `#`/`//`-led, or structure-shaped *later* line (except at the root:
+R-18 adds a ninth item, a root scalar with a line that begins with `#` or
+`//`, which would read back as a comment), a BOM- or NBSP-led line
 anywhere, and a root scalar with leading spaces.
 
 **Spike evidence**: the round trip `loads(dumps(x)) == x` held for every
@@ -378,8 +388,9 @@ failure, on `Root`, with no builder plumbing:
   `children[-1]` from itself to the leaf and collects the levels of the `List`
   and `Mapping` nodes on that spine: the columns at which a sibling line would
   have been accepted. For `k:\n  a: 1\n b: 2` that is `0, 2`.
-- **The line above** is the previous non-blank line of the normalized text
-  before the failing line (from `node.pnode.full_text`), not a node.
+- **The line above** is the nearest earlier line of the normalized text that
+  is neither blank nor a column-0 comment (from `node.pnode.full_text`), not a
+  node (R-18 added the comment clause).
 - **Hint (a), would-be key.** Fires when the failing line, or the line above
   it, has the shape `<run>:` followed by a space, a tab, or end of line, where
   `<run>` is a non-empty run of non-whitespace, non-colon characters after the
@@ -457,8 +468,9 @@ index 7, line 2, column 0.
 - **Blank-only document `Source`.** `Pos.from_str_index` at an index just
   past a trailing `\n` reports the next line, column 0 (`parse('\n')` →
   `Pos(index=1, line=2, column=0)`), so line and column agree with the index.
-  `syml-xreq.11`'s original input `# x\n` is now a root scalar and no longer
-  zero-width.
+  `syml-xreq.11`'s original input `# x\n` is zero-width again under R-18's
+  column-0 comment rule, so the same fix covers it:
+  `parse('# x\n').as_source().start` is `Pos(index=4, line=2, column=0)`.
 
 ---
 
@@ -607,3 +619,143 @@ recursion depth under pytest depends on the runner's own stack and the
 Python version, so an exact assertion would be flaky. The measurement method
 (the four cases above, bisected at the default limit) is recorded in the
 release-text contract so it can be repeated before any future tag.
+
+---
+
+## R-18 — Comments at column 0 (principal ruling, 2026-09-24; plan open questions 7–9)
+
+**Ruling**: A line whose first character, at column 0 with no indentation,
+is `#`, or whose first two characters are `//`, is a comment. It is skipped
+as if it were not in the document, anywhere in the document, including
+between two lines of an open text value, where it is not a paragraph break.
+Every indented `#`/`//` line, and every `#` after a key or marker, stays
+ordinary text. This supersedes the "remove comments entirely" reading of
+`syml-xreq.21` that FR-007 and D23 recorded. Open question 8 is resolved by
+the same ruling (no new hint), and open question 9 is ruled "document only".
+
+**Decision (mechanism)**: a grammar alternative, not pre-processing.
+
+```peg
+line    = comment / (indent (structure / data))
+comment = ~"(?:#|//)[^\n]*"
+```
+
+- **Column 0 falls out of PEG order.** `line` tries `comment` first, at the
+  line's first character. An indented line starts with a space, so
+  `comment` fails and the `indent` branch runs; the `#` is then lexed as
+  `data`, exactly as the plan already treats it. No lookbehind and no
+  indentation test is needed.
+- **The parentheses are required.** Parsimonious's rule grammar does not
+  parse `comment / indent (structure / data)` (an `IncompleteParseError` at
+  the `(`); `comment / (indent (structure / data))` loads, and its
+  `as_rule()` is `comment / (indent (structure / text))`. §4.1 prints the
+  parenthesized form so the identity test compares like with like.
+- **One regex, no `text` child.** `comment` is a single regex rather than
+  `("#" / "//") text`, so `visit_text` never builds a `TextLeafNode` for a
+  comment's content only to have it discarded.
+- **The visitor drops the line.** `visit_comment` returns `None`, and
+  `visit_line` returns `None` when the chosen alternative is `comment`
+  (`node.children[0].expr_name == 'comment'`), the same path a blank line
+  takes. No `Comment` node, no `comments` list, and nothing reaches the tree
+  builder, so every later line keeps its own parse node and its own
+  original-text position.
+- **The BOM.** §9.0 strips one BOM at index 0 before lexing, so
+  `\ufeff# header` is a comment, and a later position still counts the BOM
+  as index 0 of the original text (R-09). A BOM anywhere else is content, so
+  `a: 1\n\ufeff# x` is a text line at a mapping's column and raises.
+- **The tab scan.** A column-0 comment's leading run of spaces and tabs is
+  empty, so §9.0's tab scan never fires on it, and a tab after the marker
+  (`#\tx`) is comment content.
+
+**Blank-line count (fixes R-03's formula).** R-03 counted every line break
+in the gap between two lines of a value
+(`full_text[prev.pnode.end : node.pnode.start].count("\n") - 1`). That
+counts a comment line as a blank line, so `k:\n  a\n# n\n  b` would load as
+`{"k": "a\n\nb"}`, which the ruling forbids. The count is now over the
+blank lines in the gap only:
+
+```python
+gap = full_text[prev.pnode.end : node.pnode.start]
+node.blank_lines_before = sum(1 for line in gap.split("\n")[1:-1] if preprocess.is_blank(line))
+```
+
+`[1:-1]` drops the tail of `prev`'s line (empty, since a text leaf ends at
+its line's end) and the indentation of `node`'s own line. Every line left is
+blank or a column-0 comment (any other line would have joined the value or
+ended it), so counting blanks is the same as not counting comments, and it
+reproduces R-03's whitespace-only row (`k:\n  a\n      \n  b` →
+`{"k": "a\n\nb"}`).
+
+**Blank lines on both sides of a comment.** The ruling says a comment is
+skipped "as if it were not there". Read literally, deleting the line leaves
+both blank lines, and FR-004 keeps each physical blank line: so
+`k:\n  a\n\n# note\n\n  b` is `{"k": "a\n\n\nb"}` (two empty lines), and
+`k:\n  a\n\n# note\n  b` is `{"k": "a\n\nb"}`. No coalescing rule is added.
+
+**Serializer.** A root scalar is written in block form at column 0, so a
+line of it that begins with `#` or `//` would read back as a comment and be
+dropped. It has no other spelling (a root scalar's baseline is column 0;
+indentation would become part of the value), so Contract 04 adds item 9: a
+root scalar with any line that begins with `#` or `//` is
+`UnrepresentableValueError`. No other output can put `#` or `/` at column 0:
+a key matches `[a-z]…`, a list line starts with `-`, a paragraph break is an
+empty line, and every non-root value is indented at least two spaces. A
+value that begins with a BOM and then `#` is still written: the output's
+extra BOM (unchanged rule) means `loads` strips one and keeps `\ufeff# x`
+as content. **No new load-only family**: `loads` never returns a root scalar
+with such a line, because such a line is a comment.
+
+**Spike evidence** (the planning spike copied to the session scratchpad with
+the three changes above):
+
+- `check.py`: 70 inputs, 5 mismatches, all expected: the three rows R-06 made
+  text and US1-14's two pre-ruling values.
+- A 36-input table (every new US1 scenario, 19–27, plus edge rows) gives the pinned
+  output, including `#\tx`, `//\tx`, `/x`, `///x`, `#!/bin/sh`, `\xa0# x`,
+  `a:\n  b: 1\n# note\n  c: 2`, `- a\n# note\n- b`, and `k: v\n# c\n  more`.
+- Positions after a comment are the original text's: `a: 1\n# c\n- x`
+  raises at `Pos(9, 3, 0)`; `\ufeff# c\r\n\tb` raises `TabIndentationError`
+  at `Pos(4, 2, 0)`.
+- `check2.py`: the lane-4 documents change only where the ruling says:
+  `doc02_config` loads as a mapping (its `# Application config` header is a
+  comment), `doc09c_only_comments` loads as `"  # three"`, and
+  `doc09g_comment_no_nl` as `""`.
+- `fuzz.py` (5,000 examples, an alphabet with `#`, `/`, and newlines):
+  every accepted value round-trips; the refused-but-spellable probe finds
+  only family L1.
+- A load-first run (20,000 generated documents of column-0 and indented
+  `#`/`//` lines, markers, keys, NBSP, BOM, VT, and tabs): every loaded
+  value either round-trips through `dumps` or is refused for an L1/L2
+  value; `dumps` never writes a line that begins with `#` or `//`; and
+  `loads(t)` equals `loads` of `t` with its column-0 comment lines deleted.
+
+**One surprise**: the deletion equivalence needs one qualifier. §9.0 strips
+a BOM only at index 0 of the original text, so `# c\n\ufeffz` loads as
+`"\ufeffz"`, while `\ufeffz` alone loads as `"z"`. The comment does not move
+the start of the document. The property therefore deletes comment lines
+from the text after the index-0 BOM strip; spec.md Edge Cases states the
+exception.
+
+**Hints.** Contract 03's hint (a) reads "the line above" from the normalized
+text. It now skips column-0 comment lines as well as blank lines, so
+`config:\n  Host: x\n# c\n port: 1` still names `Host`. The failing line
+itself can never be a comment.
+
+**Alternatives considered**:
+
+- *`#` alone* (drop `//`). Not taken: the principal chose both markers, as
+  0.6.2 and the 1.0 draft had them.
+- *Comments only between structure entries* (a column-0 comment inside an
+  open text value would be text, or would end the value). Not taken: the
+  principal chose "anywhere". It would also make a comment's meaning depend
+  on the builder's state, which the per-line lexing rule avoids.
+- *Pre-processing removal* (delete comment lines before parsing, or blank
+  them out). Not taken. Deleting lines shifts every later position and needs
+  a second position map. Blanking them keeps positions but turns each
+  comment into a blank line, so R-03 would count it as a paragraph break.
+- *A lookbehind in `comment`* (`~"(?<![ ])(?:#|//)…"` inside
+  `indent (comment / structure / data)`). Not taken: PEG order already
+  gives column 0 with no regex trick.
+- *Keep D23 ("no comments")*. Overruled by the principal (plan open
+  question 7): its premise that every consequence is loud was false, and a
+  0.6.2 file header silently turned the whole file into one string.

@@ -1,6 +1,6 @@
 # Contract 04 — `dumps` Writes Everything the Parser Reads
 
-**Requirements**: FR-002, FR-006, FR-014, FR-017 (`dumps('')`) | **Decisions**: D20, D21, D22, D23, D24 (serializer halves) | **Findings closed**: `syml-xreq.6`, `.12`, `.15` / `.16` / `.2` / `.1` (serializer halves), `.23` (code half) | **Research**: R-05, R-14
+**Requirements**: FR-002, FR-006, FR-014, FR-017 (`dumps('')`) | **Decisions**: D20, D21, D22, D23, D24 (serializer halves) | **Findings closed**: `syml-xreq.6`, `.12`, `.15` / `.16` / `.2` / `.1` (serializer halves), `.23` (code half) | **Research**: R-05, R-14, R-18
 
 ## Surface
 
@@ -50,6 +50,15 @@ type-checks today.
 | 6 | the value has more than one line and its first or last line is empty | all |
 | 7 | a mapping key that does not match `[a-z][a-z0-9_-]*` (incl. `""`) | — |
 | 8 | an empty list or mapping (§11.2.2, unchanged) | — |
+| 9 | any line that begins with `#` or `//` (it would be written at column 0 and read back as a comment, FR-007; principal ruling 2026-09-24, R-18). The refusal message keeps 1.0's reason text, `a line begins with a comment marker` | root |
+
+**Item 9 is root-only, and nothing else can put a marker at column 0.** A
+root scalar is written in block form at column 0 and its baseline is column
+0, so indentation cannot protect a `#` line: it would become part of the
+value. Every other line `dumps` writes starts with a key (`[a-z]`), a `-`,
+or at least two spaces, or is an empty paragraph-break line. A value that
+starts with a BOM and then `#` is still written: the output's extra BOM
+(unchanged rule) makes `loads` strip one and keep `\ufeff# x` as content.
 
 `TypeError` for anything that is not `str`, `Source`, `list`, or `dict`, and for
 a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
@@ -70,7 +79,9 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 | US3-9 | `""` | `""` | yes (`loads("") == ""`) |
 | US3-10 | `{"k": "\r"}` / `{"k": "a\tb"}` | `UnrepresentableValueError` / `k: a\tb\n` | — / yes |
 | R-05 | `{"k": "a\n \nb"}`, `{"k": "a\n  \tb"}`, `{"k": "\ta"}`, `"x\n"` | `UnrepresentableValueError` (items 5, 4, 4, 6) | — |
-| R-05 | `{"k": "# x"}`, `"# x\n// y"`, `{"k": "a\n# b"}` | `k: # x\n`, `# x\n// y\n`, `k:\n  a\n  # b\n` | yes |
+| R-05 | `{"k": "# x"}`, `["# x"]`, `{"k": "a\n# b"}`, `["a\n# b"]` | `k: # x\n`, `- # x\n`, `k:\n  a\n  # b\n`, `-\n  a\n  # b\n` | yes |
+| R-18 | `"# x"`, `"// x"`, `"# x\n// y"`, `"a\n# b"`, `"a\n// b"` | `UnrepresentableValueError` (item 9; `"# x\n// y"` was written in the pre-ruling plan) | — |
+| R-18 | `"  # x"`, `"a\n  # b"`, `"\ufeff# x"`, `"/x"`, `"a\n/b"` | `  # x\n`, `a\n  # b\n`, `\ufeff\ufeff# x\n`, `/x\n`, `a\n/b\n` | yes |
 | R-05 | `{"k": "a: 1\nb"}` | `UnrepresentableValueError` (item 2; see R-05 "one family refused despite having a spelling") | — |
 | recursion | `{"k": "a\n" + "- " * 1000 + "x"}`, `["a\n" + "- " * 1000 + "x"]`, `"a\n" + "- " * 1000 + "x"` | `UnrepresentableValueError` (item 2, later line); `loads` of the same text written by hand raises `RecursionError` (documented, not fixed: plan § Edge Cases, "A `- ` chain is text but still recurses") | — |
 | recursion | `{"k": "a\n" + "- " * 32 + "x"}` / `{"k": "a\n" + "- " * 33 + "x"}` | written and round-trips / `UnrepresentableValueError` (item 2, later line): the bound is exact and does not move with the stack | yes / — |
@@ -91,15 +102,21 @@ caller's stack still let `loads` read (item 2, later-line clause; red team
 outer iteration 7). Every other value `loads` returns is written by `dumps`
 and round-trips. P8 below pins this.
 
+Item 9 adds **no** load-only family (R-18): `loads` never returns a root
+scalar with a line that begins with `#` or `//`, because such a line at
+column 0 is a comment and never becomes text, and an indented one keeps its
+leading spaces in the value.
+
 **Not checked: structural nesting** (red team outer iteration 8, plan open
-question 9). Item 2's count looks at a value's text lines only. A nested list
+question 9; the principal ruled "document only" on 2026-09-24). Item 2's count looks at a value's text lines only. A nested list
 is written inline (`[["x"]]` → `- - x`), so `dumps` of a list nested 130 deep
 writes one line that `loads` cannot read (the lex cliff is about 121 levels
 at a shallow stack, 58 with 500 frames in use; identical on `master`). That
 is the §13.4 nesting cliff, documented and not enforced (Scope Boundaries);
 §11.2.1's guarantee is scoped to a value's text (Contract 06 §A). The
 property strategies must keep nesting well under that depth, and no test
-pins the deep case either way until the principal rules on open question 9.
+pins the deep case either way: the depth is documented in §13.4, not
+enforced or tested.
 
 ## Test obligations
 
@@ -109,8 +126,8 @@ pins the deep case either way until the principal rules on open question 9.
    or `TypeError`, or `loads(dumps(x)) == x` and `dumps(loads(dumps(x))) == dumps(x)`;
    no excluded input family. Plus P3, P4, P5, P7 from the lane-1 probe.
    **P8 (load first, red team pass 1):** for every generated *document* `t`
-   (the P3 strategy: lines built from indentation, markers, keys, `#`, `//`,
-   NBSP, BOM, tabs, controls, and text) for which `loads(t)` returns `x`,
+   (the P3 strategy: lines built from indentation, markers, keys, `#`, `//`
+   at column 0 and indented, NBSP, BOM, tabs, controls, and text) for which `loads(t)` returns `x`,
    either `loads(dumps(x)) == x`, or `dumps(x)` raises
    `UnrepresentableValueError`, `x` contains a value in family L1, L2 or L3
    (checked by a predicate written against the definitions above, not by
@@ -123,7 +140,14 @@ pins the deep case either way until the principal rules on open question 9.
    so "`x` contains an L1 value" alone would pass a document that also holds
    a wrongly refused value elsewhere, and the one family P8 exists to catch
    (a third, unplanned load-only family) would hide behind any L1 value in
-   the same document. A fourth load-only family fails P8.
+   the same document. A fourth load-only family fails P8. P8 also asserts
+   that no line of `dumps(x)` begins with `#` or `//` (R-18).
+   **P9 (comments are as if absent, R-18):** for every generated document
+   `t`, with `u` the text after §9.0's index-0 BOM strip and `u'` that text
+   with every line that begins with `#` or `//` deleted, `loads(t)` equals
+   `loads("\ufeff" + u')` (the prefixed BOM keeps a BOM that `u'` starts
+   with from being stripped a second time), and when one raises the other
+   raises the same class.
    **Hypothesis settings** (plan § Performance Considerations): a `gate`
    profile (`deadline=None`, `derandomize=True`, a few hundred examples per
    property) registered in `tests/conftest.py` and loaded by default, a
@@ -142,7 +166,10 @@ pins the deep case either way until the principal rules on open question 9.
    already used 500 frames and from a shallow stack and gets the same
    result.
 5. The existing `tests/serialization_corpus.py` rows that pinned D12, D13,
-   comments, and D19 are rewritten to the rows above (plan § Inverted tests).
+   indented comments, and D19 are rewritten to the rows above (plan §
+   Inverted tests). `block_line_begins_with_comment_marker`
+   (`{"k": "a\n# c"}`) moves from refusal to round trip;
+   `comment_marker_root_scalar` (`"# c"`) stays a refusal, now by item 9.
    By name, besides those the plan lists: `lowercase_roman_numeral_key`
    (`{"\u217b": "x"}`) and `leading_feff_first_key` (`{"\ufeffk": "v"}`) move
    from round-trip to item-7 refusals; `colon_escape_list_item`

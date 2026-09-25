@@ -37,11 +37,18 @@ FR-017 in `../spec.md`). Known divergences between `AUTHOR` and the rulings:
   are not keys; at root, the first-line rule makes the document text or the
   second line a continuation, depending on position.
 - `doc08_yaml_user`, `doc08b_block_scalar`, `doc08c_doc_markers`: YAML syntax
-  is literal text; `# trailing` is not stripped (no comments); `|` and `>`
+  is literal text; `# trailing` is not stripped (a trailing `#` is text); `|` and `>`
   are literal; `---` and `...` are text lines and, at root, make the document
   a root scalar.
-- `doc09c_only_comments`, `doc09g_comment_no_nl`: with comments removed,
-  these load as the text of their lines, not the empty string.
+- `doc09c_only_comments`, `doc09g_comment_no_nl`: comments stay at column 0
+  only (principal ruling 2026-09-24, research.md R-18). `doc09g` (`# c`)
+  loads as `""`, matching `AUTHOR`; `doc09c` loads as `"  # three"`, because
+  its indented `  # three` line is text and a root scalar keeps its
+  indentation.
+- `doc02_config`: its column-0 `# Application config` header is a comment,
+  so the document loads as a mapping. It still differs from `AUTHOR` in two
+  values: `port` keeps its trailing `# default port`, and `environment` is
+  one text value because `DATABASE_URL:` is not a key.
 
 ## `lane-1-roundtrip-probe.py`
 
@@ -50,7 +57,7 @@ root with `uv run --with hypothesis python <path> [prop ...]`; `FILTER_KNOWN=0`
 disables the exclusion of the families that were known-broken on `27a3e9a`.
 The success criterion for this feature is that it passes with
 `FILTER_KNOWN=0` once its strategies are updated for the revised language
-(key pattern, no comments, paragraph breaks, text context).
+(key pattern, column-0 comments, paragraph breaks, text context).
 
 ## planning-spike/
 

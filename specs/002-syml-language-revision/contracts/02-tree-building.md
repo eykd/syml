@@ -1,6 +1,6 @@
 # Contract 02 — Tree Building: Text Context, Paragraph Breaks, Root Scalars, Strict Depth
 
-**Requirements**: FR-003, FR-004, FR-005, FR-010 | **Decisions**: D21, D22, D25 (new); D11 affirmed; D12, D13 superseded | **Findings closed**: `syml-xreq.2`, `.3`, `.15`, `.20` (affirmed, no change), `.22`, `.21` (continuation half) | **Research**: R-01, R-03, R-04, R-06, R-12, R-13
+**Requirements**: FR-003, FR-004, FR-005, FR-010 | **Decisions**: D21, D22, D25 (new); D11 affirmed; D12, D13 superseded | **Findings closed**: `syml-xreq.2`, `.3`, `.15`, `.20` (affirmed, no change), `.22`, `.21` (continuation half) | **Research**: R-01, R-03, R-04, R-06, R-12, R-13, R-18
 
 ## Surface
 
@@ -72,9 +72,19 @@ class Root(ContainerNode):
    `key:` or `-` whose first block line lexes as structure gets that structure;
    one whose first block line is text opens a text value (rule 1 then applies).
    Inline values (`- - x`, `- key: v`) are unchanged.
-4. **Paragraph breaks (FR-004, R-03, R-04).** On append,
-   `blank_lines_before = full_text[prev.pnode.end : node.pnode.start].count("\n") - 1`,
+4. **Paragraph breaks (FR-004, R-03, R-04, R-18).** On append,
+
+   ```python
+   gap = full_text[prev.pnode.end : node.pnode.start]
+   node.blank_lines_before = sum(1 for line in gap.split("\n")[1:-1] if preprocess.is_blank(line))
+   ```
+
    where `prev` is the value's last line (itself, or its last continuation).
+   The count is over blank lines only: a column-0 comment line in the gap
+   (FR-007) is neither a line of the value nor a paragraph break, and every
+   physical blank line on either side of it still counts. R-03's first form,
+   `gap.count("\n") - 1`, counted the comment as a blank line; it is
+   replaced (principal ruling 2026-09-24).
    `as_data` emits that many `""` lines before the continuation. Blank lines
    before a block value's first line, after a value's last line, or between
    items/keys are never recorded.
@@ -100,19 +110,31 @@ class Root(ContainerNode):
 | US1-11 | `k:\n  a\n\n\n  b\n\n` | `{"k": "a\n\n\nb"}` |
 | US1-12 | `k:\n\n  a` | `{"k": "a"}` |
 | US1-13 | `k:\n  a\n\nb: 2` | `{"k": "a", "b": "2"}` |
-| US1-14 | `# one\n// two\n  # three` | `"# one\n// two\n  # three"` |
+| US1-14 | `# one\n// two\n  # three` / `# c` | `"  # three"` / `""` |
 | US1-15 | `a:\n  b: 1\n  # note` | `OutOfContextNodeError` |
 | US1-16 | `k: first\n  - second\n  key: third` | `{"k": "first\n- second\nkey: third"}` |
 | US1-17 | `k:\n  - a\n  - b` / `k:\n  x: 1\n  y: 2` | `{"k": ["a", "b"]}` / `{"k": {"x": "1", "y": "2"}}` |
 | US1-18 | `k: a\n    b\n  c` | `OutOfContextNodeError` |
+| US1-19 | `# Application config\nname: app\nport: 80` | `{"name": "app", "port": "80"}` |
+| US1-20 | `// header\nname: app` | `{"name": "app"}` |
+| US1-21 | `k:\n  a\n# note\n  b` | `{"k": "a\nb"}` |
+| US1-22 | `k:\n  a\n\n# note\n\n  b` / `k:\n  a\n\n# note\n  b` | `{"k": "a\n\n\nb"}` / `{"k": "a\n\nb"}` |
+| US1-23 | `k:\n  a\n  # note\n  b` | `{"k": "a\n# note\nb"}` |
+| US1-24 | `server: # prod\n  host: x` | `{"server": "# prod\nhost: x"}` |
+| US1-25 | `hello\n# note\nworld` / `# c\n  hello` | `"hello\nworld"` / `"  hello"` |
+| US1-26 | `\ufeff# header\nk: v` / `a: 1\n\ufeff# x` | `{"k": "v"}` / `OutOfContextNodeError` |
+| US1-27 | `a: 1\n# note\nb: 2` | `{"a": "1", "b": "2"}` |
+| comment | `k: v\n# c\n  more` / `k:\n# c\n\n  a` / `k:\n  a\n\n# n\n` | `{"k": "v\nmore"}` / `{"k": "a"}` / `{"k": "a"}` (a comment never starts, ends, or pads a value) |
+| comment | `a:\n  b: 1\n# note\n  c: 2` | `{"a": {"b": "1", "c": "2"}}` (a comment between entries of a nested mapping) |
+| comment | `k: a\n# c\n    b\n  c` | `OutOfContextNodeError` (the comment does not fix the baseline; `b` does, at column 4, as in US1-18) |
+| comment | `# c\n\ufeffz` | `"\ufeffz"` (a BOM is stripped only at index 0; a comment on line 1 does not move the start of the document) |
 | R-04 | `k: first\n\n  second` | `{"k": "first\n\nsecond"}` |
 | R-03 | `k:\n  a\n      \n  b` | `{"k": "a\n\nb"}` |
 | R-06 | `k:\n  a: 1\n   b: 2` | `{"k": {"a": "1\nb: 2"}}` |
 | R-06 | `- eggs\n - bread` | `["eggs\n- bread"]` |
 | edge | `hello\nk: v` / `---\nk: v` | `"hello\nk: v"` / `"---\nk: v"` |
 | edge | `k: v\nhello` | `OutOfContextNodeError` |
-| silent | `# Application config\nname: app\nport: 80` | `"# Application config\nname: app\nport: 80"` (a text first line makes the root text; no error, red team pass 1) |
-| silent | `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` (a text first block line makes the block text) |
+| silent | `a:\n  # section\n  b: 1\n  c: 2` | `{"a": "# section\nb: 1\nc: 2"}` (an **indented** `#` first block line is text, so it makes the block text; the column-0 form `a:\n# section\n  b: 1` is a comment and gives `{"a": {"b": "1"}}`, Contract 01) |
 | silent | `-\tk: v\n        j: w` | `[{"k": "v\nj: w"}]` (the tab is one column; Contract 01) |
 | silent | `name:\xa0app\nport: 80` | `"name:\xa0app\nport: 80"` (a NBSP after `key:` is not separator whitespace, so the first line is text and the root is text; raised at line 2 in 1.0; red team outer iteration 3) |
 | silent | `server: # production\n  host: x\n  port: 80` | `{"server": "# production\nhost: x\nport: 80"}` (a `#` after `key:` is the inline text value, so the block under it joins it; raised in 1.0; red team outer iteration 5) |
@@ -135,11 +157,16 @@ row is pinned in the first tree-builder leaf whose commit makes it true. The
 indented-first-line rows (US1-10 and the `Source` start row below); rule 5's
 "text throughout" needs rule 1, so US1-9 and the `hello`/`---` edge rows
 belong to the **text-context** leaf, with every other row whose later line
-lexes as structure (US1-3, -4, -7, -16, -17, R-06, `silent`). The
-**paragraph-break** leaf pins US1-1, -2, -11, R-03, R-04. The **strict-depth**
-leaf pins US2-1, US2-2 and `- key:\n    - x`. US1-12, -13, -14, -15, -18,
-US2-3, -7, -14 and `k: v\n \xa0\nj: w` already hold at the grammar-leaf
-commit and may go in any of them.
+lexes as structure (US1-3, -4, -7, -16, -17, -24, R-06, `silent`). The
+**paragraph-break** leaf pins US1-1, -2, -11, -22, R-03, R-04, and keeps
+US1-21 green under the new count. The root-scalar leaf also pins US1-14 and
+the `# c\n  hello` half of US1-25 (both need the indented root scalar). The
+**strict-depth** leaf pins US2-1, US2-2 and `- key:\n    - x`. US1-12, -13,
+-15, -18, -23, US2-3, -7, -14 and `k: v\n \xa0\nj: w` already hold at the
+grammar-leaf commit and may go in any of them. US1-19, -20, -21, -26, -27,
+the `hello\n# note\nworld` half of US1-25, and every `comment` row hold at
+the grammar-leaf commit too; the grammar leaf
+owns them (Contract 01, plan § Leaf Ordering item 2).
 
 `as_source()`: `str(node.as_source()) == node.as_data()` still holds, paragraph
 breaks included. A root scalar `  hello` has `start == Pos(0, 1, 0)`.
@@ -154,13 +181,14 @@ unchanged. `stranger.syml` is unchanged.
 
 1. Every row above, as unit tests in `tests/test_nodes.py` /
    `tests/test_parsers.py`. The `US1-N` and `US2-N` rows are already the
-   numbered acceptance scenarios in `spec.md` (18 for US1, 14 for US2 —
+   numbered acceptance scenarios in `spec.md` (27 for US1, 14 for US2 —
    `sp:05-tasks` binds them 1:1, no new scenario is added for them). The
-   `R-03`, `R-04`, `R-06`, `silent`, and `edge` rows are **not** separately
+   `R-03`, `R-04`, `R-06`, `silent`, `comment`, and `edge` rows are **not** separately
    numbered in `spec.md` and stay unit-test-only pins in `tests/test_nodes.py`
    / `tests/test_parsers.py`; they are not additional US10/US11 Gherkin
    scenarios, so the 18/14 counts in the Acceptance Test Strategy table do
-   not change. `R-04` in particular (`k: first\n\n  second` →
+   not change. The `comment` rows follow the principal's comment ruling of
+   2026-09-24 (R-18). `R-04` in particular (`k: first\n\n  second` →
    `{"k": "first\n\nsecond"}`) is covered only here and by the SC-002
    round-trip property (Contract 04); it has no numbered `spec.md`
    acceptance scenario of its own, but FR-004 now carries the R-04 example
@@ -178,6 +206,6 @@ unchanged. `stranger.syml` is unchanged.
    iteration 4).
 4. The existing D11 baseline tests stay green unchanged (FR-003: "D11's
    baseline rule stands").
-5. The nine `silent` rows are pinned as unit tests (US1's 18 acceptance
+5. The eight `silent` rows are pinned as unit tests (US1's 27 acceptance
    scenarios stay as the spec writes them), so the release text's description of them (Contract 06 §B–§D)
    is checked against behaviour rather than asserted.
