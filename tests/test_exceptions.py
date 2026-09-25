@@ -16,6 +16,7 @@ from syml.exceptions import (
     ParseError,
     UnrepresentableValueError,
     error_message,
+    format_data_path,
     is_comment_shaped,
     is_document_marker,
     needs_space_after_marker,
@@ -845,3 +846,35 @@ class TestUnrepresentableValueErrorPathAndStr:
     def test_it_should_not_render_a_tuple_repr_of_args(self) -> None:
         error = UnrepresentableValueError('boom', ('a',))
         assert str(error) != str(('boom', ('a',)))
+
+
+class TestFormatDataPathIsBounded:
+    """D30 (syml-cjk2.18): the path clause is bounded regardless of key length or depth."""
+
+    def test_it_should_window_a_hostile_long_string_key(self) -> None:
+        huge_key = 'k' * 2_000_000
+        clause = format_data_path((huge_key, 'b'))
+        assert len(clause) < 200
+        assert 'kkk' in clause
+        assert 'b' in clause
+
+    def test_it_should_cap_the_number_of_rendered_segments_for_a_deep_path(self) -> None:
+        deep_path = tuple(range(5000))
+        clause = format_data_path(deep_path)
+        assert len(clause) < 500
+        assert '[0]' in clause
+        assert '[4999]' in clause
+        assert '…' in clause
+
+    def test_it_should_leave_path_untouched_on_unrepresentable_value_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        error = UnrepresentableValueError('boom', (huge_key, 'b'))
+        assert error.path == (huge_key, 'b')
+        assert len(str(error)) < 300
+
+    def test_it_should_leave_path_untouched_for_a_deep_path(self) -> None:
+        deep_path = tuple(range(5000))
+        error = UnrepresentableValueError('boom', deep_path)
+        assert error.path == deep_path
+        assert len(error.path) == 5000
+        assert len(str(error)) < 600

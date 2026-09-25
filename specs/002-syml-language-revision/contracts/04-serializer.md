@@ -84,6 +84,18 @@ a plain builtin `TypeError`, constructed with the message alone: no
 `.path` attribute, no subclass, so no new class name under §11.3 (option B
 of `syml-cjk2.14`'s judgment, taken in full rather than deferred).
 
+**Bounded rendering (`syml-cjk2.18`):** `format_data_path` (shared by both
+errors) renders the clause through two bounds so a hostile `path` cannot
+scale `str(e)` with its own size. Each `str` segment is windowed through
+the same `_truncated_window(key, center=0)` helper Contract 03 §Bounded
+rendering uses for a hostile `DuplicateKeyError` key, before `repr` — a
+2 MB mapping key still yields a bounded segment. Depth is capped
+separately: only the path's first three and last three rendered segments
+are kept, with a single `'…'` standing in for everything elided between
+them, regardless of how deep the path goes. Only the rendered clause is
+bounded — `UnrepresentableValueError.path` (and the tuple a caller passed
+in) still carries every segment, untruncated.
+
 ## Behaviour
 
 | # | Input | `dumps` output | round trip |

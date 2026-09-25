@@ -324,6 +324,12 @@ class DuplicateKeyError(ParseError):
         self.first_position = first_position
 
 
+#: Max number of subscript segments `format_data_path` renders before eliding
+#: the middle with a single `'…'` (Contract 04 §Error text and the data
+#: path, D30, syml-cjk2.18). Split evenly between the path's head and tail.
+_MAX_PATH_SEGMENTS = 6
+
+
 def format_data_path(path: Sequence[str | int]) -> str:
     """Render `path` as a trailing ' at [...][...]' clause, or '' when `path` is empty (D30).
 
@@ -331,10 +337,25 @@ def format_data_path(path: Sequence[str | int]) -> str:
     tracing a value from the root of a `dumps` call, in Python subscript
     form, e.g. `['a']['b'][1]`. Shared by `UnrepresentableValueError` and
     the `dumps` `TypeError` so both render the same path shape.
+
+    Bounded (D30, syml-cjk2.18): a `str` segment is windowed through
+    `_truncated_window(key, center=0)` before `repr`, the same treatment
+    `DuplicateKeyError` and hint (a) give a hostile key (Contract 03
+    §Bounded rendering), so an attacker-controlled key of any length still
+    yields a bounded segment. Depth is bounded too: only the first and last
+    `_MAX_PATH_SEGMENTS // 2` rendered segments are kept, with a single
+    `'…'` standing in for everything elided between them, so the clause
+    cannot grow with the path's depth. This only bounds the rendered
+    clause — the caller's `path` (and `UnrepresentableValueError.path`)
+    stays the full, untruncated tuple.
     """
     if not path:
         return ''
-    return ' at ' + ''.join(f'[{key!r}]' for key in path)
+    segments = [f'[{_truncated_window(key, center=0)!r}]' if isinstance(key, str) else f'[{key!r}]' for key in path]
+    if len(segments) > _MAX_PATH_SEGMENTS:
+        half = _MAX_PATH_SEGMENTS // 2
+        segments = [*segments[:half], '…', *segments[-half:]]
+    return ' at ' + ''.join(segments)
 
 
 class UnrepresentableValueError(ValueError):

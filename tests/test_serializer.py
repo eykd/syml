@@ -541,6 +541,27 @@ class TestDumpsErrorDataPath:
         assert str(excinfo.value).endswith(" at ['a']")
 
 
+class TestDumpsErrorDataPathIsBounded:
+    """D30 (syml-cjk2.18): a hostile key or deep path still yields a bounded `str(e)`.
+
+    `.path` (on `UnrepresentableValueError`) stays the full, untruncated
+    tuple; only the rendered message clause is bounded.
+    """
+
+    def test_it_should_bound_a_hostile_key_in_a_type_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({huge_key: 1})
+        assert len(str(excinfo.value)) < 300
+
+    def test_it_should_bound_a_hostile_key_in_an_unrepresentable_value_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({huge_key: {'b': '\x00'}})
+        assert len(str(excinfo.value)) < 300
+        assert excinfo.value.path == (huge_key, 'b')
+
+
 class TestDumpsLeadingFeffProtectiveDoubling:
     """A leading U+FEFF gets one extra U+FEFF prepended, since loads strips one (§9.0)."""
 
