@@ -72,15 +72,25 @@ windowed — so a 1 MB hostile line (e.g. a run of `\x00` before a bare `:`)
 still yields a bounded `.message` and `str(e)` instead of the unbounded,
 multi-megabyte rendering this caps.
 
-The `<filename>` segment gets the same treatment (`syml-cjk2.5`, break-testing
-round 2): `filename` is caller-controlled and normally short, but its length
-is not otherwise bounded (e.g. an archive entry path or a hostile CLI
-argument), so both `error_message(description, filename)` (which builds
-`.message`'s prefix) and `__str__`'s `<filename>:` segment window it through
-`_truncated_window(filename, center=0)` before quoting/escaping it — the
-same call shape as `DuplicateKeyError`'s treatment above. A 2 MB `filename`
-now yields a bounded `.message` and `str(e)` instead of scaling with the
-filename's length.
+The `<filename>` segment gets a related but distinct treatment (`syml-cjk2.5`
+break-testing round 2, refined by D34/`syml-cjk2.19`): `filename` is
+caller-controlled and normally short, but its length is not otherwise
+bounded (e.g. an archive entry path or a hostile CLI argument), so both
+`error_message(description, filename)` (which builds `.message`'s prefix)
+and `__str__`'s `<filename>:` segment window it through a dedicated private
+helper, `_truncated_filename_window(filename, width=1024)`, before
+quoting/escaping it. Unlike `_truncated_window`'s centered window,
+`_truncated_filename_window` always elides from the **head**: a filename up
+to 1024 code points passes through whole; a longer one is rendered as
+`'…'` plus its last `width - 1` code points. A path's basename — the part a
+`path:line:col` reader needs to find the file — sits at the tail, so
+eliding the head instead of centering the window keeps it intact regardless
+of how long the filename's leading directories are; `syml-cjk2.5`'s original
+80-code-point head-centered window cut the basename off any real-world
+absolute path longer than 80 characters (routine for CI runner paths),
+silently breaking the clickable `path:line:col` form. A 2 MB `filename`
+still yields a bounded `.message` and `str(e)` instead of scaling with the
+filename's length, and its basename still appears in full.
 
 `DuplicateKeyError`'s description gets the same treatment (`syml-s9p9.14`):
 the grammar's key pattern (`[a-z][a-z0-9_-]*`) has no length bound, so a
@@ -289,7 +299,12 @@ below):
    (`syml-s9p9.14`): a document repeating a 1 MB key yields a `.message` and
    `str(e)` well under the input's size, while `.key` still carries the
    full, untruncated key. Bounded rendering also covers a hostile `filename`
-   (`syml-cjk2.5`): a caller- or attacker-supplied filename of a million-plus
-   characters yields a `.message` and `str(e)` that both stay well under the
-   filename's size, for both a raise reached through the builder (e.g.
-   `OutOfContextNodeError`) and through `EncodingError`.
+   (`syml-cjk2.5`, `syml-cjk2.19`/D34): a caller- or attacker-supplied
+   filename of a million-plus characters yields a `.message` and `str(e)`
+   that both stay well under the filename's size, for both a raise reached
+   through the builder (e.g. `OutOfContextNodeError`) and through
+   `EncodingError`, and — since the window elides the filename's head, not
+   its tail — the filename's own basename still appears in full at the end
+   of the windowed segment. An ordinary absolute path up to 1024 code
+   points (routine for CI runner paths, e.g. an 85-character path) is
+   rendered whole, unelided.

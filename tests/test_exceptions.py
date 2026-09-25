@@ -197,13 +197,32 @@ class TestErrorMessage:
         """`f'{filename}: {description}'` when `filename` is given."""
         assert error_message('Invalid encoding', 'doc.syml') == 'doc.syml: Invalid encoding'
 
-    def test_error_message_windows_a_hostile_filename(self) -> None:
-        """A multi-megabyte `filename` is windowed to 80 chars plus an ellipsis marker (syml-cjk2.5)."""
-        huge_filename = 'F' * 2_000_000
+    def test_error_message_windows_a_hostile_filename_keeping_its_tail(self) -> None:
+        """A multi-megabyte `filename` is windowed to its last 1023 chars plus a leading ellipsis, so the basename survives (D34)."""
+        huge_filename = 'F' * 2_000_000 + '/settings.syml'
 
         result = error_message('Invalid encoding', huge_filename)
 
-        assert result == f'{'F' * 80}…: Invalid encoding'
+        assert result == f'…{huge_filename[-1023:]}: Invalid encoding'
+        assert result.endswith('/settings.syml: Invalid encoding')
+
+    def test_error_message_passes_an_ordinary_long_path_through_in_full(self) -> None:
+        """An 85-char real-world path (under the 1024-code-point bound) appears in full, unelided (D34)."""
+        path = '/home/runner/work/myrepo/myrepo/deploy/environments/production/services/settings.syml'
+        assert len(path) == 85
+
+        result = error_message('Invalid encoding', path)
+
+        assert result == f'{path}: Invalid encoding'
+
+    def test_error_message_reproduces_the_str_e_gets_clickable_scenario(self) -> None:
+        """`loads`'s repro from D34: an 85-char absolute path is not truncated, so `str(e)` stays clickable."""
+        path = '/home/runner/work/myrepo/myrepo/deploy/environments/production/services/settings.syml'
+
+        with pytest.raises(syml.OutOfContextNodeError) as excinfo:
+            syml.loads('a: 1\nb', filename=path)
+
+        assert str(excinfo.value).startswith(f'{path}:2:0:')
 
 
 class TestParseErrorFilenameNormalization:
@@ -269,13 +288,14 @@ class TestParseErrorStr:
         assert str(with_filename) == 'f.syml:1:1: boom\nx'
 
     def test_str_and_message_are_bounded_for_a_hostile_filename(self) -> None:
-        """A multi-megabyte `filename` is windowed to 80 chars plus an ellipsis in both renderings (syml-cjk2.5)."""
-        huge_filename = 'F' * 2_000_000
-        windowed = f'{'F' * 80}…'
+        """A multi-megabyte `filename` is windowed to its last 1023 chars plus a leading ellipsis in both renderings, so its basename survives (D34)."""
+        huge_filename = 'F' * 2_000_000 + '/settings.syml'
+        windowed = f'…{huge_filename[-1023:]}'
         error = ParseError('boom', Pos(1, 1, 1), 'x', filename=huge_filename)
 
         assert error.message == f'{windowed}: boom'
         assert str(error) == f'{windowed}:1:1: boom\nx'
+        assert windowed.endswith('/settings.syml')
 
     def test_str_renders_for_duplicate_key_error_with_and_without_a_filename(self) -> None:
         """`DuplicateKeyError` renders the same two-line `__str__` shape."""

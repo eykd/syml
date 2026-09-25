@@ -17,14 +17,16 @@ if TYPE_CHECKING:  # pragma: nocover
 def error_message(description: str, filename: StrPath | None) -> str:
     """`description` alone when filename is None, else f'{filename}: {description}'.
 
-    `filename` is rendered through `_truncated_window(filename, center=0)`
+    `filename` is rendered through `_truncated_filename_window(filename)`
     before being interpolated, so a hostile multi-megabyte filename still
-    yields a bounded result (Contract 03 §Bounded rendering, syml-cjk2.5) —
-    mirroring `duplicate_key_description`'s treatment of a hostile key.
+    yields a bounded result while its basename survives (Contract 03
+    §Bounded rendering, D34, syml-cjk2.19) — refining syml-cjk2.5's original
+    head-window treatment, which cut off the very basename a `path:line:col`
+    reader needs.
     """
     if filename is None:
         return description
-    return f'{_truncated_window(os.fspath(filename), center=0)}: {description}'
+    return f'{_truncated_filename_window(os.fspath(filename))}: {description}'
 
 
 #: A would-be key candidate: leading indentation, then a non-empty run of
@@ -219,6 +221,29 @@ def _truncated_window(text: str, *, center: int, width: int = _TRUNCATION_WINDOW
     return f'{prefix}{text[start:end]}{suffix}'
 
 
+#: Window width (in code points) a filename is allowed to pass through
+#: whole before `_truncated_filename_window` starts eliding its head
+#: (Contract 03 §Bounded rendering, D34, syml-cjk2.19).
+_FILENAME_WINDOW = 1024
+
+
+def _truncated_filename_window(text: str, *, width: int = _FILENAME_WINDOW) -> str:
+    """Return `text` unchanged if `len(text) <= width`, else `'…' + text[-(width - 1):]`.
+
+    Unlike `_truncated_window` (which centers its window and can elide
+    either side), a filename is always windowed from the **tail**: the
+    basename — the part a `path:line:col` reader actually needs — sits at
+    the end of a path, so eliding the head instead of the middle or tail
+    keeps it intact regardless of how long the filename's leading
+    directories are (D34, syml-cjk2.19; refines syml-cjk2.5's original
+    `_truncated_window(filename, center=0)` head-keeping treatment, which
+    cut the basename off any path longer than 80 code points).
+    """
+    if len(text) <= width:
+        return text
+    return f'…{text[-(width - 1) :]}'
+
+
 class ParseError(ValueError):
     """An error encountered while parsing"""
 
@@ -276,18 +301,19 @@ class ParseError(ValueError):
         `_printable` so no non-printable character (including a stray
         newline in a caller-supplied filename) escapes into the two-line
         shape this format promises. The filename is first windowed through
-        `_truncated_window(self._filename, center=0)` and the line text
-        through `_truncated_window(self.line_text, center=self.position.column - self._bom_offset)`
+        `_truncated_filename_window(self._filename)` — which keeps the
+        filename's tail so its basename survives (D34, syml-cjk2.19) — and
+        the line text through `_truncated_window(self.line_text, center=self.position.column - self._bom_offset)`
         — `self._bom_offset` re-anchors the window's center onto
         `self.line_text`'s own index space, since `self.position.column`
         counts a BOM-stripped-before-`line_text` BOM on line 1 (D33,
         syml-cjk2.17) — so a hostile multi-megabyte filename or `line_text`
         (both unbounded, per `.line_text`'s own attribute contract, and
         `filename` normally being caller-controlled) still yields a bounded
-        `str(e)` (Contract 03 §Surface, syml-s9p9.9, syml-cjk2.5);
+        `str(e)` (Contract 03 §Surface, syml-s9p9.9, syml-cjk2.5, D34);
         `self.line_text` itself is untouched.
         """
-        prefix = f'{_printable(_truncated_window(self._filename, center=0))}:' if self._filename else ''
+        prefix = f'{_printable(_truncated_filename_window(self._filename))}:' if self._filename else ''
         windowed_line_text = _truncated_window(self.line_text, center=self.position.column - self._bom_offset)
         return f'{prefix}{self.position.line}:{self.position.column}: {self._description}\n{_printable(windowed_line_text)}'
 

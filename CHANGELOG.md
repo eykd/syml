@@ -8,11 +8,12 @@ change from 0.6.2 is listed below, numbered to match Contract 06's audit
 (`specs/002-syml-language-revision/contracts/06-release-text.md` § FR-016
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
 § FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
-25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 32
-the 2026-09-25 D32 `DuplicateKeyError` message addition, item 33 the
-2026-09-25 D33 `ParseError.__str__` BOM-offset fix (see
-`SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in this one
-1.0.0 release.
+25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 27
+the 2026-09-25 D34 refinement of the filename-windowing fix (window the
+tail, not the head), item 32 the 2026-09-25 D32 `DuplicateKeyError` message
+addition, item 33 the 2026-09-25 D33 `ParseError.__str__` BOM-offset fix
+(see `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in
+this one 1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
 2. Tabs in indentation → `TabIndentationError`.
@@ -261,14 +262,19 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     misread as a bad key.
 27. **Bug fix: `filename` is now bounded in error rendering.** `.message`'s
     filename prefix and `str(e)`'s `<filename>:` segment are windowed
-    through `_truncated_window(filename, center=0)`, the same treatment
-    Contract 03 §Bounded rendering (`syml-s9p9.9`/`.14`) already documents
-    for a hostile `line_text` or repeated key — this closes the one case
-    that treatment missed. In 0.6.2 there was no such bound at all; a
-    caller- or attacker-supplied filename of unbounded length (e.g. an
-    archive entry path) makes `.message`/`str(e)` scale with the filename's
-    own length instead of staying proportional to the fixed 80-code-point
-    window (syml-cjk2.5, break-testing round 2 lane 3).
+    through `_truncated_filename_window(filename)`: a filename up to 1024
+    code points passes through whole, and a longer one is windowed from
+    its **tail** — `'…'` plus its last 1023 code points — so the basename
+    a `path:line:col` reader needs always survives (D34, syml-cjk2.19). In
+    0.6.2 there was no such bound at all; a caller- or attacker-supplied
+    filename of unbounded length (e.g. an archive entry path) makes
+    `.message`/`str(e)` scale with the filename's own length. An earlier
+    fix in this same 1.0.0 cycle (syml-cjk2.5, break-testing round 2 lane
+    3) bounded the filename by centering an 80-code-point window on its
+    *head* instead, which cut off the basename of any real-world absolute
+    path longer than 80 characters — routine for CI runner paths — making
+    `str(e)`'s `path:line:col` form silently unclickable; D34 replaces
+    that head window with the tail-preserving one described above.
 28. **Bug fix: `load()` on a non-file object raises `TypeError`, not
     `AttributeError`.** `load(None)`, `load('some str')`, and `load()` on any
     object without a `read()` method now raise `TypeError` naming the
