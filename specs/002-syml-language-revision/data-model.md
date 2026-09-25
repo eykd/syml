@@ -22,7 +22,7 @@ exception surface. Entities below follow the spec's Key Entities list.
 | **Paragraph break** | new | An empty line inside a multi-line value, one per physical blank line between two lines of the same value (an inline value's text counts as its first line, R-04). | FR-004, D22 |
 | **Comment** | removed | No line is a comment. `#` and `//` are text everywhere. | FR-007, D23 |
 | **Strict child depth** | revised | Every child is strictly deeper than its parent, list items included; the indentless-sequence carve-out is gone. `- key:`'s sibling-column rule (§6.2) is unchanged. | FR-010, D25 |
-| **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key, or list at its key's column. | FR-012 |
+| **Error hint** | new | An optional trailing sentence of an out-of-context message: would-be key (gated to a line at an open mapping's column, or the open text value's first line), or list at its key's column. The message also names the open text value's baseline when the failing line is below it (Contract 03, text-value clause). | FR-012 |
 | **Unrepresentable set** | shrunk | research.md R-05's eight items. | FR-006, FR-002 |
 
 ---
@@ -42,8 +42,9 @@ exception surface. Entities below follow the spec's Key Entities list.
 
 `fail_to_incorporate_node` moves its message construction to `Root` (the only
 node that reaches it, since the walk-up always ends at `Root`): it reads the
-open columns off the rightmost spine and the line above from `full_text`
-(R-08), and raises `OutOfContextNodeError(description, pos, line_text, filename=...)`.
+open columns off the rightmost spine, the tip text value's `baseline` (when
+set, for the text-value clause) and that value's first line (for hint (a)'s
+line-above gate), and the line above from `full_text` (R-08), and raises `OutOfContextNodeError(description, pos, line_text, filename=...)`.
 
 ### Removed classes
 

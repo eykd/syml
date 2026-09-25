@@ -52,7 +52,7 @@ caret).
 
 | Class | Description (the part after any filename prefix) |
 | --- | --- |
-| `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by one space and a hint |
+| `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by the text-value clause (below), then by one space and a hint |
 | `DuplicateKeyError` | `Duplicate key '{key}'` (unchanged attributes `key`, `first_position`) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
 | `EncodingError` | `Invalid encoding` (unchanged) |
@@ -62,6 +62,17 @@ caret).
 `Mapping` nodes on `Root`'s rightmost spine at the time of failure (R-08). The
 list is never empty: `Root` can only fail once its first child is a `List` or
 `Mapping` (a root scalar absorbs every later line).
+
+**Text-value clause** (red team outer iteration 2; FR-012's "every column
+that was open during the walk-up"): when the spine ends in a `TextLeafNode`
+whose `baseline` is set (a block value, or an inline value that already has a
+continuation) and the failing column is below that baseline, the sentence's
+final `.` becomes `; the open value continues at column {B}.`, where `{B}` is
+the baseline. The walk-up started at that value, and its baseline is the
+column a prose author most likely meant; without the clause
+`k: a\n    b\n  c` would name only column 0. An inline value with no
+continuation yet (baseline unset) gets no clause: its anchor column is
+already in `{COLS}` (US2-9 keeps its exact text).
 
 Hints (at most one; (b) is checked first):
 
@@ -73,6 +84,15 @@ Hints (at most one; (b) is checked first):
   line, where `RUN` is a non-empty run of characters that are neither
   whitespace nor `:` and does not fully match `[a-z][a-z0-9_-]*` →
   `Hint: 'RUN' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter.`
+  **Gating** (red team outer iteration 2): a would-be-key line qualifies only
+  where lowercasing it could make it a key that fits. The **failing line**
+  qualifies only when its column is one of `{COLS}` that holds keys (an open
+  `Mapping` column); the **line above** qualifies only when it is the first
+  line of the value at the tip of the spine (the line whose text-ness opened
+  the text context, i.e. a bare block's first line; a root scalar never fails),
+  not a later continuation line or an inline value's line. Without the gate, dialogue in a prose value
+  (`- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey`) gets
+  `'Alice' is not a key`, which names the wrong fix for a one-space dedent.
 
 ## Behaviour
 
@@ -88,6 +108,10 @@ Hints (at most one; (b) is checked first):
 | US2-13 | `\ufeffa: b\r\n\tc: d` | `TabIndentationError`, `position == Pos(7, 2, 0)` |
 | FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a'"` (no `": "` prefix) |
 | SC-007 | a plain context error (`a: 1\nb`) | `str(e)` line 1 is `2:0: …` with no hint; line 2 is `b` |
+| text clause | `k: a\n    b\n  c` (US1-18) | description `Line 3, at column 2, does not fit any open block; open blocks are at column 0; the open value continues at column 4.` |
+| text clause | `k:\n  a\n\xa0\n  b` (US2-7) | description `Line 3, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0; the open value continues at column 2.` |
+| gate | `- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey` | no hint (column 3 is not an open `Mapping` column; `Carol: yo` is a continuation, not the value's first line); description ends `; the open value continues at column 4.` |
+| gate | `config:\n  Host: x\n port: 1` | hint (a) names `Host` (the line above is the first line of `config`'s block value) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
 
@@ -115,10 +139,14 @@ Hints (at most one; (b) is checked first):
 4. The column list formatter: one, two, and three columns; both message forms
    (column not open; open column of the other kind, incl. `- item\nkey: value`
    and `a:\n  b: 1\n  plain`).
-5. Hint (a) fires on the failing line and on the line above; does not fire for
+5. The text-value clause: present for a block value and for an inline value
+   with a continuation (US1-18, US2-7); absent for an inline value without one
+   (US2-9's exact `str(e)` is unchanged) and when the spine ends in a
+   container.
+6. Hint (a) fires on the failing line and on the line above; does not fire for
    `a: 1\nb` or for a line whose colon is followed by a non-space; hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.
-6. SC-007's three cases as acceptance scenarios (US11).
-7. `_printable`: `str(e)` contains no character outside `str.isprintable()`
+7. SC-007's three cases as acceptance scenarios (US11).
+8. `_printable`: `str(e)` contains no character outside `str.isprintable()`
    except the one `\n` between its two lines, for every raised error in the
    SC-002/P3 property run (the property asserts it on each `ParseError`).

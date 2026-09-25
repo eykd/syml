@@ -103,7 +103,9 @@ turns that file or block into one string (the item says how to check:
 `isinstance(loads(text), dict)`); the "loud" wording of the ruling is not
 used; D24 tab as separator (with the one-column note) (`k:\tv`, `k: \tv`); D25 indentless sequences
 rejected. One more item for the only-U+0020-indentation fix (`\xa0k: v` is
-text; NBSP, VT, FF, NEL, U+2028 at a line start are content).
+text; NBSP, VT, FF, NEL, U+2028 at a line start are content; a document or
+block whose first line starts with a NBSP, as indentation pasted from a web
+page does, silently loads as one string, red team outer iteration 2).
 
 Recursion measurement method (R-17): at the default recursion limit, bisect
 the largest depth that loads for (1) `k0:\n  k1:\n    …` with no trailing

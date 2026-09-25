@@ -379,7 +379,7 @@ Clarifications:
 The red team (pass 1) returned a verdict on each of the planner's questions;
 the principal may still overrule any. Question 7 is new and is the one that
 most deserves the principal's eye, because it corrects a fact a ruling rested
-on.
+on. Question 8 was added by red team outer iteration 2.
 
 1. **Silent absorption (R-06, D21).** `parent:\n  child1: a\n   child2: b`
    now loads `child2: b` as part of `child1`'s value instead of raising.
@@ -427,6 +427,17 @@ on.
    D21), and the release text is corrected (Contract 06 §A, §B, §C, §D).
    **Ask the principal** to confirm D23 with the corrected consequence before
    the spec leaf lands, since the tag makes it a 1.0 promise.
+
+8. **No hint for a former comment line (new, red team outer iteration 2).**
+   A 0.6.2 user's `a: 1\n# note\nb: 2` now raises "Line 2, at column 0, is
+   a text line, but the open block at column 0 holds keys", with nothing
+   saying that `#` stopped being a comment. FR-012 lists exactly two hints
+   (the brainstorm's R12 list, minus the moot tab hint). A third hint, `Hint:
+   SYML has no comments; a '#' or '//' line is text.`, on a failing line whose
+   content starts with `#` or `//`, would be message text only, with no API.
+   **Plan position: not added** (the CHANGELOG D23 item carries the warning,
+   and the principal owns nothing with comment lines). **Ask the principal**
+   whether third-party migration justifies it; adding it later is non-breaking.
 
 ## Security Considerations
 
@@ -494,6 +505,55 @@ string, and that a later `#` line at a container's level raises; the
 state that columns are code-point counts, so a tab counts as one column. The
 README list stays at eight items in order (FR-015); the silent cases go into
 the wording of items 1, 3, 6, and 7, not a ninth item.
+
+### Error text for prose values (red team outer iteration 2)
+
+The out-of-context message was designed around structure, but under D21 the
+commonest error a prose author hits is a line one or two columns short of a
+text value's baseline. Two gaps, both fixed in Contract 03 and FR-012:
+
+- **The open text value's column was missing.** `{COLS}` lists only the
+  `List`/`Mapping` levels on the spine, so `k: a\n    b\n  c` (US1-18) said
+  "open blocks are at column 0" and never mentioned column 4, where the value
+  continues; US2-7's NBSP line likewise never named column 2. FR-012 asks for
+  "every column that was open during the walk-up", and the walk-up starts at
+  that value. The message now ends `; the open value continues at column {B}.`
+  when the spine ends in a text value with a fixed baseline and the line is
+  below it. An inline value with no continuation yet gets no clause, so
+  US2-9's exact `str(e)` is unchanged.
+- **Hint (a) named the wrong fix for dialogue.** An interactive-fiction value
+  is full of `Name: line` text. In `- scene:\n    Bob: hi\n    Carol: yo\n   Alice: hey`
+  the ungated hint says `'Alice' is not a key`; lowercasing it changes
+  nothing, because the real fault is the one-space dedent. Hint (a) now
+  fires only where a key could fit: the failing line at an open `Mapping`
+  column (US1-8's `firstName` still qualifies), or the line above when it is
+  the first line of the open text value (the line whose text-ness opened the
+  context, `config:\n  Host: x\n port: 1`), never a later continuation.
+
+Neither change adds API: both stay in the message string (the ruling on
+`syml-xreq.18`). The planning spike never implemented the message (it still
+raises `'Failed to incorporate a node'`), so these rows are pinned by
+Contract 03's table rather than by spike evidence.
+
+### Smaller notes (red team outer iteration 2)
+
+- **NBSP-led first line is silent too.** `\xa0\xa0name: app\nport: 80`
+  (indentation pasted from a web page) is a root scalar with no error, by
+  FR-009 and D21. It belongs to the same family as the silent `#` first line.
+  The CHANGELOG's only-U+0020-is-indentation item (Contract 06 §C) should name
+  that consequence ("a document or block whose first line starts with a
+  non-breaking space is one string"); no ninth README item is needed. Later
+  NBSP-led lines raise, and `str(e)` shows `\xa0`.
+- **The spike's `check.py` is stale on three rows.** It still expects
+  `OutOfContextNodeError` for `k:\n  a: 1\n   b: 2`, `a: 1\n  - x`, and
+  `parent:\n  child1: value\n   child2: value`, which R-06 made valid text.
+  `/sp:05-tasks` takes expected values from spec.md and the contracts, never
+  from the spike's scripts.
+- **P8 holds on the spike.** A 20,000-example load-first run (documents
+  built from indentation, markers, `K:`, `#`, `//`, NBSP, BOM, VT, and tabs)
+  found no value outside families L1 and L2 that `dumps` refuses, and no
+  round-trip failure, so Contract 04's P8 should land GREEN rather than
+  surface a third family during implementation.
 
 ### Load-then-dump
 
