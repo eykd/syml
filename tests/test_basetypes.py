@@ -15,6 +15,14 @@ from syml.nodes import KeyValue
 
 
 class TestSource:
+    def test_it_should_not_be_a_str_subclass(self) -> None:
+        """`Source` is not a `str` subclass (docstring, README, syml-xreq.23/cjk2.7)."""
+        assert not issubclass(basetypes.Source, str)
+
+    def test_an_empty_source_should_be_truthy(self) -> None:
+        """An empty `Source` is truthy, unlike `bool('')` (docstring, README, syml-xreq.23/cjk2.7)."""
+        assert bool(basetypes.Source.from_text('')) is True
+
     def test_it_should_work_interchangeably_as_a_dict_key_with_comparable_string(self) -> None:
         text = 'foo'
         source = basetypes.Source.from_text(text, 'foo')

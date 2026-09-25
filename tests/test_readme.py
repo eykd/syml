@@ -71,3 +71,36 @@ def test_the_readme_source_truthiness_example_is_runnable() -> None:
     assert eval(match.group(1), {'Source': Source}) is True  # noqa: S307
     with pytest.raises(TypeError):
         len(Source.from_text(''))  # type: ignore[arg-type]
+
+
+def test_the_readme_trailing_whitespace_example_is_accurate() -> None:
+    """README bullet 10: trailing whitespace on a value is kept (syml-cjk2.12, syml-xreq.17)."""
+    assert syml.loads('host: db1   ') == {'host': 'db1   '}
+
+
+def test_the_readme_over_indented_line_example_is_accurate() -> None:
+    """README bullet 10: an over-indented line joins the value above it as text (syml-cjk2.12, syml-xreq.17)."""
+    assert syml.loads('- Budget review\n    - Q3 numbers') == ['Budget review\n- Q3 numbers']
+
+
+def test_the_readme_uppercase_would_be_key_example_is_accurate() -> None:
+    """README bullet 6: an uppercase would-be key stays text (syml-cjk2.12, syml-xreq.17)."""
+    assert syml.loads('Name: app\nport: 80') == 'Name: app\nport: 80'
+
+
+class TestReadmeDumpsRefusalExamples:
+    """README/CHANGELOG's `dumps` §11.2.1 refusal list (syml-cjk2.3): two of its named families."""
+
+    def test_a_leading_space_on_a_mapping_value_is_refused(self) -> None:
+        """A single-line value beginning with a space, at a mapping position, is refused."""
+        with pytest.raises(syml.UnrepresentableValueError):
+            syml.dumps({'k': ' lead'})
+
+    def test_a_structure_shaped_root_scalar_is_refused(self) -> None:
+        """A single-line root scalar shaped like structure (here, a key-value line) is refused."""
+        with pytest.raises(syml.UnrepresentableValueError):
+            syml.dumps('k: v')
+
+    def test_a_nearby_acceptable_value_is_written(self) -> None:
+        """The same value without the leading space round-trips normally."""
+        assert syml.dumps({'k': 'lead'}) == 'k: lead\n'

@@ -769,6 +769,10 @@ class TestContract01BehaviourTable:
             ('\xa0# x', '\xa0# x'),
             ('/x', '/x'),
             ('port: 8080 # default', {'port': '8080 # default'}),
+            # §6.2 (syml-xreq.20, ruled "keep"): a sibling line indented to
+            # a `- key:`'s own column joins the item's mapping as a sibling
+            # key, not as a child of `key`.
+            ('- server:\n  host: x', [{'server': '', 'host': 'x'}]),
             # Document shape.
             ('k: v', {'k': 'v'}),
             ('k: v\n', {'k': 'v'}),

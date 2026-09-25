@@ -63,6 +63,17 @@ class TestPreprocessBlankClassificationAndTabScan:
         assert document.normalized == '  \t  \nkey: v'
 
 
+class TestTabIndentationErrorFilename:
+    """TabIndentationError carries the filename prefix like every other ParseError (syml-xreq.4)."""
+
+    def test_it_should_prefix_message_and_str_with_the_given_filename(self) -> None:
+        with pytest.raises(TabIndentationError) as exc_info:
+            preprocess.preprocess('a:\n\tb: 1', filename='f.syml')
+
+        assert exc_info.value.message.startswith('f.syml: ')
+        assert str(exc_info.value).startswith('f.syml:')
+
+
 class TestTabIndentationErrorOriginalTextPosition:
     """TabIndentationError.position reports original-text coordinates (FR-013, US2-12/13/14)."""
 
