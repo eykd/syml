@@ -42,8 +42,9 @@ The `<filename>:` part is omitted when there is none. `<line>` is 1-indexed,
 `__str__` passes `<line_text>` through a private `_printable(text)` helper
 that replaces each character for which `str.isprintable()` is false with its
 Python escape (`repr(ch)[1:-1]`: `\t`, `\x1b`, `\xa0`, `\u202e`, `\x00`).
-Hint (a) interpolates its would-be key through the same helper. `.line_text`,
-`.message`, and `.args` stay raw. `<column>` still counts code points of the
+Hint (a) interpolates its would-be key through the same helper when the
+description is built, so the escaped key is part of `.message` too; apart
+from that, `.line_text`, `.message`, and `.args` carry the raw text. `<column>` still counts code points of the
 raw line, so it is not a caret offset into the rendered text (there is no
 caret).
 

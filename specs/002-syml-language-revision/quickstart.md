@@ -9,6 +9,7 @@ Run from the repository root.
 
 ```sh
 uv sync --all-groups          # picks up hypothesis in the test group
+just fuzz                     # Hypothesis 'fuzz' profile: random, more examples (Contract 04)
 just check                    # ruff + mypy + pytest (unit, incl. the round-trip property)
 just acceptance               # pytest-bdd: US10–US13 plus the rewritten 001 suites
 ```
