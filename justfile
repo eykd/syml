@@ -69,6 +69,12 @@ acceptance-missing:
 # Run both unit tests and acceptance tests
 test-all: test acceptance
 
+# Run the round-trip property suite at high volume (thousands of examples per
+# property, non-deterministic). Hand-run only; the commit gate runs the
+# `gate` profile (a few hundred, derandomized) as part of `just test`.
+fuzz:
+    HYPOTHESIS_PROFILE=fuzz uv run pytest tests/test_roundtrip_property.py --no-cov --hypothesis-show-statistics
+
 # Build the sdist and wheel into dist/ (what the release workflow uploads to PyPI)
 build:
     uv build

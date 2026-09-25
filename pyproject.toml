@@ -42,6 +42,7 @@ test = [
     "pydantic>=2.8.2,<3",
     "types-parsimonious>=0.10.0.20240331,<0.11",
     "pytest-bdd>=8.1.0",
+    "hypothesis>=6.168.1",
 ]
 
 [build-system]

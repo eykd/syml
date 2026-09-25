@@ -18,3 +18,6 @@ dist
 .claude/tsc-cache/
 # br doctor per-run artifacts
 .doctor/
+
+# Hypothesis example database
+.hypothesis/
