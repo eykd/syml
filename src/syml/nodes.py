@@ -20,13 +20,21 @@ class SymlNode:
     pnode: PNode = field(repr=False)
     level: int | None = field(default=None)
     parent: SymlNode | None = field(default=None)
-    comments: list[Comment] = field(default_factory=list)
     children: list[SymlNode] = field(default_factory=list)
     filename: StrPath | None = field(default=None)
     # Threaded from `SymlParser` so every node — leaf or container — can
     # re-anchor its own `source`/error positions onto the caller's
     # original-text coordinates (Contract 08, FR-013, R-02, US8).
     position_map: PositionMap | None = field(default=None, repr=False)
+    # Set by `visit_line` on the node a physical line lexes to (Contract 01).
+    # `content_pnode` spans the line's content after indentation (used by
+    # `TextLeafNode.incorporate_node` to re-read a structure-shaped line as
+    # text, R-01); `line_pnode` spans the whole line including indentation
+    # (used by `Root` to build a root scalar's first line, R-12). Both stay
+    # `None` on inline sub-nodes — only the node a whole physical line lexes
+    # to carries them.
+    content_pnode: PNode | None = field(default=None, repr=False)
+    line_pnode: PNode | None = field(default=None, repr=False)
 
     source: Source = field(init=False)
 
@@ -90,10 +98,6 @@ class SymlNode:
         pos = PositionMap.map(Pos.from_str_index(pnode.full_text, pnode.start), self.position_map)
         line = get_line_text(pnode.full_text, pos.line)
         raise OutOfContextNodeError('Failed to incorporate a node', pos, line)
-
-
-class IndentNode(SymlNode):
-    """A node representing an indentation."""
 
 
 SymlNodes = list[SymlNode]
@@ -348,7 +352,3 @@ class KeyLeafNode(SymlNode):
     def as_data(self) -> str:
         """Return the key as a string."""
         return str(self.key)
-
-
-class Comment(TextLeafNode):
-    """A comment node"""

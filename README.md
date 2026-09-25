@@ -24,7 +24,7 @@ foo:
     boo
     baloon
 
-booleans?:
+booleans:
   - True
   - False
   - true
@@ -40,7 +40,7 @@ And the resulting data structure::
 >>> import syml
 >>> syml.loads(document)
 {'foo': ['bar', 'baz', 'blah\nboo\nbaloon'],
- 'booleans?': ['True', 'False', 'true', 'false', 'TRUE', 'FALSE']}
+ 'booleans': ['True', 'False', 'true', 'false', 'TRUE', 'FALSE']}
 ```
 
 

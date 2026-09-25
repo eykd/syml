@@ -167,16 +167,14 @@ class TestSymlParser:
         assert parser.parse('-item').as_data() == '-item'
         assert parser.parse('-42').as_data() == '-42'
 
-    def test_it_should_not_treat_a_tab_after_the_colon_as_separator_whitespace(self) -> None:
-        r"""§4.1 grammar ``ws = ~" +"``: only a space satisfies the required separator.
+    def test_it_should_treat_a_tab_after_the_colon_as_separator_whitespace(self) -> None:
+        r"""§4.1 grammar ``ws = ~"[ \t]+"``: a tab satisfies the required separator too (xreq.19).
 
-        A tab immediately after the colon never satisfies ``ws``, and there is
-        no key_value guard without a space, so the whole line falls through to
-        a bare ``data`` scalar unchanged. Currently ``src/syml/parsers.py``
-        defines ``ws = ~"[ \\t]+"`` (tab accepted), which contradicts the spec
-        and incorrectly lexes this as a key/value mapping.
+        A tab immediately after the colon now satisfies ``ws`` exactly like a
+        space, so ``key:\tv`` lexes as a key/value mapping, not a bare
+        ``data`` scalar (superseded D5).
         """
-        assert syml.loads('key:\tv') == 'key:\tv'
+        assert syml.loads('key:\tv') == {'key': 'v'}
 
     def test_it_should_not_parse_a_key_containing_a_control_character_as_a_mapping(
         self, parser: parsers.SymlParser
@@ -266,13 +264,20 @@ class TestSymlParser:
         ]
 
     def test_it_should_parse_comments_and_blanks(self, parser: parsers.SymlParser) -> None:
+        """A column-0 comment is dropped; blank lines are dropped (principal ruling 2026-09-24, xreq.21).
+
+        An indented comment (e.g. between ``- bar`` and ``- baz`` at column
+        2) is no longer a comment at all -- ``comment`` only matches at
+        column 0 -- so it now lexes as text and needs Contract 02's text
+        context to join a structure-shaped continuation; that scenario is
+        pinned in the text-context leaf, not here (Contract 01 §Behaviour).
+        """
         text = textwrap.dedent(
             """
             # A comment
             - foo:
 
               - bar
-              # Something else entirely
               - baz
 
             - blah: boo # not a comment!
@@ -444,7 +449,7 @@ class TestSimpleParserFunction:
                 boo
                 baloon
 
-            booleans?:
+            booleans:
               - True
               - False
               - true
@@ -460,7 +465,7 @@ class TestSimpleParserFunction:
                 'baz',
                 'blah\nboo\nbaloon',
             ],
-            'booleans?': [
+            'booleans': [
                 'True',
                 'False',
                 'true',
@@ -481,7 +486,7 @@ class TestSimpleParserFunction:
                 boo
                 baloon
 
-            booleans?:
+            booleans:
               - True
               - False
               - true
@@ -498,7 +503,7 @@ class TestSimpleParserFunction:
                 'baz',
                 'blah\nboo\nbaloon',
             ],
-            'booleans?': [
+            'booleans': [
                 'True',
                 'False',
                 'true',
@@ -561,50 +566,29 @@ class TestUnwrappedRecursionError:
             parsers.SymlParser().parse('key: value')
 
 
-class TestKeyHasUppercase:
-    """D19, §4.5: a key may not contain a code point of General_Category Lu or Lt."""
+class TestKeyPatternFallsThroughToText:
+    """`key = ~"[a-z][a-z0-9_-]*"` (§4.5, xreq.16): ASCII, lowercase, leading letter, or it is not a key.
 
-    @pytest.mark.parametrize(
-        'key',
-        [
-            'effect',
-            'look-in-dark',
-            '名前',
-            '\u216b',  # ROMAN NUMERAL TWELVE is Nl, not uppercase
-            '\u217b',  # SMALL ROMAN NUMERAL TWELVE is Nl too
-            'k1_2',
-            '',
-        ],
-    )
-    def test_it_should_accept_a_key_with_no_uppercase_code_point(self, key: str) -> None:
-        assert parsers.key_has_uppercase(key) is False
-
-    @pytest.mark.parametrize(
-        'key',
-        [
-            'Name',
-            'nAme',
-            '\u00c9t\u00e9',  # É is Lu
-            '\u01c5',  # ǅ LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON is Lt
-            '\u0394elta',  # Greek capital delta is Lu
-        ],
-    )
-    def test_it_should_reject_a_key_with_an_uppercase_or_titlecase_code_point(self, key: str) -> None:
-        assert parsers.key_has_uppercase(key) is True
-
-
-class TestUppercaseKeyFallsThroughToText:
-    """D19: a line whose would-be key contains an uppercase code point is a text line.
-
-    `visit_key_value` and `visit_section_line` both hand back a
-    `TextLeafNode` over the whole line, exactly as if it had lexed as `data`,
-    whether the line sits at the root, under a key, or inline after a list
-    marker.
+    A line whose would-be key fails that pattern -- not just an uppercase
+    code point, but any non-ASCII, non-leading-letter, or otherwise
+    unmatched key -- simply fails the `key_value`/`section` alternative of
+    `structure`, so `value = structure / data` falls through to `data`
+    (plain text) for the whole line, exactly as if no structure rule had
+    been tried at all. There is no D19-style special case in the visitor
+    any more: the grammar alone decides.
     """
 
     @pytest.mark.parametrize(
         ('text', 'expected'),
         [
+            ('1: x', '1: x'),
+            ('_x: x', '_x: x'),
+            ('-x: x', '-x: x'),
+            ('e.mail: x', 'e.mail: x'),
+            ('\u540d\u524d: x', '\u540d\u524d: x'),
+            ('\u00df: x', '\u00df: x'),
+            ('URL: x', 'URL: x'),
+            ('firstName: x', 'firstName: x'),
             ('\u00c9t\u00e9: chaud', '\u00c9t\u00e9: chaud'),
             ('a:\n  B: c', {'a': 'B: c'}),
             ('x:\n  - Listen: here', {'x': ['Listen: here']}),
@@ -612,7 +596,7 @@ class TestUppercaseKeyFallsThroughToText:
             ('a: Note\n  Listen: here', {'a': 'Note\nListen: here'}),
         ],
     )
-    def test_a_key_value_line_with_an_uppercase_key_is_text(self, text: str, expected: object) -> None:
+    def test_a_key_value_line_with_an_unmatched_key_is_text(self, text: str, expected: object) -> None:
         assert syml.loads(text) == expected
 
     @pytest.mark.parametrize(
@@ -623,19 +607,20 @@ class TestUppercaseKeyFallsThroughToText:
             ('- Listen:', ['Listen:']),
         ],
     )
-    def test_a_section_line_with_an_uppercase_key_is_text(self, text: str, expected: object) -> None:
+    def test_a_section_line_with_an_unmatched_key_is_text(self, text: str, expected: object) -> None:
         assert syml.loads(text) == expected
 
     @pytest.mark.parametrize(
         ('text', 'expected'),
         [
+            ('choice1: x', {'choice1': 'x'}),
+            ('first-name: x', {'first-name': 'x'}),
+            ('first_name: x', {'first_name': 'x'}),
             ('effect: x', {'effect': 'x'}),
             ('look-in-dark:', {'look-in-dark': ''}),
-            ('\u540d\u524d: x', {'\u540d\u524d': 'x'}),
-            ('\u216b: x', {'\u216b': 'x'}),
         ],
     )
-    def test_a_key_with_no_uppercase_code_point_still_lexes_as_structure(self, text: str, expected: object) -> None:
+    def test_a_key_matching_the_pattern_still_lexes_as_structure(self, text: str, expected: object) -> None:
         assert syml.loads(text) == expected
 
     def test_the_fallthrough_leaf_spans_the_whole_line_at_the_root(self) -> None:
@@ -699,3 +684,140 @@ class TestQuotesAreLiteralText:
     def test_a_quote_bearing_inline_value_still_accepts_continuation_lines(self) -> None:
         """An inline value that begins with a quote is ordinary text, so it is never 'complete'."""
         assert syml.loads('k: "a"\n  b') == {'k': '"a"\nb'}
+
+
+class TestGrammarIdentity:
+    """Contract 01 test obligation 1: code and SYML-SPECIFICATION.md §4.1 carry the same grammar.
+
+    Loads §4.1's fenced ``peg`` block with `parsimonious.Grammar` and
+    compares every rule's `as_rule()` text against `SymlParser.grammar`,
+    plus both grammars' `default_rule.name`. Runs under the repository's
+    `error::SyntaxWarning` policy (pyproject `filterwarnings`), so a
+    non-raw escape in either grammar fails this test at construction time.
+    """
+
+    def test_the_spec_and_code_grammars_are_identical(self) -> None:
+        import re
+        from pathlib import Path
+
+        from parsimonious import Grammar
+
+        spec_path = Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
+        spec_text = spec_path.read_text(encoding='utf-8')
+        match = re.search(r'```peg\n(.*?)```', spec_text, re.DOTALL)
+        assert match is not None, 'SYML-SPECIFICATION.md must have a fenced ```peg block in §4.1'
+        spec_grammar = Grammar(match.group(1))
+
+        code_rules = {name: rule.as_rule() for name, rule in parsers.SymlParser.grammar.items()}
+        spec_rules = {name: rule.as_rule() for name, rule in spec_grammar.items()}
+        assert spec_rules == code_rules
+        assert spec_grammar.default_rule.name == 'document'
+        assert parsers.SymlParser.grammar.default_rule.name == 'document'
+
+
+class TestContract01BehaviourTable:
+    r"""Contract 01 §Behaviour: one parametrized test per table row (test obligation 2).
+
+    Excludes the one row marked "Not a grammar-leaf test" (the 8-space
+    ``-\\tk: v\\n        j: w`` continuation, which needs Contract 02's text
+    context and is pinned there instead).
+    """
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'),
+        [
+            # Keys (FR-001).
+            ('choice1: x', {'choice1': 'x'}),
+            ('first-name: x', {'first-name': 'x'}),
+            ('first_name: x', {'first_name': 'x'}),
+            ('1: x', '1: x'),
+            ('_x: x', '_x: x'),
+            ('-x: x', '-x: x'),
+            ('e.mail: x', 'e.mail: x'),
+            ('\u540d\u524d: x', '\u540d\u524d: x'),
+            ('\u00df: x', '\u00df: x'),
+            ('URL: x', 'URL: x'),
+            ('firstName: x', 'firstName: x'),
+            ('- [ask: why?]', ['[ask: why?]']),
+            ('- 3: 1 odds', ['3: 1 odds']),
+            ('"so: you came back."', '"so: you came back."'),
+            # Separator whitespace (FR-008).
+            ('k:\tv', {'k': 'v'}),
+            ('k: \tv', {'k': 'v'}),
+            ('a:\t\n  b: 1', {'a': {'b': '1'}}),
+            ('- a\n-\tx', ['a', 'x']),
+            ('k: a\tb', {'k': 'a\tb'}),
+            ('-\tk: v\n  j: w', [{'k': 'v', 'j': 'w'}]),
+            # Indentation (FR-009).
+            ('\xa0k: v', '\xa0k: v'),
+            ('\x0bx', '\x0bx'),
+            ('\x0c', '\x0c'),
+            ('\u2028- x', '\u2028- x'),
+            ('\xa0', '\xa0'),
+            ('a: 1\n  \t  \nb: 2', {'a': '1', 'b': '2'}),
+            # Comments (FR-007, principal ruling 2026-09-24).
+            ('# c', ''),
+            ('#', ''),
+            ('//', ''),
+            ('# c\n', ''),
+            ('# Application config\nname: app\nport: 80', {'name': 'app', 'port': '80'}),
+            ('// header\nname: app', {'name': 'app'}),
+            ('a: 1\n# note\nb: 2', {'a': '1', 'b': '2'}),
+            ('- a\n# note\n- b', ['a', 'b']),
+            ('a:\n# section\n  b: 1', {'a': {'b': '1'}}),
+            ('hello\n# note\nworld', 'hello\nworld'),
+            ('#tag: value', ''),
+            ('///x\nk: v', {'k': 'v'}),
+            ('#!/bin/sh\nk: v', {'k': 'v'}),
+            ('#\tx\nk: v', {'k': 'v'}),
+            ('//\tx\nk: v', {'k': 'v'}),
+            ('\ufeff# header\nk: v', {'k': 'v'}),
+            ('\xa0# x', '\xa0# x'),
+            ('/x', '/x'),
+            ('port: 8080 # default', {'port': '8080 # default'}),
+            # Document shape.
+            ('k: v', {'k': 'v'}),
+            ('k: v\n', {'k': 'v'}),
+            ('', ''),
+            ('\n', ''),
+            ('\n  \n\t\n', ''),
+        ],
+    )
+    def test_a_behaviour_table_row_produces_its_stated_output(self, text: str, expected: object) -> None:
+        assert syml.loads(text) == expected
+
+    def test_a_tab_in_leading_whitespace_raises_tab_indentation_error(self) -> None:
+        with pytest.raises(exceptions.TabIndentationError):
+            syml.loads('a:\n\tb')
+
+    def test_a_comment_does_not_hide_a_following_tab_indented_line(self) -> None:
+        with pytest.raises(exceptions.TabIndentationError) as exc_info:
+            syml.loads('# c\n\tb')
+        assert exc_info.value.position == Pos(index=4, line=2, column=0)
+
+    def test_a_bom_after_index_0_is_content_not_a_comment(self) -> None:
+        with pytest.raises(exceptions.OutOfContextNodeError):
+            syml.loads('a: 1\n\ufeff# x')
+
+    def test_a_comment_does_not_hide_a_following_structure_shaped_line(self) -> None:
+        with pytest.raises(exceptions.OutOfContextNodeError) as exc_info:
+            syml.loads('a: 1\n# c\n- x')
+        assert exc_info.value.position == Pos(index=9, line=3, column=0)
+
+
+class TestVisitLineReturnsNone:
+    r"""Contract 01 test obligation 3: `visit_line` returns `None` for a blank content span or a comment.
+
+    Not for `"\\xa0"` (a NBSP-only line is text, not blank) or an indented
+    `# x` (an indented `#`/`//` line is not a comment, only text).
+    """
+
+    @pytest.mark.parametrize('text', ['', '   ', '\t', ' \t ', '# a comment'])
+    def test_it_returns_none(self, text: str) -> None:
+        line_node = parsers.SymlParser.grammar['line'].parse(text)
+        assert parsers.SymlParser().visit(line_node) is None
+
+    @pytest.mark.parametrize('text', ['\xa0', '  # x'])
+    def test_it_does_not_return_none(self, text: str) -> None:
+        line_node = parsers.SymlParser.grammar['line'].parse(text)
+        assert parsers.SymlParser().visit(line_node) is not None

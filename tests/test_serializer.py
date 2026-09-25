@@ -45,7 +45,6 @@ class TestDumpsStructureShapedStringsArePositionDependent:
             ('looks_like_list_item', 'looks_like_list_item_as_mapping_value'),
             ('stranded_double_quote', 'stranded_double_quote_as_mapping_value'),
             ('stranded_single_quote', 'stranded_single_quote_as_mapping_value'),
-            ('colon_escape_list_item', 'colon_escape_list_item_as_mapping_value'),
             ('literal_backslash_u003a', 'literal_backslash_u003a_as_mapping_value'),
             ('mixed_quote_backslash', 'mixed_quote_backslash_as_mapping_value'),
             ('deep_dash_run_list_item', 'deep_dash_run_mapping_value'),
@@ -202,15 +201,32 @@ class TestWithMarker:
 
 
 class TestKeyIsRepresentable:
-    """`key_is_representable` (§11.2.3, D1, D19, M8)."""
+    """`key_is_representable` (§11.2.3, §4.5, xreq.16): ASCII, lowercase, leading letter, or not a key."""
 
-    @pytest.mark.parametrize('key', ['k', 'look-in-dark', '\u540d\u524d', '\u217b', '\u216b', '\ufeffk', 'a#b'])
+    @pytest.mark.parametrize('key', ['k', 'look-in-dark', 'first_name', 'k1', 'a-b-c'])
     def test_it_should_accept_a_representable_key(self, key: str) -> None:
         assert serializer.key_is_representable(key) is True
 
     @pytest.mark.parametrize(
         'key',
-        ['', 'a b', 'a:b', '#c', '//c', 'Name', 'nAme', '\u01c5', '\u00c9t\u00e9', 'a\x01b', 'a\tb'],
+        [
+            '',
+            'a b',
+            'a:b',
+            '#c',
+            '//c',
+            'Name',
+            'nAme',
+            'a#b',
+            '\u540d\u524d',
+            '\u217b',
+            '\u216b',
+            '\ufeffk',
+            '\u01c5',
+            '\u00c9t\u00e9',
+            'a\x01b',
+            'a\tb',
+        ],
     )
     def test_it_should_reject_an_unrepresentable_key(self, key: str) -> None:
         assert serializer.key_is_representable(key) is False

@@ -5,15 +5,11 @@ from __future__ import annotations
 import re
 from typing import IO, TYPE_CHECKING, Literal
 
-import parsimonious
-
 from . import nodes, parsers
 from .exceptions import UnrepresentableValueError
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import SymlInput
-
-_GRAMMAR = parsers.SymlParser.grammar
 
 #: Every C0/C1 control character except LF (a line break) and TAB (permitted
 #: inside a value, §4.2 rule 3 / §7.5).
@@ -22,6 +18,9 @@ _CONTROL_CHAR_PATTERN = re.compile('[\x00-\x08\x0b-\x1f\x7f-\x9f]')
 _BOM = '﻿'
 
 _COMMENT_MARKERS = ('#', '//')
+
+#: Mirrors the grammar's `key` rule (§4.5): ASCII, lowercase, leading letter.
+_KEY_PATTERN = re.compile(r'[a-z][a-z0-9_-]*')
 
 Position = Literal['root', 'mapping', 'list']
 
@@ -71,18 +70,12 @@ def dump(data: SymlInput, file_obj: IO[str]) -> None:
 
 
 def key_is_representable(k: str) -> bool:
-    """Return whether `k` can be written as a SYML mapping key (§11.2.3, D1, D19, M8).
+    """Return whether `k` can be written as a SYML mapping key (§11.2.3, §4.5).
 
-    False for a key that contains whitespace or ':', is the empty string,
-    begins with '#' or '//', contains an uppercase code point (D19), or
-    otherwise fails to fully match the `key` grammar rule (e.g. a C0/C1
-    control character, per §4.5).
+    The key grammar rule is `[a-z][a-z0-9_-]*` (ASCII, lowercase, leading
+    letter), so this is a straight `re.fullmatch` against that pattern.
     """
-    try:
-        match = _GRAMMAR['key'].match(k)
-    except parsimonious.exceptions.ParseError:
-        return False
-    return match.end == len(k) and not k.startswith(_COMMENT_MARKERS) and not parsers.key_has_uppercase(k)
+    return re.fullmatch(_KEY_PATTERN, k) is not None
 
 
 def _not_representable(value: object) -> TypeError:

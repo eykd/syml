@@ -143,22 +143,24 @@ CRLF/CR line-ending normalization) has already been applied to the input;
 no rule below needs to handle a bare `\r` or a leading BOM.
 
 ```peg
-document       = (line "\n")* line?
-line           = comment / (indent (structure / data))
-structure      = list_item / key_value / section
-indent         = ~" *"              # Spaces only, no tabs (leading-tab scan is §9.0, before this grammar runs)
-comment        = ("#" / "//") text?         # Tried BEFORE indent: a comment starts at column 0 only (§4.3)
-list_item      = ("-" ws value) / ("-" &eol)    # A "-" is a marker only before whitespace or EOL
-key_value      = key_colon ws data
-section        = key_colon &eol             # A standalone section header must end the line
-key_colon      = key ":"
-key            = ~"[a-z][a-z0-9_-]*"        # Exactly this pattern; see §4.5
-eol            = &"\n" / ~r"\Z"             # Lookahead only: "\n" is consumed by `document`, never by `line`
-ws             = ~"[ \t]+"          # Required whitespace (space or tab; §7.5, §4.2 rule 3)
-text           = ~"[^\n]*"          # Any characters to end of line (including empty)
+document        = (line "\n")* line?
+line            = comment / (indent (structure / data))
+comment         = ~"(?:#|//)[^\n]*"         # Tried BEFORE indent: a comment starts at column 0 only (§4.3)
+structure       = list_item / key_value / section
+indent          = ~" *"              # Spaces only, no tabs (leading-tab scan is §9.0, before this grammar runs)
+list_item       = value_list_item / guard_list_item
+value_list_item = "-" ws value       # A "-" is a marker only before whitespace ...
+guard_list_item = "-" &eol           # ... or before end of line
+key_value       = key_colon ws data
+section         = key_colon &eol             # A standalone section header must end the line
+key_colon       = key ":"
+key             = ~"[a-z][a-z0-9_-]*"        # Exactly this pattern; see §4.5
+eol             = &"\n" / ~r"\Z"             # Lookahead only: "\n" is consumed by `document`, never by `line`
+ws              = ~"[ \t]+"          # Required whitespace (space or tab; §7.5, §4.2 rule 3)
+text            = ~"[^\n]*"          # Any characters to end of line (including empty)
 
-value          = structure / data
-data           = text               # Literal text: there is no quoted-string rule anywhere in this grammar
+value           = structure / data
+data            = text               # Literal text: there is no quoted-string rule anywhere in this grammar
 ```
 
 `document` is the top rule. It joins `line` matches with explicit literal

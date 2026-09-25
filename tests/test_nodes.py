@@ -20,6 +20,15 @@ def _pnode(text: str) -> PNode:
     return SymlParser.grammar['text'].parse(text)
 
 
+class _BareSymlNode(nodes.SymlNode):
+    """A `SymlNode` subclass with no overrides, for exercising the base class's own methods directly.
+
+    Replaces the deleted `IndentNode` (Contract 01 §Coverage at the
+    grammar-leaf commit): `SymlNode.as_data`/`as_source`/`can_add_node`/
+    `fail_to_incorporate_node` must stay reachable without a pragma.
+    """
+
+
 class TestTextLeafNodeAnchorLevelAndBaseline:
     """Contract 03 §Where anchor_level and baseline are assigned (red-team pass 11).
 
@@ -134,23 +143,6 @@ class TestAutomaticContainerCreation:
         assert intermediary.source.filename == kv.source.filename
 
 
-class TestDirectTestsForPreviouslyPragmadBranches:
-    """Contract 03 §Coverage without pragmas (red-team pass 23).
-
-    `Comment.as_data`/`can_add_node` are pragma'd dead code: the per-line
-    visitor loop routes comments to `tip.comments` (Contract 02), so no
-    `loads` input ever calls them. The contract's disposition deletes both
-    overrides, leaving `Comment` inherit `TextLeafNode.as_data` (the joined
-    source text) instead of always returning `''`.
-    """
-
-    def test_comment_as_data_is_inherited_from_text_leaf_node(self) -> None:
-        """Comment.as_data is deleted (§Coverage without pragmas); it inherits TextLeafNode's."""
-        comment = nodes.Comment(pnode=_pnode('note'))
-
-        assert comment.as_data() == 'note'
-
-
 class TestChildlessRootYieldsEmptyString:
     """Contract 03 §Absent values (FR-005): empty and comment-only documents yield "".
 
@@ -230,31 +222,31 @@ class TestSymlNodeBaseStubs:
     """Contract 08 §Coverage / Contract 03 §Coverage without pragmas (FR-012).
 
     `SymlNode`'s undecorated `as_data`/`as_source`/`can_add_node`/
-    `incorporate_node` failure path are reachable directly through a
-    subclass with no overrides (`IndentNode`) rather than pragma'd as dead.
+    `incorporate_node` failure path are reachable directly through a bare
+    subclass with no overrides, since the grammar leaf deletes `IndentNode`.
     """
 
     def test_as_data_raises_not_implemented(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
 
         with pytest.raises(NotImplementedError):
             node.as_data()
 
     def test_as_source_raises_not_implemented(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
 
         with pytest.raises(NotImplementedError):
             node.as_source()
 
     def test_can_add_node_rejects_by_default(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
-        other = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
+        other = _BareSymlNode(pnode=_pnode('  '))
 
         assert node.can_add_node(other) is False
 
     def test_incorporate_node_fails_when_parentless_and_rejected(self) -> None:
-        node = nodes.IndentNode(pnode=_pnode('  '))
-        other = nodes.IndentNode(pnode=_pnode('  '))
+        node = _BareSymlNode(pnode=_pnode('  '))
+        other = _BareSymlNode(pnode=_pnode('  '))
 
         with pytest.raises(OutOfContextNodeError):
             node.incorporate_node(other)

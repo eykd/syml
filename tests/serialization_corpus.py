@@ -47,6 +47,11 @@ CORPUS: dict[str, SymlInput] = {
     'literal_single_quotes': {'k': "''"},
     'literal_double_quotes': {'k': '""'},
     'colon_escape_list_item_as_mapping_value': {'k': 'a\\: b'},
+    # A backslash-escaped colon can no longer lex as a `key_colon` (the key
+    # rule is ASCII `[a-z][a-z0-9_-]*`, which never matches through a `\`),
+    # so this is representable as a list item too, not position-dependent
+    # like the true structure-shaped strings below (xreq.16).
+    'colon_escape_list_item': ['a\\: b'],
     'literal_backslash_u003a_as_mapping_value': {'k': 'a: \\u003a'},
     'mixed_quote_backslash_as_mapping_value': {'k': 'a: \'b" \\c'},
     'stranded_double_quote_as_mapping_value': {'k': 'k: "a" x'},
@@ -57,9 +62,7 @@ CORPUS: dict[str, SymlInput] = {
     'nested_depth_4': {'a': {'b': {'c': {'d': 'e'}}}},
     'list_of_mappings': [{'a': '1'}, {'b': '2'}],
     'insertion_order_mapping': {'z': '1', 'a': '2', 'm': '3'},
-    'lowercase_roman_numeral_key': {'\u217b': 'x'},
     'leading_feff_root_scalar': '\ufeffhello',
-    'leading_feff_first_key': {'\ufeffk': 'v'},
 }
 
 UNREPRESENTABLE: dict[str, object] = {
@@ -75,7 +78,6 @@ UNREPRESENTABLE: dict[str, object] = {
     'looks_like_key_value': ['key: value'],
     'looks_like_list_item': ['- x'],
     'bare_dash_list_item': ['-'],
-    'colon_escape_list_item': ['a\\: b'],
     'literal_backslash_u003a': ['a: \\u003a'],
     'mixed_quote_backslash': ['a: \'b" \\c'],
     'stranded_double_quote': ['k: "a" x'],
@@ -91,4 +93,9 @@ UNREPRESENTABLE: dict[str, object] = {
     'control_x1c_key': {'a\x1cb': 'v'},
     'nbsp_key': {'a\xa0b': 'v'},
     'line_separator_key': {'a\u2028b': 'v'},
+    # The key rule is now ASCII `[a-z][a-z0-9_-]*` (xreq.16, Contract 01):
+    # neither a non-ASCII letter nor a leading U+FEFF ever matches it, so
+    # both are unrepresentable keys now, not merely non-uppercase-but-fine.
+    'lowercase_roman_numeral_key': {'\u217b': 'x'},
+    'leading_feff_first_key': {'\ufeffk': 'v'},
 }

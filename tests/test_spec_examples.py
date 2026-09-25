@@ -42,10 +42,6 @@ PENDING: dict[tuple[str, str], str] = {
         '{"parent": {"child1": "value\\n child2: value"}}',
     ): 'FR-003 (text context, D21)',
     (
-        'k:\n  a\n  # note\n  b\n',
-        '{"k": "a\\n# note\\nb"}',
-    ): 'FR-007 (indented comment is text, D23)',
-    (
         'server: # prod\n  host: x\n',
         '{"server": "# prod\\nhost: x"}',
     ): 'FR-007 (trailing "comment" after key is text, D23)',
@@ -70,33 +66,9 @@ PENDING: dict[tuple[str, str], str] = {
         'ERROR: OutOfContextNodeError',
     ): 'FR-010 (strict indentation, indentless sequence rejected, D25)',
     (
-        '-\tk: v\n  j: w\n',
-        '[{"k": "v", "j": "w"}]',
-    ): 'FR-008 (tab as separator, one-column, D24)',
-    (
-        'a:\n  b: 1\n  # note\n',
-        'ERROR: OutOfContextNodeError',
-    ): 'FR-007 (indented comment is text, not skipped, D23)',
-    (
         '# one\n  # two\n',
         '"  # two"',
     ): 'FR-007 (indented comment is text, D23)',
-    (
-        'key:\tvalue\n',
-        '{"key": "value"}',
-    ): 'FR-008 (tab as separator, D24)',
-    (
-        '-\tvalue\n',
-        '["value"]',
-    ): 'FR-008 (tab as separator, D24)',
-    (
-        'key:\tv\n',
-        '{"key": "v"}',
-    ): 'FR-008 (tab as separator, D24)',
-    (
-        'key: \tv\n',
-        '{"key": "v"}',
-    ): 'FR-008 (tab as separator, D24)',
     (
         'a: Note\n  warning: do not touch\n',
         '{"a": "Note\\nwarning: do not touch"}',
