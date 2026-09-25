@@ -400,7 +400,9 @@ independent.
   indented-comment, D19 uppercase, tab-separator, indentless-sequence,
   `IndentNode`, message-text assertions (about 90 matching lines by a rough
   grep; 05-tasks greps for `comment`, `uppercase`, `Listen`, `IndentNode`,
-  `\t`, `>=`, `Failed to incorporate`).
+  `\t`, `>=`, `Failed to incorporate`). Done (`syml-s9p9.5.3.4`): the rule-A
+  row `('', '\n')` in `tests/test_serializer.py` is now `('', '')`
+  (FR-017, `syml-xreq.12`).
 
 **Comment tests after the principal's ruling (2026-09-24).** Column-0
 comments keep 1.0's behaviour, so several 1.0 comment tests now stay green

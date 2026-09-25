@@ -91,7 +91,7 @@ class TestDumpsLiteralValues:
         [
             ({'k': ''}, 'k:\n'),
             ([''], '-\n'),
-            ('', '\n'),
+            ('', ''),
         ],
     )
     def test_it_should_write_the_empty_string_as_the_positions_empty_convention(

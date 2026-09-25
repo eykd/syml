@@ -50,10 +50,11 @@ def dumps(data: SymlInput) -> str:
     non-str mapping key.
 
     Output format (an implementation choice, not conformance): two-space
-    indentation, exactly one trailing newline, keys in insertion order. A
-    literal blank line inside a value (a paragraph break, D22) is written as
-    an empty physical line with no indentation. The empty string serializes
-    to the empty document ''.
+    indentation, keys in insertion order, exactly one trailing newline for
+    any non-empty output, none for the empty document. A literal blank line
+    inside a value (a paragraph break, D22) is written as an empty physical
+    line with no indentation. The empty string serializes to the empty
+    document ''.
     If the output would begin with U+FEFF, one extra U+FEFF is prepended,
     because loads strips exactly one leading mark. A str subclass, such as
     a (str, Enum) member, is written as its string value. A `Source` (as
@@ -63,6 +64,8 @@ def dumps(data: SymlInput) -> str:
     """
     text = _scalar_text(data)
     rendered_lines = _render_scalar_lines(text, 0, 'root') if text is not None else _render_value_lines(data, 0)
+    if not rendered_lines:
+        return ''
     rendered = '\n'.join(rendered_lines) + '\n'
     if rendered.startswith(_BOM):
         rendered = _BOM + rendered
