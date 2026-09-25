@@ -78,9 +78,13 @@ walk-up stays recursive; the recursion cliff is measured and documented
 - Hints over new API (R12): message text only; no `reason` code or
   `expected_columns` attribute.
 
-**No open clarification remains.** The four deferred items are settled in
-research.md R-01–R-05 (with R-04 settling a sub-question of item c), and
-R-06–R-12 settle seven more questions that planning surfaced.
+**No open clarification blocks planning.** The four deferred items are
+settled in research.md R-01–R-05 (with R-04 settling a sub-question of item
+c), and R-06–R-12 settle seven more questions that planning surfaced. The
+distinct "Open Questions for the Principal" section below records verdicts
+the red team reached on the planner's questions, two of which (7, 8) still
+want the principal's confirmation before the spec leaf lands; neither blocks
+drafting the plan.
 
 ## Brainstorm Context
 
