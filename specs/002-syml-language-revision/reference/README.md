@@ -22,9 +22,14 @@ FR-017 in `../spec.md`). Known divergences between `AUTHOR` and the rulings:
 - `doc01b_scene_taxi` opens with `Given:`; under the key rule that line is
   text, and under the text-context rule a root document whose first line is
   text is text throughout. The author would lowercase the key.
-- `doc05c_three_space_sibling`, `doc05d_item_one_deeper`,
-  `doc08e_yaml_list_in_map_same_indent`: strict indentation stands, so these
-  remain errors (now with a hint for the same-column list).
+- `doc08e_yaml_list_in_map_same_indent`: strict indentation stands, so it
+  remains an error (now with a hint for the same-column list).
+- `doc05c_three_space_sibling`, `doc05d_item_one_deeper`: **not errors after
+  this revision** (corrected during planning, research.md R-06). Each
+  over-indented line follows an inline value, so the text-context rule makes
+  it a continuation: `doc05c` loads as
+  `{"parent": {"child1": "a", "child2": "b\nchild3: c"}}` and `doc05d` as
+  `["milk", "eggs\n- bread"]`.
 - `doc06_shopping` / `doc06b_shopping_clean`: `Eggs: 12` is text (key rule);
   `- bread` followed by a deeper `- rye` is a continuation of the text
   `bread`, not a nested list (text-context rule).
