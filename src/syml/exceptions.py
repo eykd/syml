@@ -52,15 +52,20 @@ def would_be_key(line_text: str) -> str | None:
     return run
 
 
-#: Hint (c) candidates (Contract 03 §Hints (c), D26): a key immediately
-#: followed by a non-space character after its colon, or a list marker
-#: immediately followed by a non-space character. Both patterns are
-#: prefixed with `[ \t]*` (matching `_WOULD_BE_KEY_RE`'s tolerance for
-#: leading indentation) rather than D26's bare `^[a-z][a-z0-9_-]*:\S` /
-#: `^-\S`, since the lines this hint fires on are always indented. The list
-#: pattern excludes a second leading `-` (`--`, `---`) so this hint never
-#: fires on a document-marker-shaped line; hint (e) owns that.
-_MISSING_SPACE_KEY_RE = re.compile(r'^[ \t]*[a-z][a-z0-9_-]*:\S')
+#: Hint (c) candidates (Contract 03 §Hints (c), D26, amended by D35,
+#: syml-cjk2.20): a key immediately followed by a non-space character after
+#: its colon, or a list marker immediately followed by a non-space
+#: character. Both patterns are prefixed with `[ \t]*` (matching
+#: `_WOULD_BE_KEY_RE`'s tolerance for leading indentation) rather than
+#: D26's bare `^[a-z][a-z0-9_-]*:\S` / `^-\S`, since the lines this hint
+#: fires on are always indented. The list pattern excludes a second leading
+#: `-` (`--`, `---`) so this hint never fires on a document-marker-shaped
+#: line; hint (e) owns that. The key pattern excludes `://` immediately
+#: after the colon (D35) so a legitimate URL value (`http://example.com`,
+#: `https://example.com:8080/path`, per the spec's own §8 example) never
+#: earns "a key or list marker needs a space after it" — that hint would
+#: mislead an author into turning a valid value into a key.
+_MISSING_SPACE_KEY_RE = re.compile(r'^[ \t]*[a-z][a-z0-9_-]*:(?!//)\S')
 _MISSING_SPACE_LIST_RE = re.compile(r'^[ \t]*-(?!-)\S')
 
 

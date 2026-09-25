@@ -605,6 +605,20 @@ class TestOutOfContextNodeErrorHintC:
         assert needs_space_after_marker('---') is False
         assert needs_space_after_marker('--x') is False
 
+    def test_no_hint_for_a_url_value_on_the_failing_line(self) -> None:
+        """A legitimate URL value on the failing line never earns hint (c) (D35, syml-cjk2.20)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  http://example.com\n- x')
+
+        assert 'Hint' not in exc_info.value.message
+
+    def test_no_hint_for_a_url_value_via_the_look_back(self) -> None:
+        """A legitimate URL value on the line above never earns hint (c) via the look-back (D35, syml-cjk2.20)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  http://example.com\n')
+
+        assert 'Hint' not in exc_info.value.message
+
 
 class TestOutOfContextNodeErrorHintD:
     """Contract 03 §Hints (d) (D27): indented-comment hint, on the failing line only."""
@@ -795,6 +809,10 @@ class TestNeedsSpaceAfterMarker:
             pytest.param('--x', False, id='double_dash_marker'),
             pytest.param('...', False, id='end_marker'),
             pytest.param('a plain line', False, id='no_marker_at_all'),
+            pytest.param('http://example.com', False, id='url_value_http'),
+            pytest.param('  http://example.com', False, id='indented_url_value_http'),
+            pytest.param('url: https://example.com:8080/path', False, id='url_value_https_with_port_and_path'),
+            pytest.param('key:/x', True, id='single_slash_after_colon_still_fires'),
         ],
     )
     def test_needs_space_after_marker(self, line_text: str, *, expected: bool) -> None:

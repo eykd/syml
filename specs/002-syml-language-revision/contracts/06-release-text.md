@@ -217,6 +217,8 @@ README does not document either error's message shape.
       space after the colon) is not a key — it's text, so it silently makes
       the whole document, or the whole block it's in, one string; same for
       `-b` in a list. When it raises instead, the error now includes a hint.
+      A URL value (`http://example.com`) is exempt: the hint never fires on
+      a `scheme://` value (D35).
    8. `- key:` sets a sibling column: `- server:\n  host: x` is two siblings;
       `- server:\n    host: x` nests (show both). Use a space after `-`:
       a tab there counts as one column.

@@ -1,6 +1,6 @@
 # Contract 03 — Error Text, Hints, Filenames, and Positions
 
-> Amended 2026-09-25 by D26, D27, D30, D31, D32, D33 (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
+> Amended 2026-09-25 by D26, D27, D30, D31, D32, D33, D35 (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
 
 **Requirements**: FR-011, FR-012, FR-013, FR-016 (§8.3 example) | **Decisions**: D7 affirmed (one class for §8.1/§8.2) | **Findings closed**: `syml-xreq.4`, `.5`, `.9` (§8.3 half), `.17` (hint half), `.18`, `.3` (hint half) | **Research**: R-07, R-08, R-09, R-18
 
@@ -169,12 +169,15 @@ below):
   without the failing-node clause, the same dialogue with one line before the
   dedent (`- scene:\n    Bob: hi\n   Alice: hey`) gets `'Bob' is not a key`,
   because `Bob: hi` is the value's first line.
-- **(c) missing space after a marker** (D26, `syml-cjk2.10`): the failing
+- **(c) missing space after a marker** (D26, `syml-cjk2.10`; amended by D35,
+  `syml-cjk2.20`): the failing
   line, or the line above under (a)'s exact look-back (same candidate line,
   same gate on it being the value's first line and the failing node being a
   `KeyValue`/`ListItem`), after its indentation spaces, matches
-  `[a-z][a-z0-9_-]*:\S` (a key immediately followed by a non-space
-  character) or `-(?!-)\S` (a list marker immediately followed by a
+  `[a-z][a-z0-9_-]*:(?!//)\S` (a key immediately followed by a non-space
+  character, but not `://` — a URL value such as `http://example.com` or
+  §8's `url: https://example.com:8080/path` never counts, D35) or `-(?!-)\S`
+  (a list marker immediately followed by a
   non-space character, `--`/`---`/`...` excluded — those are hint (e)'s
   document-marker territory, not this one's) →
   `Hint: a key or list marker needs a space after it.` **Failing-line

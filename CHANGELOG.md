@@ -337,6 +337,15 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     matches the non-BOM case exactly; `.position` and `.line_text`
     themselves are unchanged (D33, syml-cjk2.17, break-testing round 2
     lane 1).
+34. **Bug fix: hint (c) (item 25) no longer fires on a URL value.** The
+    hint's key pattern matched any `RUN:` immediately followed by a
+    non-space character, so a valid URL value on a block value's first
+    line (`http://example.com`, or §8's own
+    `url: https://example.com:8080/path`) earned "a key or list marker
+    needs a space after it" — advice that would turn a valid value into a
+    key. The pattern now excludes `://` immediately after the colon; a
+    `scheme://` value never matches hint (c) (D35, syml-cjk2.20,
+    break-testing round 2 lane 1).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`
