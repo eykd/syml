@@ -142,6 +142,15 @@ item states the converse edge: only a space or a tab separates; a NBSP after
 `name:\xa0app\nport: 80` is one string where 1.0 raised at line 2 (red team
 outer iteration 3).
 
+Item 25 (D26, `syml-cjk2.10`): a third `OutOfContextNodeError` hint, (c)
+missing space after a marker — `key:8080` or a bare `-8080` reads as a
+would-be key or list marker with no separator, and the hint names it. Item
+26 (D27, `syml-cjk2.11`): two more hints — (d) an indented comment line
+that would have been a comment at column 0, and (e) a mid-file document
+marker (`---`/`...`) that 1.0 never treated specially. Both are described
+in Contract 03 §Hints; no README change for either — the README's error
+section does not enumerate individual hints.
+
 Recursion measurement method (R-17): at the default recursion limit, bisect
 the largest depth that loads for (1) `k0:\n  k1:\n    …` with no trailing
 line, (2) the same plus a trailing `z: 1` at column 0, (3) `- - … - x` on one
@@ -188,6 +197,42 @@ value. `UnrepresentableValueError` gains a public `.path` attribute
 a plain builtin `TypeError`, message only, no `.path`, no new subclass
 (Contract 04 §Error text and the data path). No README change — the
 README does not document either error's message shape.
+
+D31 (`syml-cjk2.15`, refined by `syml-cjk2.21`, break-testing round 2 lane
+4): item 31, `EncodingError`'s message names the first offending byte and
+says UTF-8 (`Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`), and
+names the actual codec instead when a caller-supplied text stream in a
+non-UTF-8 codec fails to decode (`Invalid {codec} (byte 0x{XX})`, no
+UTF-8-specific advice), replacing the pre-fix `Invalid encoding` (Contract
+03 §Messages). No README change — the README does not document
+`EncodingError`'s message shape.
+
+D32 (`syml-cjk2.16`, break-testing round 2 lane 4): item 32,
+`DuplicateKeyError`'s message names where the key first appeared —
+`Duplicate key 'a' (first defined at line N)` — replacing the pre-fix bare
+`Duplicate key 'a'`; `.first_position` is unchanged, only the message
+gained the clause (Contract 03 §Messages, §8.3). No README change — the
+README does not quote `DuplicateKeyError`'s message.
+
+D33 (`syml-cjk2.17`, break-testing round 2 lane 1): item 33, `str(e)`'s
+excerpt line no longer misaligns by one character on a long line 1 of a
+BOM-led document: `__str__` now centres its window on `.position.column`
+minus the BOM offset instead of the raw column, matching the equivalent
+non-BOM document's rendering; `.position` and `.line_text` are unchanged
+(Contract 03 §Placement). No README change — the README does not show a
+BOM-led excerpt example.
+
+Bug-fix item, no D-number, appended out of decision order (`syml-cjk2.13`,
+break-testing round 2 lane 4; the JUDGMENT this item resolves, D29): item
+35, `dumps`'s unrepresentable-value messages for Contract 04 items 5 and 6
+change wording only — item 5's message is `contains a non-empty
+whitespace-only line`, replacing the pre-fix `contains a blank or
+whitespace-only line` (which used "blank" for a non-empty line, reading as
+though a paragraph break were refused); item 6 splits into
+`begins with a blank line` / `ends with a trailing newline`, naming which
+end caused the refusal, replacing one shared pre-fix message (Contract 04
+§Unrepresentable set, items 5 and 6). No README change — the README does
+not quote either message.
 
 ## D. `README.md` (release leaf)
 

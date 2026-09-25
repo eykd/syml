@@ -1702,6 +1702,7 @@ EncodingError(ParseError)
 UnrepresentableValueError(ValueError)
     Raised by `dumps`, not `loads`, when asked to serialize a value with
     no SYML encoding in this version (§11.2.1, §11.2.2, §11.2.3).
+    Additional attributes: path: tuple[str | int, ...]
 ```
 
 A conforming implementation MUST expose these exact class names (or

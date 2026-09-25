@@ -10,10 +10,15 @@ and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.m
 § FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
 25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 27
 the 2026-09-25 D34 refinement of the filename-windowing fix (window the
-tail, not the head), item 32 the 2026-09-25 D32 `DuplicateKeyError` message
-addition, item 33 the 2026-09-25 D33 `ParseError.__str__` BOM-offset fix
-(see `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in
-this one 1.0.0 release.
+tail, not the head), item 28 the `load()` non-file-object `TypeError` fix,
+item 29 the 32-marker guard's trailing-dash fix, item 30 the 2026-09-25 D30
+`str(e)`/`.path` contract for `dumps`'s errors, item 31 the 2026-09-25 D31
+`EncodingError` codec-naming fix, item 32 the 2026-09-25 D32
+`DuplicateKeyError` message addition, item 33 the 2026-09-25 D33
+`ParseError.__str__` BOM-offset fix, item 34 the 2026-09-25 D35 refinement
+of hint (c) to exclude `scheme://` values, and item 35 the 2026-09-25 D29
+`dumps` message-wording fix (see `SYML-SPEC-REVIEW.md`); items 1-18 cover
+everything else changed in this one 1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
 2. Tabs in indentation → `TabIndentationError`.
@@ -351,6 +356,19 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     key. The pattern now excludes `://` immediately after the colon; a
     `scheme://` value never matches hint (c) (D35, syml-cjk2.20,
     break-testing round 2 lane 1).
+35. **Bug fix: `dumps`'s unrepresentable-value messages stop calling a
+    whitespace-only line "blank", and item 6's message now names which end
+    caused the refusal.** Until this fix, item 5 (a non-empty line of only
+    spaces and/or tabs) said `contains a blank or whitespace-only line`,
+    the same word the README and item 12 use for the empty interior line a
+    paragraph break writes back — so the message read as though paragraph
+    breaks were refused, which they are not. Item 5's message is now
+    `contains a non-empty whitespace-only line`. Item 6 (a multi-line value
+    whose first or last line is empty) shared one message, `begins or ends
+    with a blank line`, for both ends; it is now two distinct messages,
+    `begins with a blank line` and `ends with a trailing newline`, naming
+    which end caused the refusal (D29, syml-cjk2.13, break-testing round 2
+    lane 4).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`
