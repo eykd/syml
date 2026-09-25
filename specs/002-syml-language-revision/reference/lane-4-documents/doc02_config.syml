@@ -1,0 +1,28 @@
+# Application config
+app:
+  name: widget-server
+  host: 0.0.0.0
+  port: 8080 # default port
+  debug: false
+  base-url: https://example.com:8443/api/v1?x=1&y=2
+  data-dir: C:\Users\x\AppData\widget
+  log-dir: /var/log/widget
+
+hosts:
+  - web1.example.com
+  - web2.example.com
+  - 10.0.0.3:8080
+
+database:
+  url: postgres://user:p@ss@db:5432/app
+  pool:
+    min: 1
+    max: 10
+
+env:
+  - PATH=/usr/local/bin:/usr/bin
+  - HOME=/home/widget
+
+environment:
+  DATABASE_URL: postgres://user@db/app
+  SECRET_KEY: s3cr3t

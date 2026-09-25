@@ -1,2 +1,4 @@
 syml/_version.py export-subst
 src/syml/_version.py export-subst
+# Break-test evidence: byte-exact, including CRLF and trailing whitespace.
+specs/002-syml-language-revision/reference/** -text

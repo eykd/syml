@@ -1,0 +1,3 @@
+SOURCE = '# c'
+SPEC = ''
+AUTHOR = SPEC
