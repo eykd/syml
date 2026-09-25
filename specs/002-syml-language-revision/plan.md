@@ -267,9 +267,9 @@ independent.
 1. **Spec leaf** (Contract 06 §A, §B): `SYML-SPECIFICATION.md` and
    `SYML-SPEC-REVIEW.md` (D20–D25, supersession notes), fully revised before
    any code. To keep every commit green under the pre-commit `pytest` hook,
-   the same leaf adds a `PENDING: dict[str, str]` table to
+   the same leaf adds a `PENDING: dict[tuple[str, str], str]` table to
    `tests/test_spec_examples.py`, keyed by `(source, stated output)` (the spec
-   repeats some inputs, so source alone is ambiguous), naming the FR
+   repeats some inputs, so source alone is ambiguous), valued by the FR
    that will make each changed example true; those examples run as
    `xfail(strict=True)`. Each later leaf deletes the entries it satisfies (a
    strict XPASS fails the run if it forgets), and the release leaf deletes the
