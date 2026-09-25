@@ -7,7 +7,7 @@ from typing import IO, TYPE_CHECKING, Literal
 
 from . import nodes, parsers
 from .basetypes import KEY_PATTERN, Source
-from .exceptions import UnrepresentableValueError, format_data_path
+from .exceptions import UnrepresentableValueError, _truncated_window, format_data_path
 
 if TYPE_CHECKING:  # pragma: nocover
     from .basetypes import SymlInput
@@ -126,15 +126,26 @@ def _not_representable(value: object, path: DataPath) -> TypeError:
 
     A plain builtin `TypeError`, constructed with the message alone (no
     second positional `value` argument, no `.path` attribute, no subclass)
-    so `str(e)` is never a tuple repr (D30).
+    so `str(e)` is never a tuple repr (D30). `value`'s repr is windowed
+    through `_truncated_window(..., center=0)` before interpolation, the
+    same bound `format_data_path` gives a hostile path segment, so a huge
+    offending value (e.g. a long tuple) cannot blow up `str(e)` on its own
+    (syml-cjk2.25).
     """
-    message = f'{value!r} is not representable in SYML (not str, list, or dict){format_data_path(path)}'
+    windowed_repr = _truncated_window(repr(value), center=0)
+    message = f'{windowed_repr} is not representable in SYML (not str, list, or dict){format_data_path(path)}'
     return TypeError(message)
 
 
 def _unrepresentable(text: str, why: str, path: DataPath) -> UnrepresentableValueError:
-    """Build the UnrepresentableValueError for a scalar `text` (§11.2.1)."""
-    message = f'{text!r} is not representable in SYML ({why}, §11.2.1)'
+    """Build the UnrepresentableValueError for a scalar `text` (§11.2.1).
+
+    `text` is windowed through `_truncated_window(..., center=0)` before
+    `repr`, so a huge offending value (e.g. a multi-megabyte string) yields
+    a bounded `str(e)` (syml-cjk2.25).
+    """
+    windowed_text = _truncated_window(text, center=0)
+    message = f'{windowed_text!r} is not representable in SYML ({why}, §11.2.1)'
     return UnrepresentableValueError(message, path)
 
 
@@ -167,10 +178,12 @@ def _render_mapping_lines(mapping: dict[object, object], indent: int, path: Data
     for key, value in mapping.items():
         key_str = _scalar_text(key)
         if key_str is None:
-            message = f'{key!r} is not a valid SYML mapping key (must be str){format_data_path(path)}'
+            windowed_key_repr = _truncated_window(repr(key), center=0)
+            message = f'{windowed_key_repr} is not a valid SYML mapping key (must be str){format_data_path(path)}'
             raise TypeError(message)
         if not key_is_representable(key_str):
-            message = f'{key_str!r} is not representable as a SYML mapping key (§11.2.3)'
+            windowed_key_str = _truncated_window(key_str, center=0)
+            message = f'{windowed_key_str!r} is not representable as a SYML mapping key (§11.2.3)'
             raise UnrepresentableValueError(message, path)
         value_text = _scalar_text(value)
         value_path = (*path, key_str)

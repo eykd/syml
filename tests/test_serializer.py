@@ -561,6 +561,41 @@ class TestDumpsErrorDataPathIsBounded:
         assert len(str(excinfo.value)) < 300
         assert excinfo.value.path == (huge_key, 'b')
 
+    def test_it_should_bound_a_hostile_unrepresentable_mapping_key_itself(self) -> None:
+        """syml-cjk2.25: the §11.2.3 unrepresentable-key message, not only the path."""
+        huge_key = 'K' * 2_000_000
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({huge_key: 'x'})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("'" + 'K' * 80 + '…')
+
+    def test_it_should_bound_a_hostile_non_str_key_repr_in_a_type_error(self) -> None:
+        """syml-cjk2.25: a non-str key's repr is windowed, not printed whole."""
+        huge_key = ('t',) * 300_000
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({huge_key: 'x'})  # type: ignore[dict-item]
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("('t', 't', 't',")
+
+    def test_it_should_bound_a_hostile_value_repr_in_a_not_representable_type_error(self) -> None:
+        """syml-cjk2.25: the offending value's repr in `_not_representable` is windowed."""
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': ('t',) * 300_000})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("('t', 't', 't',")
+
+    def test_it_should_bound_a_hostile_value_repr_in_an_unrepresentable_value_error(self) -> None:
+        """syml-cjk2.25: the offending scalar's repr in `_unrepresentable` is windowed."""
+        huge_value = 'y' * 2_000_000 + '\x00'
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': huge_value})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("'" + 'y' * 80 + '…')
+
 
 class TestDumpsLeadingFeffProtectiveDoubling:
     """A leading U+FEFF gets one extra U+FEFF prepended, since loads strips one (§9.0)."""

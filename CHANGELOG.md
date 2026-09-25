@@ -311,7 +311,12 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     `.path` attribute (`tuple[str | int, ...]`, `()` at the root); a bad
     mapping key is pathed to its parent mapping. The `dumps` `TypeError`
     stays a plain builtin `TypeError`, message only — no `.path`, no new
-    subclass (D30, syml-cjk2.14, break-testing round 2 lane 4).
+    subclass (D30, syml-cjk2.14, break-testing round 2 lane 4). The whole
+    message is also bounded, not only the path clause: a hostile mapping
+    key or scalar value (e.g. a multi-megabyte string, or a huge non-`str`
+    key/value such as a 300,000-element tuple) is windowed to a bounded
+    `str(e)` on its own, the same treatment already applied to a hostile
+    path segment (syml-cjk2.18, syml-cjk2.25).
 31. **Bug fix: `EncodingError`'s message now names the bad byte and says
     UTF-8, and names the actual codec when it isn't UTF-8.** Until this fix,
     an invalid-UTF-8 file raised with the message `Invalid encoding`, which

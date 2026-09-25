@@ -84,7 +84,8 @@ a plain builtin `TypeError`, constructed with the message alone: no
 `.path` attribute, no subclass, so no new class name under §11.3 (option B
 of `syml-cjk2.14`'s judgment, taken in full rather than deferred).
 
-**Bounded rendering (`syml-cjk2.18`):** `format_data_path` (shared by both
+**Bounded rendering (`syml-cjk2.18`, `syml-cjk2.25`):** the *whole* message
+is bounded, not only the path clause. `format_data_path` (shared by both
 errors) renders the clause through two bounds so a hostile `path` cannot
 scale `str(e)` with its own size. Each `str` segment is windowed through
 the same `_truncated_window(key, center=0)` helper Contract 03 §Bounded
@@ -92,9 +93,20 @@ rendering uses for a hostile `DuplicateKeyError` key, before `repr` — a
 2 MB mapping key still yields a bounded segment. Depth is capped
 separately: only the path's first three and last three rendered segments
 are kept, with a single `'…'` standing in for everything elided between
-them, regardless of how deep the path goes. Only the rendered clause is
-bounded — `UnrepresentableValueError.path` (and the tuple a caller passed
-in) still carries every segment, untruncated.
+them, regardless of how deep the path goes.
+
+The message's *leading* clause gets the same treatment (`syml-cjk2.25`):
+`_render_mapping_lines` windows a hostile mapping key — `key_str` for the
+§11.2.3 unrepresentable-key message, `repr(key)` for the non-str-key
+`TypeError` — through `_truncated_window(..., center=0)` before
+interpolating, and `_not_representable`/`_unrepresentable` do the same for
+the offending value's repr (windowing the repr string itself for a
+non-`str` value, and the raw text before `repr` for a `str` scalar). A
+2 MB mapping key or scalar value, or a huge non-`str` key or value (e.g. a
+300,000-element tuple), each yields a bounded `str(e)` on its own, not only
+in combination with a long path. Only the rendered message is bounded —
+`UnrepresentableValueError.path` (and the tuple a caller passed in) still
+carries every segment, untruncated.
 
 ## Behaviour
 
