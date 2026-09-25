@@ -161,6 +161,15 @@ already itemized above under recursion measurement's neighbor obligations)
 to a hostile `filename`. No README change — the README never documented
 the bounded-rendering length cap itself, only the hints it now covers.
 
+Bug-fix item, no D-number (`syml-cjk2.6`, break-testing round 2 lane 3):
+item 28, `load()` on an object with no `read()` method (e.g. `None`, a bare
+`str`, or any other non-file object) now raises `TypeError` naming the
+received type instead of letting a bare `AttributeError` escape, matching
+`loads`'s own `TypeError` for a non-`str` argument and `load`'s existing
+`TypeError` for a `read()` result of the wrong type (Contract 05 §Behaviour).
+No README change — the README's `load()` example already shows only the
+happy path.
+
 ## D. `README.md` (release leaf)
 
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling

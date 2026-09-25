@@ -267,6 +267,14 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     archive entry path) makes `.message`/`str(e)` scale with the filename's
     own length instead of staying proportional to the fixed 80-code-point
     window (syml-cjk2.5, break-testing round 2 lane 3).
+28. **Bug fix: `load()` on a non-file object raises `TypeError`, not
+    `AttributeError`.** `load(None)`, `load('some str')`, and `load()` on any
+    object without a `read()` method now raise `TypeError` naming the
+    received type, matching `loads`'s own `TypeError` and `load`'s existing
+    clean `TypeError` for a `read()` that returns the wrong type. In 0.6.2,
+    and until this fix, `load()` on such an object raised a bare
+    `AttributeError` (e.g. `'NoneType' object has no attribute 'read'`)
+    instead (syml-cjk2.6, break-testing round 2 lane 3).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

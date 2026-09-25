@@ -108,6 +108,26 @@ class TestLoadRejectsNonTextNonBytesReadResults:
             syml.load(_MemoryviewHandle())  # type: ignore[arg-type]
 
 
+class TestLoadOnANonFileObjectRaisesTypeError:
+    """Contract 05 §Behaviour: `load()` on a non-file object raises `TypeError`, not `AttributeError`."""
+
+    def test_load_none_raises_type_error_naming_nonetype(self) -> None:
+        with pytest.raises(TypeError, match='NoneType'):
+            syml.load(None)  # type: ignore[arg-type]
+
+    def test_load_a_str_raises_type_error_naming_str(self) -> None:
+        with pytest.raises(TypeError, match='str'):
+            syml.load('some str')  # type: ignore[arg-type]
+
+    def test_load_an_object_with_only_readline_raises_type_error(self) -> None:
+        class _ReadlineOnlyHandle:
+            def readline(self) -> str:
+                return 'k: v'
+
+        with pytest.raises(TypeError, match='_ReadlineOnlyHandle'):
+            syml.load(_ReadlineOnlyHandle())  # type: ignore[arg-type]
+
+
 class TestLoadOnAClosedHandleRaisesTypeError:
     """Contract 05 §Behaviour: `load()` on a closed handle raises a chained `TypeError`, not `ValueError`."""
 
