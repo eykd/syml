@@ -138,7 +138,7 @@ Unchanged. Its text is always `[a-z][a-z0-9_-]*`.
 
 | Element | Change |
 | --- | --- |
-| `dumps(data)` | `''` → `''`. Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
+| `dumps(data)` | `dumps('')`: `'\n'` → `''` (Contract 04: "changed, was `'\n'`"). Reads a `Source` key or scalar as its text before any type check (`str(value)` when `isinstance(value, Source)`). |
 | `key_is_representable(k)` | `re.fullmatch(r'[a-z][a-z0-9_-]*', k)`; no grammar call, no comment-marker or uppercase check. Lands in the grammar leaf, which removes the `parsers.key_has_uppercase` it calls today. |
 | `_render_scalar_lines` | Enforces R-05's list; writes paragraph breaks as empty lines with no indentation; later lines unrestricted apart from R-05 items 4–5 and item 2's later-line clause (a line whose leading `(?:-[ \t]+)*-?` run holds more than `MAX_LATER_LINE_MARKERS = 32` `-` characters is refused; counted, never parsed). |
 | `_check_block_line` | Removed (its checks move into R-05's per-value rules). |
