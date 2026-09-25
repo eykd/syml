@@ -27,13 +27,6 @@ SPEC_PATH = Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
 #: matching zero blocks and passing vacuously.
 MINIMUM_EXAMPLE_COUNT = 69
 
-#: (source, stated output) -> the FR that will make the example true. Each
-#: entry is xfail(strict=True): the spec leaf states these examples ahead of
-#: the code that satisfies them (principle IV), and a later Green leaf
-#: deletes its own entries. A strict XPASS fails the run if a leaf forgets
-#: to delete its entry once its FR lands.
-PENDING: dict[tuple[str, str], str] = {}
-
 _OUTPUT_HEADER_RE = re.compile(r'\*\*Output[^*]*\*\*\s*(.*)$')
 _INLINE_CODE_RE = re.compile(r'`([^`]*)`')
 
@@ -149,28 +142,10 @@ def test_at_least_the_documented_minimum_of_spec_examples_were_found() -> None:
     assert len(SPEC_EXAMPLES) >= MINIMUM_EXAMPLE_COUNT
 
 
-def _stated_output(example: SpecExample) -> str:
-    """Reconstruct the ``(source, stated output)`` key's output half for `PENDING`."""
-    if example.expected_exception_name is not None:
-        if example.expected_exception_text:
-            return f'ERROR: {example.expected_exception_name}: {example.expected_exception_text}'
-        return f'ERROR: {example.expected_exception_name}'
-    assert example.expected_json is not None
-    return example.expected_json
-
-
-def _spec_example_params() -> list[object]:
-    """Wrap each `SpecExample` in `pytest.param`, xfail-marking `PENDING` entries."""
-    params: list[object] = []
-    for example in SPEC_EXAMPLES:
-        key = (example.source, _stated_output(example))
-        reason = PENDING.get(key)
-        marks = [pytest.mark.xfail(strict=True, reason=reason)] if reason is not None else []
-        params.append(pytest.param(example, marks=marks, id=f'L{example.line_number}'))
-    return params
-
-
-@pytest.mark.parametrize('example', _spec_example_params())
+@pytest.mark.parametrize(
+    'example',
+    [pytest.param(example, id=f'L{example.line_number}') for example in SPEC_EXAMPLES],
+)
 def test_spec_example_produces_its_stated_output(example: SpecExample) -> None:
     """Every fenced example's stated Output/ERROR is exactly what `loads()` produces."""
     if example.expected_exception_name is not None:
