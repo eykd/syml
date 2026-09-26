@@ -58,6 +58,93 @@ class TestLoadAcceptsTextAndBinaryStreams:
         with pytest.raises(EncodingError):
             syml.load(handle)
 
+    def test_load_from_a_charmap_text_stream_names_its_own_codec_not_charmap(self) -> None:
+        """A charmap-based codec (e.g. `cp1252`) is named by its own `encoding`, not `'charmap'`.
+
+        Every charmap-based codec (`cp1252`, `cp437`, the `latin-*` family, ...)
+        raises `UnicodeDecodeError` with `err.encoding == 'charmap'`, so `load`
+        must prefer the stream's own `encoding` attribute over `err.encoding`
+        when naming the codec (Contract 03 §`EncodingError`).
+        """
+        handle = io.TextIOWrapper(io.BytesIO(b'a: \x81'), encoding='cp1252')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == 'Invalid cp1252 (byte 0x81)'
+
+    def test_load_from_a_utf8_sig_text_stream_keeps_the_d31_utf8_text(self) -> None:
+        """A `utf-8-sig` stream is still UTF-8 (D31), refined `syml-cjk2.28`.
+
+        `utf-8-sig` is a member of the UTF-8 family (it only adds BOM
+        handling), so an invalid-byte failure on such a stream must keep
+        the "save the file as UTF-8" advice, not name `utf-8-sig` as if it
+        were an unrelated codec.
+        """
+        handle = io.TextIOWrapper(io.BytesIO(b'a: \xe9'), encoding='utf-8-sig')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_name_is_unknown(self) -> None:
+        """A stream `.encoding` naming an unknown codec falls back to `err.encoding`, `syml-cjk2.28`.
+
+        Before this fix, `codecs.lookup('no-such-codec')` raised `LookupError`
+        directly out of `encoding_error`, so a bogus stream `.encoding` leaked
+        a builtin `LookupError` instead of `EncodingError`.
+        """
+
+        class _BogusEncodingHandle:
+            encoding = 'no-such-codec'
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('utf-8', b'\xe9', 0, 1, 'bad byte')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_BogusEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_is_not_a_str(self) -> None:
+        """A non-`str` stream `.encoding` falls back to `err.encoding`, `syml-cjk2.28`.
+
+        Before this fix, `codecs.lookup(42)` raised `TypeError` directly out
+        of `encoding_error`, so a non-`str` stream `.encoding` leaked a
+        builtin `TypeError` instead of `EncodingError`.
+        """
+
+        class _NonStrEncodingHandle:
+            encoding = 42
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('utf-8', b'\xe9', 0, 1, 'bad byte')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_NonStrEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_has_embedded_nul(self) -> None:
+        """A stream `.encoding` with an embedded NUL falls back to `err.encoding`, `syml-cjk2.29`.
+
+        `codecs.lookup` raises `ValueError` (not `LookupError`) for a `str`
+        with an embedded NUL byte, so a stream whose `.encoding` contains a
+        NUL must also fall back instead of leaking a builtin `ValueError`.
+        """
+
+        class _NulEncodingHandle:
+            encoding = 'a\x00b'
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('charmap', b'a\x81', 1, 2, 'bad')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_NulEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid charmap (byte 0x81)'
+
 
 class TestLoadResolvesFilenameFromFileObj:
     """Contract 06 §`load`: `filename` defaults to `file_obj.name`; an explicit `filename` wins."""
@@ -106,6 +193,26 @@ class TestLoadRejectsNonTextNonBytesReadResults:
 
         with pytest.raises(TypeError, match='memoryview'):
             syml.load(_MemoryviewHandle())  # type: ignore[arg-type]
+
+
+class TestLoadOnANonFileObjectRaisesTypeError:
+    """Contract 05 §Behaviour: `load()` on a non-file object raises `TypeError`, not `AttributeError`."""
+
+    def test_load_none_raises_type_error_naming_nonetype(self) -> None:
+        with pytest.raises(TypeError, match='NoneType'):
+            syml.load(None)  # type: ignore[arg-type]
+
+    def test_load_a_str_raises_type_error_naming_str(self) -> None:
+        with pytest.raises(TypeError, match='str'):
+            syml.load('some str')  # type: ignore[arg-type]
+
+    def test_load_an_object_with_only_readline_raises_type_error(self) -> None:
+        class _ReadlineOnlyHandle:
+            def readline(self) -> str:
+                return 'k: v'
+
+        with pytest.raises(TypeError, match='_ReadlineOnlyHandle'):
+            syml.load(_ReadlineOnlyHandle())  # type: ignore[arg-type]
 
 
 class TestLoadOnAClosedHandleRaisesTypeError:
@@ -178,7 +285,7 @@ class TestLoadHonoursAnyOsPathLikeFilename:
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.load(handle)
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
 
     def test_a_bytes_name_yields_no_filename(self) -> None:
         handle = io.StringIO('key: value1\nkey: value2')
@@ -187,7 +294,7 @@ class TestLoadHonoursAnyOsPathLikeFilename:
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.load(handle)
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
 
 
 class TestParseIsAPublicExport:

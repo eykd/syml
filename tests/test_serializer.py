@@ -149,10 +149,10 @@ class TestDumpsUnrepresentableScalars:
             ({'k': ' lead'}, 'begins with whitespace'),
             ({'k': '\tlead'}, 'begins with whitespace'),
             ([' x\ny'], 'begins with whitespace'),
-            ({'k': 'a\n   '}, 'contains a blank or whitespace-only line'),
-            ({'k': 'x\n'}, 'begins or ends with a blank line'),
-            ({'k': '\nx'}, 'begins or ends with a blank line'),
-            ('x\n', 'begins or ends with a blank line'),
+            ({'k': 'a\n   '}, 'contains a non-empty whitespace-only line'),
+            ({'k': 'x\n'}, 'ends with a trailing newline'),
+            ({'k': '\nx'}, 'begins with a blank line'),
+            ('x\n', 'ends with a trailing newline'),
             ({'k': 'a\n\tb'}, 'a line begins with a tab'),
             ({'k': 'a\n  \tb'}, 'a line begins with a tab'),
             ('a\n# b', 'a line begins with a comment marker'),
@@ -318,6 +318,11 @@ class TestDumpsResidualUnrepresentableSet:
         with pytest.raises(UnrepresentableValueError):
             serializer.dumps({'k': 'a\n  ' + '- ' * 32 + '-'})
 
+    def test_it_should_not_count_a_dash_before_non_whitespace_as_a_marker(self) -> None:
+        """syml-cjk2.9: `-42` is text (§7.6), not a 33rd marker, so 32 markers round-trip."""
+        value = {'k': 'a\n' + '- ' * 32 + '-42'}
+        assert loads(serializer.dumps(value)) == value
+
     def test_it_should_round_trip_a_long_chain_after_an_inline_key(self) -> None:
         """A chain after `k: ` is inline `data`, not a later block line, so it never recurses."""
         value = {'k': 'a\nk: ' + '- ' * 100 + 'x'}
@@ -466,6 +471,130 @@ class TestDumpsUnrepresentableRootScalars:
     )
     def test_it_should_serialize_a_representable_root_scalar(self, value: str) -> None:
         assert loads(serializer.dumps(value)) == value
+
+
+class TestDumpsErrorDataPath:
+    """D30: `dumps` errors name the offending value's data path.
+
+    `UnrepresentableValueError.path` and both errors' `str(e)` carry the
+    path in Python subscript form (e.g. `['a']['b'][1]`); a root value's
+    message has no path clause.
+    """
+
+    def test_it_should_have_no_path_clause_for_a_root_unrepresentable_scalar(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps('# comment')
+        assert excinfo.value.path == ()
+        assert ' at ' not in str(excinfo.value)
+
+    def test_it_should_path_a_mapping_valued_unrepresentable_scalar_by_its_key(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'k': '\tlead'})
+        assert excinfo.value.path == ('k',)
+        assert str(excinfo.value).endswith(" at ['k']")
+
+    def test_it_should_path_a_list_item_unrepresentable_scalar_by_its_index(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps(['- x'])
+        assert excinfo.value.path == (0,)
+        assert str(excinfo.value).endswith(' at [0]')
+
+    def test_it_should_path_a_deeply_nested_unrepresentable_scalar(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', '\tlead']}})
+        assert excinfo.value.path == ('a', 'b', 1)
+        assert str(excinfo.value).endswith(" at ['a']['b'][1]")
+
+    def test_it_should_path_an_empty_container_by_its_key(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {}})
+        assert excinfo.value.path == ('a',)
+
+    def test_it_should_have_no_path_clause_for_a_root_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps(1)  # type: ignore[arg-type]
+        assert not hasattr(excinfo.value, 'path')
+        assert len(excinfo.value.args) == 1
+        assert ' at ' not in str(excinfo.value)
+
+    def test_it_should_path_a_deeply_nested_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', 1]}})
+        assert not hasattr(excinfo.value, 'path')
+        assert len(excinfo.value.args) == 1
+        assert str(excinfo.value).endswith(" at ['a']['b'][1]")
+
+    def test_it_should_not_render_a_tuple_repr_for_the_nested_type_error(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {'b': ['x', 1]}})
+        assert str(excinfo.value) != str((f'{1!r} is not representable in SYML (not str, list, or dict)', 1))
+
+    def test_it_should_path_a_non_str_key_type_error_by_its_parent_mapping(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': {1: 'v'}})
+        assert str(excinfo.value).endswith(" at ['a']")
+
+    def test_it_should_path_an_unrepresentable_key_by_its_parent_mapping(self) -> None:
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': {'Name': 'v'}})
+        assert excinfo.value.path == ('a',)
+        assert str(excinfo.value).endswith(" at ['a']")
+
+
+class TestDumpsErrorDataPathIsBounded:
+    """D30 (syml-cjk2.18): a hostile key or deep path still yields a bounded `str(e)`.
+
+    `.path` (on `UnrepresentableValueError`) stays the full, untruncated
+    tuple; only the rendered message clause is bounded.
+    """
+
+    def test_it_should_bound_a_hostile_key_in_a_type_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({huge_key: 1})
+        assert len(str(excinfo.value)) < 300
+
+    def test_it_should_bound_a_hostile_key_in_an_unrepresentable_value_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({huge_key: {'b': '\x00'}})
+        assert len(str(excinfo.value)) < 300
+        assert excinfo.value.path == (huge_key, 'b')
+
+    def test_it_should_bound_a_hostile_unrepresentable_mapping_key_itself(self) -> None:
+        """syml-cjk2.25: the §11.2.3 unrepresentable-key message, not only the path."""
+        huge_key = 'K' * 2_000_000
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({huge_key: 'x'})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("'" + 'K' * 80 + '…')
+
+    def test_it_should_bound_a_hostile_non_str_key_repr_in_a_type_error(self) -> None:
+        """syml-cjk2.25: a non-str key's repr is windowed, not printed whole."""
+        huge_key = ('t',) * 300_000
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({huge_key: 'x'})  # type: ignore[dict-item]
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("('t', 't', 't',")
+
+    def test_it_should_bound_a_hostile_value_repr_in_a_not_representable_type_error(self) -> None:
+        """syml-cjk2.25: the offending value's repr in `_not_representable` is windowed."""
+        with pytest.raises(TypeError) as excinfo:
+            serializer.dumps({'a': ('t',) * 300_000})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("('t', 't', 't',")
+
+    def test_it_should_bound_a_hostile_value_repr_in_an_unrepresentable_value_error(self) -> None:
+        """syml-cjk2.25: the offending scalar's repr in `_unrepresentable` is windowed."""
+        huge_value = 'y' * 2_000_000 + '\x00'
+        with pytest.raises(UnrepresentableValueError) as excinfo:
+            serializer.dumps({'a': huge_value})
+        message = str(excinfo.value)
+        assert len(message) < 300
+        assert message.startswith("'" + 'y' * 80 + '…')
 
 
 class TestDumpsLeadingFeffProtectiveDoubling:

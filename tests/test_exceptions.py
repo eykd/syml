@@ -10,7 +10,18 @@ import pytest
 
 import syml
 from syml.basetypes import Pos
-from syml.exceptions import DuplicateKeyError, OutOfContextNodeError, ParseError, error_message, would_be_key
+from syml.exceptions import (
+    DuplicateKeyError,
+    OutOfContextNodeError,
+    ParseError,
+    UnrepresentableValueError,
+    error_message,
+    format_data_path,
+    is_comment_shaped,
+    is_document_marker,
+    needs_space_after_marker,
+    would_be_key,
+)
 from syml.preprocess import encoding_error
 
 
@@ -96,7 +107,23 @@ class TestEncodingErrorPositionDerivation:
 
         assert result.position == Pos(index=10, line=2, column=3)
         assert result.line_text == 'x: '
-        assert result.message == 'Invalid encoding'
+        assert result.message == 'Invalid UTF-8 (byte 0xff); save the file as UTF-8'
+
+    def test_encoding_error_names_the_actual_codec_for_a_non_utf8_stream(self) -> None:
+        """A caller-supplied stream decoded with a non-UTF-8 codec names that codec (D31 refinement).
+
+        A valid-UTF-8 file opened with the wrong codec (e.g. ``encoding='ascii'``)
+        is not itself invalid UTF-8, so the message must not claim it is and must
+        not offer UTF-8-specific advice.
+        """
+        raw = 'café'.encode()
+        with pytest.raises(UnicodeDecodeError) as exc_info:
+            raw.decode('ascii')
+        err = exc_info.value
+
+        result = encoding_error(err, None)
+
+        assert result.message == 'Invalid ascii (byte 0xc3)'
 
 
 class TestWhichErrorForWhichConditionMapping:
@@ -129,38 +156,48 @@ class TestWhichErrorForWhichConditionMapping:
 class TestSpecificationSection113MatchesSymlAll:
     """Contract 05 §Test obligation 2: §11.3's class list matches `syml.__all__` (`syml-xreq.7`).
 
-    `DocumentLimitError` is documented in §11.3's closing paragraph as a
-    *reserved* name for implementations that enforce §13.4 -- `syml`
-    enforces none, so it is deliberately absent from both the fenced class
-    block's required-export classes and `syml.__all__`.
+    `DocumentLimitError` is documented in §11.3's closing paragraph, below
+    the "MUST expose these exact class names" sentence, as a *reserved*
+    name for implementations that enforce §13.4 -- `syml` enforces none,
+    so it is deliberately absent from both the fenced class block's
+    required-export classes and `syml.__all__`.
     """
 
     _SPEC_PATH = pathlib.Path(__file__).parent.parent / 'SYML-SPECIFICATION.md'
     _CLASS_HEADER_RE = re.compile(r'^([A-Za-z]+)\(([A-Za-z]+)\)$', re.MULTILINE)
 
-    def _section_11_3_class_names(self) -> list[str]:
-        """Extract every `Name(Base)` header from the §11.3 fenced code block."""
+    def _section_11_3_text(self) -> str:
+        """Return the full text of §11.3, from its heading to the next `## ` heading."""
         text = self._SPEC_PATH.read_text(encoding='utf-8')
         start = text.index('### 11.3 Exceptions')
-        block_start = text.index('```\n', start) + len('```\n')
-        block_end = text.index('\n```', block_start)
-        block = text[block_start:block_end]
+        end = text.index('\n## ', start)
+        return text[start:end]
+
+    def _section_11_3_class_names(self) -> list[str]:
+        """Extract every `Name(Base)` header from the §11.3 fenced code block."""
+        section = self._section_11_3_text()
+        block_start = section.index('```\n') + len('```\n')
+        block_end = section.index('\n```', block_start)
+        block = section[block_start:block_end]
         return [name for name, _base in self._CLASS_HEADER_RE.findall(block)]
 
     def test_every_required_export_class_in_section_11_3_is_in_syml_all(self) -> None:
-        """Every §11.3 class except `DocumentLimitError` is exported in `syml.__all__`."""
+        """Every §11.3 fenced-block class is exported in `syml.__all__`."""
         class_names = self._section_11_3_class_names()
-        required = [name for name in class_names if name != 'DocumentLimitError']
 
-        assert required, 'expected to find at least one class header in §11.3'
-        for name in required:
+        assert class_names, 'expected to find at least one class header in §11.3'
+        for name in class_names:
             assert name in syml.__all__, f'{name} is documented in §11.3 but missing from syml.__all__'
 
     def test_document_limit_error_is_reserved_not_exported(self) -> None:
-        """`DocumentLimitError` is named in §11.3 but is not a required export."""
+        """`DocumentLimitError` is named in §11.3's closing paragraph but is not a required export."""
+        section = self._section_11_3_text()
         class_names = self._section_11_3_class_names()
 
-        assert 'DocumentLimitError' in class_names, '§11.3 should still document the reserved name'
+        assert (
+            'DocumentLimitError' not in class_names
+        ), '§11.3 should reserve the name in prose, not the required-export class block'
+        assert '`DocumentLimitError(ParseError)`' in section, '§11.3 should still document the reserved name'
         assert 'DocumentLimitError' not in syml.__all__
         assert not hasattr(syml, 'DocumentLimitError')
 
@@ -175,6 +212,33 @@ class TestErrorMessage:
     def test_error_message_prefixes_filename_when_given(self) -> None:
         """`f'{filename}: {description}'` when `filename` is given."""
         assert error_message('Invalid encoding', 'doc.syml') == 'doc.syml: Invalid encoding'
+
+    def test_error_message_windows_a_hostile_filename_keeping_its_tail(self) -> None:
+        """A multi-megabyte `filename` is windowed to its last 1023 chars plus a leading ellipsis, so the basename survives (D34)."""
+        huge_filename = 'F' * 2_000_000 + '/settings.syml'
+
+        result = error_message('Invalid encoding', huge_filename)
+
+        assert result == f'…{huge_filename[-1023:]}: Invalid encoding'
+        assert result.endswith('/settings.syml: Invalid encoding')
+
+    def test_error_message_passes_an_ordinary_long_path_through_in_full(self) -> None:
+        """An 85-char real-world path (under the 1024-code-point bound) appears in full, unelided (D34)."""
+        path = '/home/runner/work/myrepo/myrepo/deploy/environments/production/services/settings.syml'
+        assert len(path) == 85
+
+        result = error_message('Invalid encoding', path)
+
+        assert result == f'{path}: Invalid encoding'
+
+    def test_error_message_reproduces_the_str_e_gets_clickable_scenario(self) -> None:
+        """`loads`'s repro from D34: an 85-char absolute path is not truncated, so `str(e)` stays clickable."""
+        path = '/home/runner/work/myrepo/myrepo/deploy/environments/production/services/settings.syml'
+
+        with pytest.raises(syml.OutOfContextNodeError) as excinfo:
+            syml.loads('a: 1\nb', filename=path)
+
+        assert str(excinfo.value).startswith(f'{path}:2:0:')
 
 
 class TestParseErrorFilenameNormalization:
@@ -239,6 +303,16 @@ class TestParseErrorStr:
         assert str(without_filename) == '1:1: boom\nx'
         assert str(with_filename) == 'f.syml:1:1: boom\nx'
 
+    def test_str_and_message_are_bounded_for_a_hostile_filename(self) -> None:
+        """A multi-megabyte `filename` is windowed to its last 1023 chars plus a leading ellipsis in both renderings, so its basename survives (D34)."""
+        huge_filename = 'F' * 2_000_000 + '/settings.syml'
+        windowed = f'…{huge_filename[-1023:]}'
+        error = ParseError('boom', Pos(1, 1, 1), 'x', filename=huge_filename)
+
+        assert error.message == f'{windowed}: boom'
+        assert str(error) == f'{windowed}:1:1: boom\nx'
+        assert windowed.endswith('/settings.syml')
+
     def test_str_renders_for_duplicate_key_error_with_and_without_a_filename(self) -> None:
         """`DuplicateKeyError` renders the same two-line `__str__` shape."""
         without_filename = DuplicateKeyError('boom', Pos(1, 1, 1), 'x', key='a', first_position=Pos(0, 1, 0))
@@ -261,6 +335,18 @@ class TestParseErrorStr:
         assert str(error) == '1:0: boom\na\\xa0b'
         assert error.line_text == 'a\xa0b'
 
+    def test_bom_offset_shifts_the_window_center_back_to_the_line_text_index(self) -> None:
+        """`bom_offset` centres the excerpt on `column - bom_offset`, not raw `column` (D33, syml-cjk2.17)."""
+        # `line_text` has no BOM (it's the normalized line); a BOM-led line 1's
+        # `column` counts the stripped BOM, so it is one past its `line_text` index.
+        long_line = ' ' * 100 + '\tx: y'
+        with_bom_offset = ParseError('boom', Pos(101, 1, 101), long_line, bom_offset=1)
+        without_bom_offset = ParseError('boom', Pos(100, 1, 100), long_line, bom_offset=0)
+
+        # Both errors point at the same tab in `line_text` (index 100); the
+        # rendered excerpt window must be identical for both.
+        assert str(with_bom_offset).splitlines()[1] == str(without_bom_offset).splitlines()[1]
+
     def test_filename_is_rendered_through_printable_escaping(self) -> None:
         r"""A `\n`, an ANSI escape, and a lone surrogate in `filename` do not break the two-line shape."""
         error = ParseError('boom', Pos(2, 2, 0), 'a: 2', filename='x\n\x1b[2J\udcff.syml')
@@ -274,21 +360,28 @@ class TestParseErrorStr:
 
 
 class TestDuplicateKeyErrorMessage:
-    """Contract 03 §Messages: `DuplicateKeyError.message` is `Duplicate key '<key>'`."""
+    """Contract 03 §Messages: `DuplicateKeyError.message` is `Duplicate key '<key>' (first defined at line <N>)` (D32)."""
 
-    def test_message_embeds_the_repeated_key(self) -> None:
-        """`.message` reads `Duplicate key '<key>'` with no filename prefix when none is given."""
+    def test_message_embeds_the_repeated_key_and_first_occurrence_line(self) -> None:
+        """`.message` names both the repeated key and the line its first occurrence started on."""
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.loads('a: 1\na: 2', filename='')
 
-        assert exc_info.value.message == "Duplicate key 'a'"
+        assert exc_info.value.message == "Duplicate key 'a' (first defined at line 1)"
 
     def test_spec_example_matches_exactly(self) -> None:
         r"""`SYML-SPECIFICATION.md`'s §8.3 example: `key: value1\nkey: value2` raises this exact message."""
         with pytest.raises(DuplicateKeyError) as exc_info:
             syml.loads('key: value1\nkey: value2\n')
 
-        assert exc_info.value.message == "Duplicate key 'key'"
+        assert exc_info.value.message == "Duplicate key 'key' (first defined at line 1)"
+
+    def test_first_defined_line_reflects_a_non_first_line_occurrence(self) -> None:
+        """A key first defined past line 1 names that actual line, not line 1."""
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            syml.loads('b: 1\na: 2\na: 3')
+
+        assert exc_info.value.message == "Duplicate key 'a' (first defined at line 2)"
 
 
 class TestParseErrorPickling:
@@ -484,6 +577,136 @@ class TestOutOfContextNodeErrorHintGating:
         assert 'Hint' not in exc_info.value.message
 
 
+class TestOutOfContextNodeErrorHintC:
+    """Contract 03 §Hints (c) (D26): missing-space-after-marker hint, on the failing line and the line above."""
+
+    def test_key_missing_space_under_a_mapping(self) -> None:
+        """`port:8080` (no space after the colon) under an open `Mapping` gets the missing-space hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: x\n  port:8080')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds keys; '
+            'open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.'
+        )
+
+    def test_list_marker_missing_space_under_a_list(self) -> None:
+        """`-b` (no space after the list marker) under an open `List` gets the missing-space hint."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('l:\n  - a\n  -b')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds list items; '
+            'open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.'
+        )
+
+    def test_line_above_gets_the_missing_space_hint(self) -> None:
+        """The block value's own first line, missing its colon-space, still gets the hint via the look-back."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  port:8080\n- x')
+
+        assert 'Hint: a key or list marker needs a space after it.' in exc_info.value.message
+
+    def test_no_hint_when_the_failing_column_is_not_an_open_block(self) -> None:
+        """Form 1 (`does not fit any open block`) never gets hint (c) — the real problem is indentation."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: x\n port:8080')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2.'
+        )
+
+    def test_no_hint_for_a_document_marker_shaped_line(self) -> None:
+        """`---`/`--x` never gets hint (c) — mid-file document markers get hint (e), not hint (c)."""
+        assert needs_space_after_marker('---') is False
+        assert needs_space_after_marker('--x') is False
+
+    def test_no_hint_for_a_url_value_on_the_failing_line(self) -> None:
+        """A legitimate URL value on the failing line never earns hint (c) (D35, syml-cjk2.20)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  http://example.com\n- x')
+
+        assert 'Hint' not in exc_info.value.message
+
+    def test_no_hint_for_a_url_value_via_the_look_back(self) -> None:
+        """A legitimate URL value on the line above never earns hint (c) via the look-back (D35, syml-cjk2.20)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  http://example.com\n')
+
+        assert 'Hint' not in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorHintD:
+    """Contract 03 §Hints (d) (D27): indented-comment hint, on the failing line only."""
+
+    def test_indented_hash_comment_gets_the_hint(self) -> None:
+        """The repro from `syml-cjk2.11`: commenting out a key in place raises on the next real key."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  # port: 80\n  port: 81')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 2, is a text line, but the open block at column 2 holds keys; '
+            "open blocks are at columns 0 and 2. Hint: comments must start at column 0; an indented '#' line is text."
+        )
+
+    def test_indented_slash_slash_comment_gets_the_hint(self) -> None:
+        """`//` is the other comment marker (Contract 03 §Behaviour, R-18)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  // port: 80\n  port: 81')
+
+        assert "Hint: comments must start at column 0; an indented '#' line is text." in exc_info.value.message
+
+    def test_form_1_also_gets_the_hint(self) -> None:
+        """Unlike hint (c), (d) is not gated to form 2 — an odd-column comment still names the real problem."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n # comment\n  port: 81')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 1, does not fit any open block; open blocks are at columns 0 and 2. '
+            "Hint: comments must start at column 0; an indented '#' line is text."
+        )
+
+    def test_hint_d_wins_over_hint_a_when_the_comment_has_no_space(self) -> None:
+        """`#port: 80` matches hint (a)'s `RUN:` pattern too, but (d) is checked first (a `#`-led line is a comment)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  #port: 80\n  port: 81')
+
+        assert "Hint: comments must start at column 0; an indented '#' line is text." in exc_info.value.message
+        assert 'is not a key' not in exc_info.value.message
+
+
+class TestOutOfContextNodeErrorHintE:
+    """Contract 03 §Hints (e) (D27): document-marker hint, on the failing line only."""
+
+    def test_mid_file_triple_dash_gets_the_hint(self) -> None:
+        """The repro from `syml-cjk2.11`: a YAML document separator is just text in SYML."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k: v\n---\nj: w')
+
+        assert exc_info.value.message == (
+            'Line 2, at column 0, is a text line, but the open block at column 0 holds keys; '
+            'open blocks are at column 0. Hint: SYML has no document markers.'
+        )
+
+    def test_end_marker_gets_the_hint_too(self) -> None:
+        """`...` is YAML's end-of-document marker; SYML has no equivalent either."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('k:\n  v\n...\n')
+
+        assert exc_info.value.message == (
+            'Line 3, at column 0, is a text line, but the open block at column 0 holds keys; '
+            'open blocks are at column 0; the open value continues at column 2. '
+            'Hint: SYML has no document markers.'
+        )
+
+    def test_double_dash_does_not_get_the_hint(self) -> None:
+        """`--x` is not a document marker (only `---` and `...` are, per `is_document_marker`'s truth table)."""
+        with pytest.raises(OutOfContextNodeError) as exc_info:
+            syml.loads('server:\n  host: a\n  --x\n  port: 81')
+
+        assert 'Hint' not in exc_info.value.message
+
+
 class TestOutOfContextNodeErrorPosition:
     """Contract 03 §Behaviour: a dropped column-0 comment keeps the original text's line numbers."""
 
@@ -583,3 +806,129 @@ class TestWouldBeKey:
     )
     def test_would_be_key(self, line_text: str, expected: str | None) -> None:
         assert would_be_key(line_text) == expected
+
+
+class TestNeedsSpaceAfterMarker:
+    """Contract 03 §Hints (c): the standalone `needs_space_after_marker` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('key:value', True, id='key_colon_no_space'),
+            pytest.param('  key:value', True, id='indented_key_colon_no_space'),
+            pytest.param('key: value', False, id='key_colon_with_space'),
+            pytest.param('key:', False, id='key_colon_at_end_of_line'),
+            pytest.param('-x', True, id='list_marker_no_space'),
+            pytest.param('  -x', True, id='indented_list_marker_no_space'),
+            pytest.param('- x', False, id='list_marker_with_space'),
+            pytest.param('---', False, id='document_marker'),
+            pytest.param('--x', False, id='double_dash_marker'),
+            pytest.param('...', False, id='end_marker'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+            pytest.param('http://example.com', False, id='url_value_http'),
+            pytest.param('  http://example.com', False, id='indented_url_value_http'),
+            pytest.param('url: https://example.com:8080/path', False, id='url_value_https_with_port_and_path'),
+            pytest.param('key:/x', True, id='single_slash_after_colon_still_fires'),
+        ],
+    )
+    def test_needs_space_after_marker(self, line_text: str, *, expected: bool) -> None:
+        assert needs_space_after_marker(line_text) is expected
+
+
+class TestIsCommentShaped:
+    """Contract 03 §Hints (d): the standalone `is_comment_shaped` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('# comment', True, id='hash_at_column_0'),
+            pytest.param('  # comment', True, id='indented_hash'),
+            pytest.param('  // comment', True, id='indented_slash_slash'),
+            pytest.param('  #port: 80', True, id='indented_hash_no_space'),
+            pytest.param('key: value', False, id='ordinary_key'),
+            pytest.param('  key: value', False, id='indented_ordinary_key'),
+            pytest.param('- item', False, id='list_item'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+            pytest.param(' /path', False, id='single_slash_not_a_comment'),
+        ],
+    )
+    def test_is_comment_shaped(self, line_text: str, *, expected: bool) -> None:
+        assert is_comment_shaped(line_text) is expected
+
+
+class TestIsDocumentMarker:
+    """Contract 03 §Hints (e): the standalone `is_document_marker` helper's own truth table."""
+
+    @pytest.mark.parametrize(
+        ('line_text', 'expected'),
+        [
+            pytest.param('---', True, id='triple_dash'),
+            pytest.param('  ---', True, id='indented_triple_dash'),
+            pytest.param('...', True, id='end_marker'),
+            pytest.param('  ...', True, id='indented_end_marker'),
+            pytest.param('--- ', True, id='trailing_space'),
+            pytest.param('--- x', False, id='trailing_content'),
+            pytest.param('--x', False, id='double_dash_only'),
+            pytest.param('----', False, id='four_dashes'),
+            pytest.param('....', False, id='four_dots'),
+            pytest.param('a plain line', False, id='no_marker_at_all'),
+        ],
+    )
+    def test_is_document_marker(self, line_text: str, *, expected: bool) -> None:
+        assert is_document_marker(line_text) is expected
+
+
+class TestUnrepresentableValueErrorPathAndStr:
+    """D30: `.path` defaults to `()`; `str(e)` is the message alone, plus a path clause."""
+
+    def test_it_should_default_path_to_the_empty_tuple(self) -> None:
+        error = UnrepresentableValueError('boom')
+        assert error.path == ()
+
+    def test_it_should_render_str_as_the_message_alone_at_the_root(self) -> None:
+        error = UnrepresentableValueError('boom')
+        assert str(error) == 'boom'
+
+    def test_it_should_store_the_given_path(self) -> None:
+        error = UnrepresentableValueError('boom', ('a', 'b', 1))
+        assert error.path == ('a', 'b', 1)
+
+    def test_it_should_append_the_path_as_a_subscript_clause(self) -> None:
+        error = UnrepresentableValueError('boom', ('a', 'b', 1))
+        assert str(error) == "boom at ['a']['b'][1]"
+
+    def test_it_should_not_render_a_tuple_repr_of_args(self) -> None:
+        error = UnrepresentableValueError('boom', ('a',))
+        assert str(error) != str(('boom', ('a',)))
+
+
+class TestFormatDataPathIsBounded:
+    """D30 (syml-cjk2.18): the path clause is bounded regardless of key length or depth."""
+
+    def test_it_should_window_a_hostile_long_string_key(self) -> None:
+        huge_key = 'k' * 2_000_000
+        clause = format_data_path((huge_key, 'b'))
+        assert len(clause) < 200
+        assert 'kkk' in clause
+        assert 'b' in clause
+
+    def test_it_should_cap_the_number_of_rendered_segments_for_a_deep_path(self) -> None:
+        deep_path = tuple(range(5000))
+        clause = format_data_path(deep_path)
+        assert len(clause) < 500
+        assert '[0]' in clause
+        assert '[4999]' in clause
+        assert '…' in clause
+
+    def test_it_should_leave_path_untouched_on_unrepresentable_value_error(self) -> None:
+        huge_key = 'k' * 2_000_000
+        error = UnrepresentableValueError('boom', (huge_key, 'b'))
+        assert error.path == (huge_key, 'b')
+        assert len(str(error)) < 300
+
+    def test_it_should_leave_path_untouched_for_a_deep_path(self) -> None:
+        deep_path = tuple(range(5000))
+        error = UnrepresentableValueError('boom', deep_path)
+        assert error.path == deep_path
+        assert len(error.path) == 5000
+        assert len(str(error)) < 600

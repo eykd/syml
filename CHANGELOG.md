@@ -7,9 +7,18 @@ Migration notes for a 0.6.2 user upgrading to 1.0.0. Every user-visible
 change from 0.6.2 is listed below, numbered to match Contract 06's audit
 (`specs/002-syml-language-revision/contracts/06-release-text.md` § FR-016
 and its predecessor, `specs/001-syml-1-0-conformance/contracts/09-release-text.md`
-§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision
-(see `SYML-SPEC-REVIEW.md`); items 1-18 cover everything else changed in
-this one 1.0.0 release.
+§ FR-015). Items 19-24 record the 2026-09-24 D20-D25 language revision, items
+25-26 the 2026-09-25 D26/D27 break-testing-round-2 hint additions, item 27
+the 2026-09-25 D34 refinement of the filename-windowing fix (window the
+tail, not the head), item 28 the `load()` non-file-object `TypeError` fix,
+item 29 the 32-marker guard's trailing-dash fix, item 30 the 2026-09-25 D30
+`str(e)`/`.path` contract for `dumps`'s errors, item 31 the 2026-09-25 D31
+`EncodingError` codec-naming fix, item 32 the 2026-09-25 D32
+`DuplicateKeyError` message addition, item 33 the 2026-09-25 D33
+`ParseError.__str__` BOM-offset fix, item 34 the 2026-09-25 D35 refinement
+of hint (c) to exclude `scheme://` values, and item 35 the 2026-09-25 D29
+`dumps` message-wording fix (see `SYML-SPEC-REVIEW.md`); items 1-18 cover
+everything else changed in this one 1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
 2. Tabs in indentation → `TabIndentationError`.
@@ -52,7 +61,7 @@ this one 1.0.0 release.
    column 0, is a text line, ...` followed by the offending line.
 10. `Pos` coordinates now refer to the **original** text. `Source` still
     equals a `str` with the same text, but no longer equals a non-`str`
-    (`Source('1') == 1` was `True`). `Source.from_node` takes
+    (`Source.from_text('1') == 1` was `True`). `Source.from_node` takes
     `(pnode, filename=None)`; `Pos.from_str_index` and `Source.from_text`
     count only `\n` as a line break (U+2028, U+0085 and the rest no longer
     start a line); and `Source + str` now counts the joining `\n` in
@@ -74,11 +83,13 @@ this one 1.0.0 release.
     each line indented beneath its key or `-`; `dumps('')` is `''`. It
     raises `UnrepresentableValueError` for the nine families in §11.2.1:
     a control character other than LF/TAB anywhere; a structure-shaped
-    first line at a list position (any length) or a mapping/root position
-    (multi-line only), plus any later line whose leading `- ` marker chain
-    holds more than 32 markers; a block value's first line beginning with
-    a space (mapping or list position); any line whose leading run of
-    spaces/tabs contains a tab; a non-empty, spaces-and-tabs-only line; a
+    first line at a list position (any length), at a mapping position
+    (multi-line only), or at the root (any length), plus any later line
+    whose leading `- ` marker chain holds more than 32 markers; a value's
+    first line, inline or block, beginning with a space (mapping or list
+    position only; a root scalar's leading spaces round-trip literally);
+    any line whose leading run of spaces/tabs contains a tab; a
+    non-empty, spaces-and-tabs-only line; a
     multi-line value whose first or last line is empty; a mapping key that
     does not match `[a-z][a-z0-9_-]*`; an empty list or empty mapping at
     any depth; and a root scalar with any line beginning with `#` or `//`.
@@ -236,6 +247,148 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     in 0.6.2, matching item 17 above (D25) — no change from 0.6.2 here,
     though an intermediate draft of this release briefly allowed it
     before D25 restored the strict rule.
+25. **New hint (D26).** `OutOfContextNodeError` gains a third hint: when the
+    failing line, or the line above (hint (a)'s look-back), is a key or list
+    marker missing its trailing space (`port:8080`, `-b`), the message ends
+    "Hint: a key or list marker needs a space after it." Grammar unchanged:
+    `port:8080` alone (no sibling to raise against) still silently parses as
+    text (item 5, D21); the hint only fires where an `OutOfContextNodeError`
+    already raises for another reason.
+26. **Two more new hints (D27).** `OutOfContextNodeError` gains a fourth and
+    fifth hint. When the failing line, after its indentation, starts with
+    `#` or `//`, the message ends "Hint: comments must start at column 0;
+    an indented '#' line is text." — the most common trigger is commenting
+    out a key in place (item 1 already documents that an indented comment
+    is text, silently, until a later line collides with it). When the
+    failing line is exactly `---` or `...`, the message ends "Hint: SYML has
+    no document markers." (item 3). Both hints fire on the failing line
+    only (no look-back), on any open-column form, and are checked ahead of
+    the D26/US1-8 hints so a spaceless comment (`#port: 80`) is never
+    misread as a bad key.
+27. **Bug fix: `filename` is now bounded in error rendering.** `.message`'s
+    filename prefix and `str(e)`'s `<filename>:` segment are windowed
+    through `_truncated_filename_window(filename)`: a filename up to 1024
+    code points passes through whole, and a longer one is windowed from
+    its **tail** — `'…'` plus its last 1023 code points — so the basename
+    a `path:line:col` reader needs always survives (D34, syml-cjk2.19). In
+    0.6.2 there was no such bound at all; a caller- or attacker-supplied
+    filename of unbounded length (e.g. an archive entry path) makes
+    `.message`/`str(e)` scale with the filename's own length. An earlier
+    fix in this same 1.0.0 cycle (syml-cjk2.5, break-testing round 2 lane
+    3) bounded the filename by centering an 80-code-point window on its
+    *head* instead, which cut off the basename of any real-world absolute
+    path longer than 80 characters — routine for CI runner paths — making
+    `str(e)`'s `path:line:col` form silently unclickable; D34 replaces
+    that head window with the tail-preserving one described above.
+28. **Bug fix: `load()` on a non-file object raises `TypeError`, not
+    `AttributeError`.** `load(None)`, `load('some str')`, and `load()` on any
+    object without a `read()` method now raise `TypeError` naming the
+    received type, matching `loads`'s own `TypeError` and `load`'s existing
+    clean `TypeError` for a `read()` that returns the wrong type. In 0.6.2,
+    and until this fix, `load()` on such an object raised a bare
+    `AttributeError` (e.g. `'NoneType' object has no attribute 'read'`)
+    instead (syml-cjk2.6, break-testing round 2 lane 3).
+29. **Bug fix: `dumps`'s 32-marker guard (item 12) no longer over-refuses a
+    trailing dash followed by text.** A later line whose leading `- `
+    marker chain holds exactly 32 markers, followed by a dash that is
+    itself followed by non-whitespace text (e.g. `-42`), now writes and
+    round-trips: `- ` is a marker only before whitespace or end of line
+    (§7.6), so that trailing `-42` is text, not a 33rd marker. Until this
+    fix, the guard's regex let its own trailing `-?` match that dash and
+    counted it as a marker, wrongly refusing the value (syml-cjk2.9,
+    break-testing round 2 lane 5).
+30. **Bug fix: `dumps` errors render `str(e)` as the message alone, and now
+    name the offending value's data path.** Until this fix,
+    `UnrepresentableValueError` and the `dumps` `TypeError` passed the
+    offending value as a second constructor argument, so `str(e)` rendered
+    a two-item tuple repr instead of the message, e.g.
+    `str(e)` on `dumps({"a": {"b": ["x", 1]}})` was
+    `("1 is not representable in SYML (not str, list, or dict)", 1)`. Both
+    errors' messages now name the value's data path in Python subscript
+    form when it is not the root value, e.g.
+    `... is not representable in SYML (not str, list, or dict) at ['a']['b'][1]`
+    for that same example. `UnrepresentableValueError` gains a public
+    `.path` attribute (`tuple[str | int, ...]`, `()` at the root); a bad
+    mapping key is pathed to its parent mapping. The `dumps` `TypeError`
+    stays a plain builtin `TypeError`, message only — no `.path`, no new
+    subclass (D30, syml-cjk2.14, break-testing round 2 lane 4). The whole
+    message is also bounded, not only the path clause: a hostile mapping
+    key or scalar value (e.g. a multi-megabyte string, or a huge non-`str`
+    key/value such as a 300,000-element tuple) is windowed to a bounded
+    `str(e)` on its own, the same treatment already applied to a hostile
+    path segment (syml-cjk2.18, syml-cjk2.25).
+31. **Bug fix: `EncodingError`'s message now names the bad byte and says
+    UTF-8, and names the actual codec when it isn't UTF-8.** Until this fix,
+    an invalid-UTF-8 file raised with the message `Invalid encoding`, which
+    never named the expected encoding or the offending byte, and whose shown
+    line stopped just before that byte — so the typical Latin-1/Windows file
+    gave no clue what was wrong. The message is now `Invalid UTF-8 (byte
+    0x{XX}); save the file as UTF-8`, `{XX}` the first offending byte in
+    lowercase two-digit hex (D31, syml-cjk2.15, break-testing round 2 lane
+    4). A caller-supplied text stream decoded with its own non-UTF-8 codec
+    (e.g. `open(p, encoding='ascii')` on a UTF-8 file) is not itself invalid
+    UTF-8, so that case instead says `Invalid {codec} (byte 0x{XX})`, naming
+    the actual codec and dropping the "save the file as UTF-8" advice (D31,
+    syml-cjk2.21, break-testing round 2 lane 4). For a charmap-based codec
+    (`cp1252`, `cp437`, the `latin-*` family, ...), that named codec was
+    still wrong — Python's own `UnicodeDecodeError.encoding` reports the
+    literal `'charmap'` for all of them, not the codec the caller chose —
+    so `load()` now prefers the stream's own `encoding` attribute when
+    naming the codec, falling back to `err.encoding` only for bytes input,
+    which has no stream to ask (D31, syml-cjk2.26, break-testing round 2
+    lane 4). That `.26` fix had two regressions of its own, both fixed
+    here: a `utf-8-sig` stream (UTF-8 with a BOM) was no longer recognized
+    as UTF-8 and lost the "save the file as UTF-8" advice, and a stream
+    whose `encoding` attribute was not a `str`, or named an unknown codec,
+    leaked a bare `TypeError`/`LookupError` instead of `EncodingError`. The
+    stream's own `encoding` is now used only when it is a `str` that
+    `codecs.lookup` accepts, `err.encoding` is the fallback in both failure
+    shapes, and the UTF-8 check recognizes both `utf-8` and `utf-8-sig`
+    (D31, syml-cjk2.28, break-testing round 2 lane 4).
+32. **`DuplicateKeyError`'s message now names where the key first
+    appeared.** Until this fix, `Duplicate key 'a'` gave no way to find the
+    earlier occurrence in a long file — the exception already carried
+    `.first_position`, but the message omitted it. The message is now
+    `Duplicate key 'a' (first defined at line N)`, `N` the 1-indexed line
+    of the key's earlier, already-incorporated occurrence
+    (`.first_position.line`, attribute unchanged) (D32, syml-cjk2.16,
+    break-testing round 2 lane 4).
+33. **Bug fix: `str(e)`'s excerpt line no longer misaligns by one character
+    on a long line 1 of a BOM-led document.** `ParseError.line_text` is the
+    §9.0-normalized (BOM-stripped) line, while `.position` keeps the
+    caller's original-text coordinates (FR-013); on a BOM-led document's
+    line 1 this makes `.position.column` one greater than its index into
+    `.line_text` (documented in `.line_text`'s own attribute contract and
+    §10.2, unchanged by this fix). Until this fix, `__str__`'s excerpt
+    window centred on the raw `.position.column`, so a `line_text` longer
+    than 80 characters rendered a window shifted one character from the
+    equivalent non-BOM document's. `__str__` now centres on
+    `.position.column` minus the BOM offset, so the rendered excerpt
+    matches the non-BOM case exactly; `.position` and `.line_text`
+    themselves are unchanged (D33, syml-cjk2.17, break-testing round 2
+    lane 1).
+34. **Bug fix: hint (c) (item 25) no longer fires on a URL value.** The
+    hint's key pattern matched any `RUN:` immediately followed by a
+    non-space character, so a valid URL value on a block value's first
+    line (`http://example.com`, or §8's own
+    `url: https://example.com:8080/path`) earned "a key or list marker
+    needs a space after it" — advice that would turn a valid value into a
+    key. The pattern now excludes `://` immediately after the colon; a
+    `scheme://` value never matches hint (c) (D35, syml-cjk2.20,
+    break-testing round 2 lane 1).
+35. **Bug fix: `dumps`'s unrepresentable-value messages stop calling a
+    whitespace-only line "blank", and item 6's message now names which end
+    caused the refusal.** Until this fix, item 5 (a non-empty line of only
+    spaces and/or tabs) said `contains a blank or whitespace-only line`,
+    the same word the README and item 12 use for the empty interior line a
+    paragraph break writes back — so the message read as though paragraph
+    breaks were refused, which they are not. Item 5's message is now
+    `contains a non-empty whitespace-only line`. Item 6 (a multi-line value
+    whose first or last line is empty) shared one message, `begins or ends
+    with a blank line`, for both ends; it is now two distinct messages,
+    `begins with a blank line` and `ends with a trailing newline`, naming
+    which end caused the refusal (D29, syml-cjk2.13, break-testing round 2
+    lane 4).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

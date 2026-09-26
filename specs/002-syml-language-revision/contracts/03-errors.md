@@ -1,5 +1,7 @@
 # Contract 03 — Error Text, Hints, Filenames, and Positions
 
+> Amended 2026-09-25 by D26, D27, D30, D31, D32, D33, D34, D35 (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
+
 **Requirements**: FR-011, FR-012, FR-013, FR-016 (§8.3 example) | **Decisions**: D7 affirmed (one class for §8.1/§8.2) | **Findings closed**: `syml-xreq.4`, `.5`, `.9` (§8.3 half), `.17` (hint half), `.18`, `.3` (hint half) | **Research**: R-07, R-08, R-09, R-18
 
 ## Surface
@@ -70,23 +72,46 @@ windowed — so a 1 MB hostile line (e.g. a run of `\x00` before a bare `:`)
 still yields a bounded `.message` and `str(e)` instead of the unbounded,
 multi-megabyte rendering this caps.
 
+The `<filename>` segment gets a related but distinct treatment (`syml-cjk2.5`
+break-testing round 2, refined by D34/`syml-cjk2.19`): `filename` is
+caller-controlled and normally short, but its length is not otherwise
+bounded (e.g. an archive entry path or a hostile CLI argument), so both
+`error_message(description, filename)` (which builds `.message`'s prefix)
+and `__str__`'s `<filename>:` segment window it through a dedicated private
+helper, `_truncated_filename_window(filename, width=1024)`, before
+quoting/escaping it. Unlike `_truncated_window`'s centered window,
+`_truncated_filename_window` always elides from the **head**: a filename up
+to 1024 code points passes through whole; a longer one is rendered as
+`'…'` plus its last `width - 1` code points. A path's basename — the part a
+`path:line:col` reader needs to find the file — sits at the tail, so
+eliding the head instead of centering the window keeps it intact regardless
+of how long the filename's leading directories are; `syml-cjk2.5`'s original
+80-code-point head-centered window cut the basename off any real-world
+absolute path longer than 80 characters (routine for CI runner paths),
+silently breaking the clickable `path:line:col` form. A 2 MB `filename`
+still yields a bounded `.message` and `str(e)` instead of scaling with the
+filename's length, and its basename still appears in full.
+
 `DuplicateKeyError`'s description gets the same treatment (`syml-s9p9.14`):
 the grammar's key pattern (`[a-z][a-z0-9_-]*`) has no length bound, so a
 document that repeats a 1 MB key used to yield a multi-megabyte `.message`
-and `str(e)`. `duplicate_key_description(key)` windows `key` through
-`_truncated_window(key, center=0)` before quoting it — the same call shape
-as hint (a)'s would-be-key quote — so `.message` stays bounded regardless of
-the repeated key's length. `DuplicateKeyError.key` and `.args` still carry
-the full, untruncated key.
+and `str(e)`. `duplicate_key_description(key, first_line)` windows `key`
+through `_truncated_window(key, center=0)` before quoting it — the same call
+shape as hint (a)'s would-be-key quote — so `.message` stays bounded
+regardless of the repeated key's length; `first_line` (an `int`, unbounded
+by nature) is appended unwindowed as `(first defined at line {first_line})`
+(D32, syml-cjk2.16). `DuplicateKeyError.key` and `.args` still carry the
+full, untruncated key.
 
 ## Messages
 
 | Class | Description (the part after any filename prefix) |
 | --- | --- |
 | `OutOfContextNodeError` | When `C` is not an open column: `Line {L}, at column {C}, does not fit any open block; open blocks are at {COLS}.` When `C` is an open column whose block holds the other kind of entry (§6.4): `Line {L}, at column {C}, is a {KIND}, but the open block at column {C} holds {OTHER}; open blocks are at {COLS}.` (`KIND`/`OTHER` from `list item`/`keys`, `key`/`list items`, `text line`/`keys` or `list items`). Either form is optionally followed by the text-value clause (below), then by one space and a hint |
-| `DuplicateKeyError` | `Duplicate key '{key}'`, `key` windowed through `_truncated_window(key, center=0)` (unchanged attributes `key`, `first_position`, both carrying the full key) |
+| `DuplicateKeyError` | `Duplicate key '{key}' (first defined at line {N})`, `key` windowed through `_truncated_window(key, center=0)`, `N` = `first_position.line` (D32) (unchanged attributes `key`, `first_position`, both carrying the full key) |
 | `TabIndentationError` | `A tab character was found in a line's leading whitespace` (unchanged) |
-| `EncodingError` | `Invalid encoding` (unchanged) |
+| `EncodingError` | `Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8` when the resolved codec normalizes to `utf-8` or `utf-8-sig` (`codecs.lookup(named_encoding).name in ('utf-8', 'utf-8-sig')`), otherwise `Invalid {codec} (byte 0x{XX})`, naming the resolved codec and dropping the UTF-8-specific advice. `named_encoding` is the caller-supplied stream's own `.encoding` when it is a `str` that `codecs.lookup` accepts, else `err.encoding` (bytes input, or a stream `.encoding` that is not a `str` or names an unknown codec, falls back to `err.encoding`). `{XX}` the first offending byte in lowercase two-digit hex (D31, refined by `syml-cjk2.21`, `syml-cjk2.26`, and `syml-cjk2.28`) |
+| `UnrepresentableValueError` / `dumps`'s `TypeError` | Not a `ParseError` (defined and raised by the serializer, Contract 04 §Unrepresentable set); documented here because D30 gives both the same `str(e)` shape as the classes above. `str(e)` is the message alone — never a tuple repr of `.args` — with the offending value's data path appended as a Python subscript clause (`at ['a']['b'][1]`) when it is not the root value; a root value's message has no path clause. `UnrepresentableValueError` gains a public `.path` attribute, `tuple[str \| int, ...]`, `()` at the root; a bad mapping key is pathed to its parent mapping. The rendered path clause is bounded the same way a hostile `DuplicateKeyError` key is (`_truncated_window` per segment, depth capped to the first and last three segments with one `'…'` between); `.path` itself, and the tuple a caller passed in, are never truncated. The `dumps` `TypeError` stays a plain builtin `TypeError`, message only — no `.path` attribute, no new subclass (D30, `syml-cjk2.14`; full detail in Contract 04 §Error text and the data path) |
 
 `{COLS}` is `column 0` for one column, `columns 0 and 2` for two,
 `columns 0, 2 and 4` for more: the sorted distinct levels of the `List` and
@@ -117,7 +142,10 @@ column a prose author most likely meant; without the clause
 continuation yet (baseline unset) gets no clause: its anchor column is
 already in `{COLS}` (US2-9 keeps its exact text).
 
-Hints (at most one; (b) is checked first):
+Hints (at most one; checked in the order (b), (d), (e), (a), (c) — (d)/(e)
+sit ahead of (a)/(c) so a comment or document-marker line never gets a
+misleading "not a key"/"needs a space" hint about its own shape, §"(d)"
+below):
 
 - **(b) list at its key's column**: the failing node is a `ListItem` and the
   spine ends in a childless `KeyValue` at the same level →
@@ -142,6 +170,40 @@ Hints (at most one; (b) is checked first):
   without the failing-node clause, the same dialogue with one line before the
   dedent (`- scene:\n    Bob: hi\n   Alice: hey`) gets `'Bob' is not a key`,
   because `Bob: hi` is the value's first line.
+- **(c) missing space after a marker** (D26, `syml-cjk2.10`; amended by D35,
+  `syml-cjk2.20`): the failing
+  line, or the line above under (a)'s exact look-back (same candidate line,
+  same gate on it being the value's first line and the failing node being a
+  `KeyValue`/`ListItem`), after its indentation spaces, matches
+  `[a-z][a-z0-9_-]*:(?!//)\S` (a key immediately followed by a non-space
+  character, but not `://` — a URL value such as `http://example.com` or
+  §8's `url: https://example.com:8080/path` never counts, D35) or `-(?!-)\S`
+  (a list marker immediately followed by a
+  non-space character, `--`/`---`/`...` excluded — those are hint (e)'s
+  document-marker territory, not this one's) →
+  `Hint: a key or list marker needs a space after it.` **Failing-line
+  gating** differs from (a): (c) fires on either open-column kind (`{COLS}`
+  holding `keys` *or* `list items`, i.e. form 2 of the message), never on
+  form 1 (`C` not an open column) — there the real problem is indentation,
+  not a missing space, and the hint would mislead (`config:\n  Host: x\n
+  port:8080`, column 1 not open, gets no hint). (a) and (c) never both match
+  the same candidate line: (a)'s pattern requires whitespace or end-of-line
+  after the colon, (c)'s requires a non-space character there.
+- **(d) indented comment** (D27, `syml-cjk2.11`): the **failing line only**
+  (no look-back), after its indentation spaces, starts with `#` or `//` →
+  `Hint: comments must start at column 0; an indented '#' line is text.`
+  Not gated on `{COLS}`: the problem is a property of the line's content,
+  not its indentation, so it fires on form 1 and form 2 alike. Checked
+  *before* (a)/(c) on the failing line (that ordering is why the overall
+  hint order is (b), (d), (e), (a), (c)): `#port: 80` (no space after `#`)
+  would otherwise also match (a)'s `RUN:` pattern (`RUN` = `#port`) and
+  wrongly suggest renaming a key, when the real problem is the leading `#`.
+- **(e) mid-file document marker** (D27, `syml-cjk2.11`): the **failing
+  line only** (no look-back), after its indentation spaces and before any
+  trailing spaces/tabs, is exactly `---` or `...` →
+  `Hint: SYML has no document markers.` Also not gated on `{COLS}`, for the
+  same reason as (d). `--x`/`--` never match (only an exact `---` or `...`
+  line does); those get no hint at all, same as before D27.
 
 ## Behaviour
 
@@ -155,7 +217,7 @@ Hints (at most one; (b) is checked first):
 | US2-12 | `a: 1\r\n\tb: 2` | `TabIndentationError`, `position == Pos(6, 2, 0)` |
 | US2-12 | `\ufeff\tk: v` | `TabIndentationError`, `position == Pos(1, 1, 1)` |
 | US2-13 | `\ufeffa: b\r\n\tc: d` | `TabIndentationError`, `position == Pos(7, 2, 0)` |
-| FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a'"` (no `": "` prefix) |
+| FR-013 | `a: 1\na: 2`, `""` | `.message == "Duplicate key 'a' (first defined at line 1)"` (no `": "` prefix) (D32) |
 | SC-007 | a plain context error (`a: 1\nb`) | `str(e)` line 1 is `2:0: …` with no hint; line 2 is `b` |
 | text clause | `k: a\n    b\n  c` (US1-18) | description `Line 3, at column 2, does not fit any open block; open blocks are at column 0; the open value continues at column 4.` |
 | text clause | `k:\n  a\n\xa0\n  b` (US2-7) | description `Line 3, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0; the open value continues at column 2.` |
@@ -166,6 +228,18 @@ Hints (at most one; (b) is checked first):
 | position | `a: 1\n# c\n- x` | raises at `Pos(9, 3, 0)`; description `Line 3, at column 0, is a list item, but the open block at column 0 holds keys; open blocks are at column 0.` (the dropped comment line keeps its number, so line numbers are the original text's) |
 | gate | `config:\n  Host: x\n Port: 1` | no hint (the failing line lexed as text; column 1 is not an open `Mapping` column, so it does not qualify on its own either) |
 | punctuation key | `a: 1\nbooleans?: x` | description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: 'booleans?' is not a key; a key is lowercase ASCII letters, digits, '-' and '_', starting with a letter.` (the README's former lead-example key; US1-8 covers only camelCase, red team outer iteration 4) |
+| hint (c), `syml-cjk2.10` | `server:\n  host: x\n  port:8080` | `OutOfContextNodeError`; description `Line 3, at column 2, is a text line, but the open block at column 2 holds keys; open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.` |
+| hint (c), `syml-cjk2.10` | `l:\n  - a\n  -b` | description `Line 3, at column 2, is a text line, but the open block at column 2 holds list items; open blocks are at columns 0 and 2. Hint: a key or list marker needs a space after it.` |
+| hint (c), `syml-cjk2.10` | `k:\n  port:8080\n- x` | hint (c) fires from the line above (D26's look-back), naming no run — description ends `Hint: a key or list marker needs a space after it.` |
+| hint (c) gate, `syml-cjk2.10` | `server:\n  host: x\n port:8080` | no hint (column 1 is not an open block — form 1 — even though the line is missing its space; the real problem is indentation) |
+| hint (c) gate, `syml-cjk2.10` | `needs_space_after_marker('---')` / `'--x'` | both `False` — a document-marker-shaped line never gets hint (c); hint (e) owns that |
+| hint (d), `syml-cjk2.11` | `server:\n  host: a\n  # port: 80\n  port: 81` | `OutOfContextNodeError`; description `Line 3, at column 2, is a text line, but the open block at column 2 holds keys; open blocks are at columns 0 and 2. Hint: comments must start at column 0; an indented '#' line is text.` |
+| hint (d), `syml-cjk2.11` | `server:\n  host: a\n // c\n  port: 81` | hint (d) fires for `//` too |
+| hint (d) form 1, `syml-cjk2.11` | `server:\n  host: a\n # comment\n  port: 81` | hint (d) fires even though column 1 is not an open block (form 1) — unlike (c), (d) is not gated on `{COLS}` |
+| hint (d) precedence, `syml-cjk2.11` | `server:\n  host: a\n  #port: 80\n  port: 81` | hint (d) wins over (a): message contains "comments must start at column 0", not "is not a key" |
+| hint (e), `syml-cjk2.11` | `k: v\n---\nj: w` | `OutOfContextNodeError`; description `Line 2, at column 0, is a text line, but the open block at column 0 holds keys; open blocks are at column 0. Hint: SYML has no document markers.` |
+| hint (e), `syml-cjk2.11` | `k:\n  v\n...\n` | description ends `; the open value continues at column 2. Hint: SYML has no document markers.` |
+| hint (e) gate, `syml-cjk2.11` | `server:\n  host: a\n  --x\n  port: 81` | no hint (`--x` is not `---` or `...` exactly) |
 | escape | `k:\n  a\n\xa0\n  b` | `str(e)`'s second line is `\\xa0` (the four characters backslash, `x`, `a`, `0`); `e.line_text == "\xa0"` |
 | escape | `a: 1\n\x1b[31mX: y` | `str(e)` contains no `\x1b` character; its second line is `\\x1b[31mX: y`; hint (a) names `'\\x1b[31mX'` |
 | escape | `a: 1\na: 2`, `filename="x\n\x1b[2J\udcff.syml"` | `str(e)` is exactly two lines; its first begins `x\\n\\x1b[2J\\udcff.syml:2:0: ` (escaped); `str(e).encode("utf-8")` does not raise; `e.message` begins with the raw filename |
@@ -178,9 +252,10 @@ Hints (at most one; (b) is checked first):
   raises with `filename=self.filename`. `SymlNode.fail_to_incorporate_node`
   keeps a minimal fallback only if a non-`Root` node can reach it; if none can,
   it is removed rather than left uncovered (principle III).
-- `Mapping.can_add_node` raises `DuplicateKeyError(duplicate_key_description(key), ..., filename=node.filename)`;
+- `Mapping.can_add_node` raises `DuplicateKeyError(duplicate_key_description(key, first.source.start.line), ..., filename=node.filename)`;
   `duplicate_key_description` windows `key` through `_truncated_window(key, center=0)`
-  before quoting it, the same treatment hint (a) gives a would-be key (§Bounded rendering, syml-s9p9.14).
+  before quoting it, the same treatment hint (a) gives a would-be key (§Bounded rendering, syml-s9p9.14),
+  then appends `(first defined at line {first_line})` unwindowed (D32, syml-cjk2.16).
 - `preprocess` builds the `PositionMap` first and passes it and `filename` to
   `_scan_for_tab_indentation`, which maps its `Pos` (R-09).
 - `encoding_error` passes `filename=` instead of calling `error_message`.
@@ -207,6 +282,16 @@ Hints (at most one; (b) is checked first):
    fire from the line above when the failing line lexed as text (the two
    outer-iteration-7 gate rows); hint (b)
    fires for `k:\n- a` and `- key:\n  - x`, not for `k:\n  - a\n- b`.
+6a. Hint (c) (D26, `syml-cjk2.10`): fires on the failing line for both
+   open-column kinds (`server:\n  host: x\n  port:8080`; `l:\n  - a\n  -b`)
+   and on the line above via (a)'s exact look-back
+   (`k:\n  port:8080\n- x`); does not fire on form 1
+   (`server:\n  host: x\n port:8080`, the indentation-error case); never
+   fires alongside hint (a) on the same candidate line (they are mutually
+   exclusive by construction). `needs_space_after_marker`'s own truth table:
+   `key:value` / `-x` (indented or not) → `True`; `key: value` / `key:` /
+   `- x` / `a plain line` → `False`; `---` / `--x` / `...` → `False` (never
+   a document-marker-shaped line — `.11`'s territory).
 7. SC-007's three cases as acceptance scenarios (US11).
 8. `_printable`: `str(e)` contains no character outside `str.isprintable()`
    except the one `\n` between its two lines, for every raised error in the
@@ -217,4 +302,13 @@ Hints (at most one; (b) is checked first):
    untruncated line. Bounded rendering also covers `DuplicateKeyError`
    (`syml-s9p9.14`): a document repeating a 1 MB key yields a `.message` and
    `str(e)` well under the input's size, while `.key` still carries the
-   full, untruncated key.
+   full, untruncated key. Bounded rendering also covers a hostile `filename`
+   (`syml-cjk2.5`, `syml-cjk2.19`/D34): a caller- or attacker-supplied
+   filename of a million-plus characters yields a `.message` and `str(e)`
+   that both stay well under the filename's size, for both a raise reached
+   through the builder (e.g. `OutOfContextNodeError`) and through
+   `EncodingError`, and — since the window elides the filename's head, not
+   its tail — the filename's own basename still appears in full at the end
+   of the windowed segment. An ordinary absolute path up to 1024 code
+   points (routine for CI runner paths, e.g. an 85-character path) is
+   rendered whole, unelided.

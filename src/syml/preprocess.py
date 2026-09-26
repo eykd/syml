@@ -7,6 +7,7 @@ back to the caller's original text.
 
 from __future__ import annotations
 
+import codecs
 import dataclasses
 import re
 from bisect import bisect_left
@@ -32,6 +33,20 @@ class PositionMap:
         index = pos.index + self.bom_offset + bisect_left(self.crlf_indices, pos.index)
         column = pos.column + self.bom_offset if pos.line == 1 else pos.column
         return Pos(index, pos.line, column)
+
+    @staticmethod
+    def line1_bom_offset(position_map: PositionMap | None, line: int) -> int:
+        """Return `position_map.bom_offset` on line 1, `0` everywhere else (including `position_map is None`).
+
+        The one `original-coordinate line/BOM -> ParseError(bom_offset=...)`
+        step shared by every raise site that constructs a `ParseError` on
+        possibly-BOM-shifted coordinates, so `ParseError.__str__` can centre
+        its excerpt window on the right `line_text` index (D33, syml-cjk2.17).
+        Off line 1 (or a normalized-text document with no BOM), the offset
+        is always `0` and `position.column` already indexes `line_text`
+        directly.
+        """
+        return position_map.bom_offset if position_map is not None and line == 1 else 0
 
     @staticmethod
     def map(pos: Pos, position_map: PositionMap | None) -> Pos:
@@ -106,6 +121,7 @@ def _scan_for_tab_indentation(
                 position_map.to_original(Pos(index=offset + column, line=line_number, column=column)),
                 line,
                 filename=filename,
+                bom_offset=PositionMap.line1_bom_offset(position_map, line_number),
             )
         offset += len(line) + 1
 
@@ -134,14 +150,54 @@ def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
     return ''.join(chunks), tuple(crlf_indices)
 
 
-def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> EncodingError:
+def _resolve_stream_encoding(stream_encoding: object | None, err_encoding: str) -> str:
+    """Return `stream_encoding` when it names a known codec, else `err_encoding` (`syml-cjk2.28`).
+
+    `stream_encoding` is untrusted caller data (`getattr(file_obj, 'encoding',
+    None)`): it may be any type, or a `str` `codecs.lookup` rejects. Either
+    case falls back to `err_encoding`, which is always a valid codec name.
+    """
+    if isinstance(stream_encoding, str):
+        try:
+            codecs.lookup(stream_encoding)
+        except (LookupError, ValueError):
+            return err_encoding
+        return stream_encoding
+    return err_encoding
+
+
+def encoding_error(
+    err: UnicodeDecodeError, filename: StrPath | None, stream_encoding: object | None = None
+) -> EncodingError:
     """Derive an `EncodingError` from a `UnicodeDecodeError` (Contract 05 §R-04).
 
     `err.start` is a byte offset; this converts it to code-point coordinates
     over `(err.object, err.start, err.encoding)` alone.
 
+    The message names the codec that actually failed (D31 refinement): a
+    normalized codec of `utf-8` (or `utf-8-sig`, which only adds BOM
+    handling on top of UTF-8, `syml-cjk2.28`) keeps the "save the file as
+    UTF-8" advice, while any other codec (a caller-supplied text stream
+    decoded with its own, non-UTF-8 codec) is named instead and the
+    UTF-8-specific advice is dropped, since re-saving as UTF-8 would not fix
+    a codec mismatch.
+
+    `err.encoding` is not reliable for naming that codec: every charmap-based
+    codec (`cp1252`, `cp437`, the `latin-*` family, ...) reports the literal
+    `'charmap'` there, not the codec the caller chose. `stream_encoding` — the
+    caller-supplied stream's own `encoding` attribute, when available — is
+    preferred, but it comes from an untrusted `getattr(file_obj, 'encoding',
+    None)` and so may be any type or an unrecognized codec name; it is used
+    only when it is a `str` that `codecs.lookup` accepts, and `err.encoding`
+    (always a valid codec name, since it named the codec that actually ran)
+    is the fallback both when `stream_encoding` is not a `str` and when it
+    names an unknown codec (`syml-cjk2.28`).
+
     :param err: The `UnicodeDecodeError` raised while decoding.
     :param filename: The filename to include in the message, if any.
+    :param stream_encoding: The caller-supplied stream's own codec name
+        (e.g. `getattr(file_obj, 'encoding', None)`), preferred over
+        `err.encoding` when it is a `str` naming a known codec.
     :returns: An `EncodingError` positioned at the first invalid byte.
     """
     prefix = err.object[: err.start].decode(err.encoding, errors='replace')
@@ -151,8 +207,14 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     last_break_end = breaks[-1].end() if breaks else 0
     column = index - last_break_end
     line_text = prefix[last_break_end:]
+    bad_byte = err.object[err.start]
+    named_encoding = _resolve_stream_encoding(stream_encoding, err.encoding)
+    if codecs.lookup(named_encoding).name in ('utf-8', 'utf-8-sig'):
+        message = f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8'
+    else:
+        message = f'Invalid {named_encoding} (byte 0x{bad_byte:02x})'
     return EncodingError(
-        'Invalid encoding',
+        message,
         Pos(index=index, line=line, column=column),
         line_text,
         filename=filename,

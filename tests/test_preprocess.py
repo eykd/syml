@@ -3,6 +3,7 @@ import pytest
 from syml import preprocess
 from syml.basetypes import Pos
 from syml.exceptions import TabIndentationError
+from syml.preprocess import PositionMap
 
 
 class TestPreprocessBomStripping:
@@ -11,6 +12,23 @@ class TestPreprocessBomStripping:
 
         assert document.normalized == 'key: value'
         assert document.position_map.bom_offset == 1
+
+
+class TestPositionMapLine1BomOffset:
+    """`PositionMap.line1_bom_offset` (D33, syml-cjk2.17)."""
+
+    def test_it_should_return_the_bom_offset_on_line_1(self) -> None:
+        position_map = PositionMap(bom_offset=1, crlf_indices=())
+
+        assert PositionMap.line1_bom_offset(position_map, 1) == 1
+
+    def test_it_should_return_zero_off_line_1(self) -> None:
+        position_map = PositionMap(bom_offset=1, crlf_indices=())
+
+        assert PositionMap.line1_bom_offset(position_map, 2) == 0
+
+    def test_it_should_return_zero_with_no_position_map(self) -> None:
+        assert PositionMap.line1_bom_offset(None, 1) == 0
 
 
 class TestPreprocessLineEndings:
@@ -45,6 +63,17 @@ class TestPreprocessBlankClassificationAndTabScan:
         assert document.normalized == '  \t  \nkey: v'
 
 
+class TestTabIndentationErrorFilename:
+    """TabIndentationError carries the filename prefix like every other ParseError (syml-xreq.4)."""
+
+    def test_it_should_prefix_message_and_str_with_the_given_filename(self) -> None:
+        with pytest.raises(TabIndentationError) as exc_info:
+            preprocess.preprocess('a:\n\tb: 1', filename='f.syml')
+
+        assert exc_info.value.message.startswith('f.syml: ')
+        assert str(exc_info.value).startswith('f.syml:')
+
+
 class TestTabIndentationErrorOriginalTextPosition:
     """TabIndentationError.position reports original-text coordinates (FR-013, US2-12/13/14)."""
 
@@ -65,6 +94,21 @@ class TestTabIndentationErrorOriginalTextPosition:
             preprocess.preprocess('﻿a: b\r\n\tc: d')
 
         assert exc_info.value.position == Pos(7, 2, 0)
+
+    def test_it_should_center_the_excerpt_window_the_same_with_or_without_a_bom(self) -> None:
+        """`str(e)`'s excerpt line is BOM-independent on a long BOM-led line 1 (D33, syml-cjk2.17).
+
+        Padding after the tab (not just before it) keeps the window's end
+        away from `len(line_text)`, so a naive fix that only clamps against
+        the end of the line can't accidentally pass this by coincidence.
+        """
+        line = ' ' * 100 + '\t' + 'x' * 100
+        with pytest.raises(TabIndentationError) as with_bom:
+            preprocess.preprocess('﻿' + line)
+        with pytest.raises(TabIndentationError) as without_bom:
+            preprocess.preprocess(line)
+
+        assert str(with_bom.value).splitlines()[1] == str(without_bom.value).splitlines()[1]
 
     def test_it_should_not_raise_when_a_tab_follows_a_nonbreakingspaceled_line(self) -> None:
         # A NBSP-led line is content at column 0, not indentation (D14): the

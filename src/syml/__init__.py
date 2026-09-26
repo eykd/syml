@@ -47,10 +47,15 @@ def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> Syml
     """Load a SYML document from a text or binary file-like object."""
     if filename is None:
         filename = _resolve_filename(file_obj)
+    read = getattr(file_obj, 'read', None)
+    if not callable(read):
+        message = f'load() expects a file-like object with a read() method, not {type(file_obj).__name__}'
+        raise TypeError(message)
     try:
-        raw = file_obj.read()
+        raw = read()
     except UnicodeDecodeError as err:
-        raise encoding_error(err, filename) from err
+        stream_encoding = getattr(file_obj, 'encoding', None)
+        raise encoding_error(err, filename, stream_encoding) from err
     except ValueError as err:
         message = f'load() could not read file_obj: {err}'
         raise TypeError(message) from err

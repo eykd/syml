@@ -1,5 +1,7 @@
 # Contract 04 — `dumps` Writes Everything the Parser Reads
 
+> Amended 2026-09-25 by D29, D30, and the `syml-cjk2.9` 32-marker bound fix (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
+
 **Requirements**: FR-002, FR-006, FR-014, FR-017 (`dumps('')`) | **Decisions**: D20, D21, D22, D23, D24 (serializer halves) | **Findings closed**: `syml-xreq.6`, `.12`, `.15` / `.16` / `.2` / `.1` (serializer halves), `.23` (code half) | **Research**: R-05, R-14, R-18
 
 ## Surface
@@ -43,11 +45,11 @@ type-checks today.
 | # | Condition | Positions |
 | --- | --- | --- |
 | 1 | a control character other than LF and TAB (includes `\r`) | all |
-| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing (a `RecursionError` counts as structure). **Also (red team outer iterations 3 and 7):** any later line of a multi-line value whose leading list-marker chain holds more than `MAX_LATER_LINE_MARKERS = 32` markers: after the line's leading spaces, the match of `(?:-[ \t]+)*-?` contains more than 32 `-` characters (a long `- - - …` chain: D21 makes it text, but the per-line lex still recurses once per marker). The check is a count, never a parse: the lex cliff moves with the caller's stack (about 122 markers at a shallow stack, about 60 with 500 frames in use, on the planning spike), so a parse probe run inside `dumps` would make `dumps`' answer depend on where it is called and could write a line that a deeper `loads` cannot read. 32 markers costs `loads` roughly a quarter of the default recursion limit (R-17 measures it) | first line: list (single- or multi-line); mapping (multi-line only); root. Later line: all |
+| 2 | first line is structure-shaped: `grammar['structure']` fully matches `line.lstrip(' ')`, with **no** §9.0 pre-processing (a `RecursionError` counts as structure). **Also (red team outer iterations 3 and 7):** any later line of a multi-line value whose leading list-marker chain holds more than `MAX_LATER_LINE_MARKERS = 32` markers: after the line's leading spaces, the match of `(?:-[ \t]+)*(?:-(?=[ \t]*$))?` contains more than 32 `-` characters (a long `- - - …` chain: D21 makes it text, but the per-line lex still recurses once per marker). The trailing dash is anchored so it only counts as a marker when it is the line's last non-whitespace content (§7.6: a `-` is a marker only before whitespace or end of line) — `-42` is text and does not extend the chain (`syml-cjk2.9`). The check is a count, never a parse: the lex cliff moves with the caller's stack (about 122 markers at a shallow stack, about 60 with 500 frames in use, on the planning spike), so a parse probe run inside `dumps` would make `dumps`' answer depend on where it is called and could write a line that a deeper `loads` cannot read. 32 markers costs `loads` roughly a quarter of the default recursion limit (R-17 measures it) | first line: list (single- or multi-line); mapping (multi-line only); root. Later line: all |
 | 3 | first line begins with a space | mapping, list |
 | 4 | any line's leading run of spaces and tabs contains a tab | all |
-| 5 | any line is non-empty and consists only of spaces and tabs | all |
-| 6 | the value has more than one line and its first or last line is empty | all |
+| 5 | any line is non-empty and consists only of spaces and tabs. Message: `contains a non-empty whitespace-only line`, replacing the pre-fix `contains a blank or whitespace-only line`, which used "blank" for a non-empty line and so read as though paragraph breaks (item 30's empty interior line) were refused (D29, syml-cjk2.13) | all |
+| 6 | the value has more than one line and its first or last line is empty. Two distinct messages name which end caused the refusal: `begins with a blank line` (first line empty) or `ends with a trailing newline` (last line empty), replacing one shared pre-fix message, `begins or ends with a blank line` (D29, syml-cjk2.13) | all |
 | 7 | a mapping key that does not match `[a-z][a-z0-9_-]*` (incl. `""`) | — |
 | 8 | an empty list or mapping (§11.2.2, unchanged) | — |
 | 9 | any line that begins with `#` or `//` (it would be written at column 0 and read back as a comment, FR-007; principal ruling 2026-09-24, R-18). The refusal message keeps 1.0's reason text, `a line begins with a comment marker` | root |
@@ -62,6 +64,49 @@ starts with a BOM and then `#` is still written: the output's extra BOM
 
 `TypeError` for anything that is not `str`, `Source`, `list`, or `dict`, and for
 a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
+
+### Error text and the data path (D30)
+
+`str(e)` for both `UnrepresentableValueError` and the `dumps` `TypeError` is
+the message alone — never a tuple repr of `.args` (the pre-fix bug,
+`syml-cjk2.14`) — with the offending value's data path appended as a Python
+subscript clause when it is not the root value, e.g.
+`... is not representable in SYML (not str, list, or dict) at ['a']['b'][1]`
+for `dumps({'a': {'b': ['x', 1]}})`. A root value's message has no path
+clause.
+
+`UnrepresentableValueError` gains a public `.path` attribute: a `tuple[str |
+int, ...]` of mapping keys and list indexes tracing the value from the
+root, `()` for the root. A bad mapping key (not `str`/`Source`, or not
+`key_is_representable`) is pathed to its *parent* mapping, since the key
+itself has no subscript position of its own. The `dumps` `TypeError` stays
+a plain builtin `TypeError`, constructed with the message alone: no
+`.path` attribute, no subclass, so no new class name under §11.3 (option B
+of `syml-cjk2.14`'s judgment, taken in full rather than deferred).
+
+**Bounded rendering (`syml-cjk2.18`, `syml-cjk2.25`):** the *whole* message
+is bounded, not only the path clause. `format_data_path` (shared by both
+errors) renders the clause through two bounds so a hostile `path` cannot
+scale `str(e)` with its own size. Each `str` segment is windowed through
+the same `_truncated_window(key, center=0)` helper Contract 03 §Bounded
+rendering uses for a hostile `DuplicateKeyError` key, before `repr` — a
+2 MB mapping key still yields a bounded segment. Depth is capped
+separately: only the path's first three and last three rendered segments
+are kept, with a single `'…'` standing in for everything elided between
+them, regardless of how deep the path goes.
+
+The message's *leading* clause gets the same treatment (`syml-cjk2.25`):
+`_render_mapping_lines` windows a hostile mapping key — `key_str` for the
+§11.2.3 unrepresentable-key message, `repr(key)` for the non-str-key
+`TypeError` — through `_truncated_window(..., center=0)` before
+interpolating, and `_not_representable`/`_unrepresentable` do the same for
+the offending value's repr (windowing the repr string itself for a
+non-`str` value, and the raw text before `repr` for a `str` scalar). A
+2 MB mapping key or scalar value, or a huge non-`str` key or value (e.g. a
+300,000-element tuple), each yields a bounded `str(e)` on its own, not only
+in combination with a long path. Only the rendered message is bounded —
+`UnrepresentableValueError.path` (and the tuple a caller passed in) still
+carries every segment, untruncated.
 
 ## Behaviour
 
@@ -86,6 +131,7 @@ a non-`str`, non-`Source` key (unchanged apart from accepting `Source`).
 | recursion | `{"k": "a\n" + "- " * 1000 + "x"}`, `["a\n" + "- " * 1000 + "x"]`, `"a\n" + "- " * 1000 + "x"` | `UnrepresentableValueError` (item 2, later line); `loads` of the same text written by hand raises `RecursionError` (documented, not fixed: plan § Edge Cases, "A `- ` chain is text but still recurses") | — |
 | recursion | `{"k": "a\n" + "- " * 32 + "x"}` / `{"k": "a\n" + "- " * 33 + "x"}` | written and round-trips / `UnrepresentableValueError` (item 2, later line): the bound is exact and does not move with the stack | yes / — |
 | recursion | `{"k": "a\n" + "-\t" * 33 + "x"}`, `{"k": "a\n  " + "- " * 32 + "-"}` (33 markers, the last bare) | `UnrepresentableValueError` (item 2; tabs separate markers too, and a final bare `-` counts) | — |
+| recursion | `{"k": "a\n" + "- " * 32 + "-42"}` (32 real markers; `-42` is text, not a 33rd marker) | written and round-trips (`syml-cjk2.9`) | yes |
 | recursion | `{"k": "a\nk: " + "- " * 100 + "x"}`, `{"k": "a\n" + "- " * 20 + "x"}` | written; round-trips (a chain after `k: ` is inline `data` and does not recurse; a short chain is an ordinary later line) | yes |
 | load-only | `dumps(loads("k:\n  a\n  " + "- " * 40 + "x"))` | `UnrepresentableValueError` (item 2, later line): `loads` reads a 40-marker chain at a shallow stack, `dumps` refuses it at every stack (family L3) | — |
 | load-only | `dumps(loads("k: note: the door\n  is locked"))`, `dumps(loads("notes: - milk\n  - eggs"))` | `UnrepresentableValueError` (item 2): values `loads` returns that `dumps` refuses (red team pass 1; kept, plan open question 3) | — |

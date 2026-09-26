@@ -172,7 +172,17 @@ def get_line_text(text: str, line_number: int) -> str:
 
 @dataclass(slots=True, repr=False, frozen=True)
 class Source:
-    """A line within a source file"""
+    """A line within a source file.
+
+    `Source` is not a `str` subclass -- `isinstance(source, str)` is
+    `False` -- but it compares and hashes like its text, so it works as a
+    dict key or in a set alongside plain strings, and `str(source)` gives
+    the text. An empty `Source` is truthy even though `bool('')` is
+    `False`, and it has no `__len__`, so `len()` raises `TypeError` rather
+    than returning `0`. A multi-line `.text` is the dedented value
+    `as_data()` returns for the same node, not a slice of the original
+    document.
+    """
 
     filename: StrPath | None
     start: Pos

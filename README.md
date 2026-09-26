@@ -57,15 +57,16 @@ Skimming a YAML file into SYML? Watch for these, in order:
 1. **Comments only at column 0.** A line that starts with `#` or `//`, with
    no indentation, is a comment, anywhere in the file. An indented `# note`
    is text: as the first line of a block it makes that block one string,
-   with no error, and after a block's first entry it raises. A trailing
-   comment is text too (`port: 80 # default` keeps `# default`), and after
-   a key it takes in the block under it (`server: # prod` makes the block
-   under it part of `server`'s string).
+   with no error, and after a block's first entry it raises, with a hint. A
+   trailing comment is text too (`port: 80 # default` keeps `# default`),
+   and after a key it takes in the block under it (`server: # prod` makes
+   the block under it part of `server`'s string).
 2. **No block-scalar indicators.** `|` and `>` are literal characters, not
    YAML's literal/folded block markers; indent the lines under the key
    instead.
 3. **No document markers.** `---` and `...` are text, not YAML's document
-   separators (a document starting with one is a single string).
+   separators (a document starting with one is a single string; mid-file,
+   a raise there gets a hint too).
 4. **No quoting.** `"x"` is the three-character string `"x"`, quotation
    marks included.
 5. **Bare scalars are plain strings.** `null`, `true`, `123`, `~`,
@@ -76,12 +77,25 @@ Skimming a YAML file into SYML? Watch for these, in order:
    (`Name: app\nport: 80` is a string), and so is a list item whose first
    key is one (`- containerPort: 80\n  protocol: TCP` is one string). A
    bad key after a good one raises with a hint.
-7. **`- key:` sets a sibling column.** `- server:\n  host: x` is two
+7. **A key or list marker needs a space after it.** `port:8080` (no space
+   after the colon) is not a key at all — it's text, so it silently makes
+   the whole document, or the whole block it's in, one string. Same
+   for `-b` in a list. When it raises instead (because a sibling with a
+   proper space already opened the block), the error now includes a hint.
+   A URL value (`http://example.com`) is exempt: the hint never fires on a
+   `scheme://` value.
+8. **`- key:` sets a sibling column.** `- server:\n  host: x` is two
    siblings (`[{'server': '', 'host': 'x'}]`); `- server:\n    host: x`
    nests (`[{'server': {'host': 'x'}}]`). Use a space after `-`: a tab
    there counts as one column too, but is easy to misalign visually.
-8. **A blank line inside a value is a paragraph break.** `k:\n  a\n\n  b`
+9. **A blank line inside a value is a paragraph break.** `k:\n  a\n\n  b`
    is `{'k': 'a\n\nb'}`, not `{'k': 'a\nb'}`.
+10. **Trailing whitespace on a value is kept, and an over-indented line
+    joins the value above it.** `host: db1   ` keeps the trailing spaces
+    (`'db1   '`); `port: 5432 ` too. An indented line deeper than an open
+    value's baseline is that value's text, not a new sibling — YAML-style
+    sub-bullets fall into this: `- Budget review\n    - Q3 numbers` is
+    `['Budget review\n- Q3 numbers']`, one item, not two.
 
 
 `Source`
@@ -94,9 +108,9 @@ facts distinguish it from `str`:
 - **`Source` is not a `str`.** It compares equal to a `str` with the same
   text and hashes the same way, so it works as a dict key or in a set
   alongside plain strings, but `isinstance(source, str)` is `False`.
-- **An empty `Source` is truthy.** `bool(Source(text=''))` is `True` even
-  though `bool('')` is `False`, and `Source` has no `__len__`, so `len()`
-  raises `TypeError` rather than returning `0`.
+- **An empty `Source` is truthy.** `bool(Source.from_text(''))` is `True`
+  even though `bool('')` is `False`, and `Source` has no `__len__`, so
+  `len()` raises `TypeError` rather than returning `0`.
 - **A multi-line `Source.text` is the dedented value.** It is exactly the
   string `as_data()` would return for the same node — indentation past the
   baseline preserved, indentation up to the baseline stripped — not the
@@ -135,10 +149,12 @@ wherever a `str` key or scalar is expected (it is written by its text).
 It raises `TypeError` for anything else (including a mapping key that is
 neither a `str` nor a `Source`), and `UnrepresentableValueError` for a
 value with no SYML encoding: a control character other than LF/TAB
-anywhere; a first line that would lex as structure (at a list position, or
-a mapping/root position for a multi-line value), plus any later line whose
-leading `- ` marker chain holds more than 32 markers; a block value's first
-line beginning with a space; any line whose leading whitespace contains a
+anywhere; a first line that would lex as structure (at a list position, at
+a mapping position for a multi-line value, or at the root regardless of
+length), plus any later line whose leading `- ` marker chain holds more
+than 32 markers; a value's first line, inline or block, beginning with a
+space (mapping or list position only — a root scalar's leading spaces are
+literal content, see above); any line whose leading whitespace contains a
 tab; a non-empty, whitespace-only line; a multi-line value whose first or
 last line is empty; a mapping key that does not match `[a-z][a-z0-9_-]*`;
 an empty list or empty mapping at any depth; and a root scalar with any
