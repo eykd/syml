@@ -79,6 +79,11 @@ fuzz:
 build:
     uv build
 
+# Install the built wheel and sdist into fresh venvs and smoke-test them (release.yaml runs this before upload).
+# Pass a dist dir to test existing artifacts; SMOKE_PYTHONS narrows the interpreters.
+smoke-install *dist:
+    scripts/smoke-install.sh {{dist}}
+
 # ============================================================================
 # Beads Task Tracker
 # ============================================================================
