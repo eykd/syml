@@ -150,8 +150,24 @@ def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
     return ''.join(chunks), tuple(crlf_indices)
 
 
+def _resolve_stream_encoding(stream_encoding: object | None, err_encoding: str) -> str:
+    """Return `stream_encoding` when it names a known codec, else `err_encoding` (`syml-cjk2.28`).
+
+    `stream_encoding` is untrusted caller data (`getattr(file_obj, 'encoding',
+    None)`): it may be any type, or a `str` `codecs.lookup` rejects. Either
+    case falls back to `err_encoding`, which is always a valid codec name.
+    """
+    if isinstance(stream_encoding, str):
+        try:
+            codecs.lookup(stream_encoding)
+        except LookupError:
+            return err_encoding
+        return stream_encoding
+    return err_encoding
+
+
 def encoding_error(
-    err: UnicodeDecodeError, filename: StrPath | None, stream_encoding: str | None = None
+    err: UnicodeDecodeError, filename: StrPath | None, stream_encoding: object | None = None
 ) -> EncodingError:
     """Derive an `EncodingError` from a `UnicodeDecodeError` (Contract 05 §R-04).
 
@@ -159,23 +175,29 @@ def encoding_error(
     over `(err.object, err.start, err.encoding)` alone.
 
     The message names the codec that actually failed (D31 refinement): a
-    normalized codec of `utf-8` keeps the "save the file as UTF-8" advice,
-    while any other codec (a caller-supplied text stream decoded with its
-    own, non-UTF-8 codec) is named instead and the UTF-8-specific advice is
-    dropped, since re-saving as UTF-8 would not fix a codec mismatch.
+    normalized codec of `utf-8` (or `utf-8-sig`, which only adds BOM
+    handling on top of UTF-8, `syml-cjk2.28`) keeps the "save the file as
+    UTF-8" advice, while any other codec (a caller-supplied text stream
+    decoded with its own, non-UTF-8 codec) is named instead and the
+    UTF-8-specific advice is dropped, since re-saving as UTF-8 would not fix
+    a codec mismatch.
 
     `err.encoding` is not reliable for naming that codec: every charmap-based
     codec (`cp1252`, `cp437`, the `latin-*` family, ...) reports the literal
     `'charmap'` there, not the codec the caller chose. `stream_encoding` — the
     caller-supplied stream's own `encoding` attribute, when available — is
-    preferred; `err.encoding` is only the fallback for bytes input, which has
-    no stream to ask.
+    preferred, but it comes from an untrusted `getattr(file_obj, 'encoding',
+    None)` and so may be any type or an unrecognized codec name; it is used
+    only when it is a `str` that `codecs.lookup` accepts, and `err.encoding`
+    (always a valid codec name, since it named the codec that actually ran)
+    is the fallback both when `stream_encoding` is not a `str` and when it
+    names an unknown codec (`syml-cjk2.28`).
 
     :param err: The `UnicodeDecodeError` raised while decoding.
     :param filename: The filename to include in the message, if any.
     :param stream_encoding: The caller-supplied stream's own codec name
         (e.g. `getattr(file_obj, 'encoding', None)`), preferred over
-        `err.encoding` when naming the failing codec.
+        `err.encoding` when it is a `str` naming a known codec.
     :returns: An `EncodingError` positioned at the first invalid byte.
     """
     prefix = err.object[: err.start].decode(err.encoding, errors='replace')
@@ -186,8 +208,8 @@ def encoding_error(
     column = index - last_break_end
     line_text = prefix[last_break_end:]
     bad_byte = err.object[err.start]
-    named_encoding = stream_encoding or err.encoding
-    if codecs.lookup(named_encoding).name == 'utf-8':
+    named_encoding = _resolve_stream_encoding(stream_encoding, err.encoding)
+    if codecs.lookup(named_encoding).name in ('utf-8', 'utf-8-sig'):
         message = f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8'
     else:
         message = f'Invalid {named_encoding} (byte 0x{bad_byte:02x})'

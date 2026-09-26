@@ -73,6 +73,59 @@ class TestLoadAcceptsTextAndBinaryStreams:
 
         assert exc_info.value.message == 'Invalid cp1252 (byte 0x81)'
 
+    def test_load_from_a_utf8_sig_text_stream_keeps_the_d31_utf8_text(self) -> None:
+        """A `utf-8-sig` stream is still UTF-8 (D31), refined `syml-cjk2.28`.
+
+        `utf-8-sig` is a member of the UTF-8 family (it only adds BOM
+        handling), so an invalid-byte failure on such a stream must keep
+        the "save the file as UTF-8" advice, not name `utf-8-sig` as if it
+        were an unrelated codec.
+        """
+        handle = io.TextIOWrapper(io.BytesIO(b'a: \xe9'), encoding='utf-8-sig')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_name_is_unknown(self) -> None:
+        """A stream `.encoding` naming an unknown codec falls back to `err.encoding`, `syml-cjk2.28`.
+
+        Before this fix, `codecs.lookup('no-such-codec')` raised `LookupError`
+        directly out of `encoding_error`, so a bogus stream `.encoding` leaked
+        a builtin `LookupError` instead of `EncodingError`.
+        """
+
+        class _BogusEncodingHandle:
+            encoding = 'no-such-codec'
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('utf-8', b'\xe9', 0, 1, 'bad byte')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_BogusEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_is_not_a_str(self) -> None:
+        """A non-`str` stream `.encoding` falls back to `err.encoding`, `syml-cjk2.28`.
+
+        Before this fix, `codecs.lookup(42)` raised `TypeError` directly out
+        of `encoding_error`, so a non-`str` stream `.encoding` leaked a
+        builtin `TypeError` instead of `EncodingError`.
+        """
+
+        class _NonStrEncodingHandle:
+            encoding = 42
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('utf-8', b'\xe9', 0, 1, 'bad byte')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_NonStrEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
+
 
 class TestLoadResolvesFilenameFromFileObj:
     """Contract 06 §`load`: `filename` defaults to `file_obj.name`; an explicit `filename` wins."""

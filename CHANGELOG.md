@@ -336,7 +336,15 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     so `load()` now prefers the stream's own `encoding` attribute when
     naming the codec, falling back to `err.encoding` only for bytes input,
     which has no stream to ask (D31, syml-cjk2.26, break-testing round 2
-    lane 4).
+    lane 4). That `.26` fix had two regressions of its own, both fixed
+    here: a `utf-8-sig` stream (UTF-8 with a BOM) was no longer recognized
+    as UTF-8 and lost the "save the file as UTF-8" advice, and a stream
+    whose `encoding` attribute was not a `str`, or named an unknown codec,
+    leaked a bare `TypeError`/`LookupError` instead of `EncodingError`. The
+    stream's own `encoding` is now used only when it is a `str` that
+    `codecs.lookup` accepts, `err.encoding` is the fallback in both failure
+    shapes, and the UTF-8 check recognizes both `utf-8` and `utf-8-sig`
+    (D31, syml-cjk2.28, break-testing round 2 lane 4).
 32. **`DuplicateKeyError`'s message now names where the key first
     appeared.** Until this fix, `Duplicate key 'a'` gave no way to find the
     earlier occurrence in a long file — the exception already carried
