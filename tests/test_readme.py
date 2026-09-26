@@ -104,3 +104,23 @@ class TestReadmeDumpsRefusalExamples:
     def test_a_nearby_acceptable_value_is_written(self) -> None:
         """The same value without the leading space round-trips normally."""
         assert syml.dumps({'k': 'lead'}) == 'k: lead\n'
+
+
+def test_the_readme_url_exemption_sentence_is_accurate() -> None:
+    """README bullet 7: a `scheme://` value is exempt from hint (c) (D35, syml-cjk2.20).
+
+    Regression for the doc-audit gap `syml-cjk2.27` closed: bullet 7 once
+    said nothing about the URL exemption even though hint (c)'s pattern
+    already excluded it. Pins both halves so either drifting independently
+    fails: the sentence in the file, and the parser's actual behaviour.
+    """
+    readme_text = README_PATH.read_text(encoding='utf-8')
+    section = readme_text[readme_text.index('Coming from YAML') :]
+    bullet_seven_start = section.index('7. **A key or list marker needs a space after it.**')
+    bullet_seven_end = section.index('\n8. ', bullet_seven_start)
+    bullet_seven = section[bullet_seven_start:bullet_seven_end]
+    assert 'scheme://' in bullet_seven, 'expected bullet 7 to name the scheme:// exemption'
+
+    with pytest.raises(syml.exceptions.OutOfContextNodeError) as exc_info:
+        syml.loads('url: http://example.com\nbad line')
+    assert 'needs a space after it' not in str(exc_info.value)

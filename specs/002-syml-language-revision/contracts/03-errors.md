@@ -1,6 +1,6 @@
 # Contract 03 — Error Text, Hints, Filenames, and Positions
 
-> Amended 2026-09-25 by D26, D27, D30, D31, D32, D33, D35 (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
+> Amended 2026-09-25 by D26, D27, D30, D31, D32, D33, D34, D35 (break-test round 2, `syml-cjk2`); rows that change are updated by the leaf that implements them.
 
 **Requirements**: FR-011, FR-012, FR-013, FR-016 (§8.3 example) | **Decisions**: D7 affirmed (one class for §8.1/§8.2) | **Findings closed**: `syml-xreq.4`, `.5`, `.9` (§8.3 half), `.17` (hint half), `.18`, `.3` (hint half) | **Research**: R-07, R-08, R-09, R-18
 

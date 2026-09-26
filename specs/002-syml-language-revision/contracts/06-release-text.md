@@ -148,8 +148,12 @@ would-be key or list marker with no separator, and the hint names it. Item
 26 (D27, `syml-cjk2.11`): two more hints — (d) an indented comment line
 that would have been a comment at column 0, and (e) a mid-file document
 marker (`---`/`...`) that 1.0 never treated specially. Both are described
-in Contract 03 §Hints; no README change for either — the README's error
-section does not enumerate individual hints.
+in Contract 03 §Hints. README change: D26 adds "Coming from YAML" bullet 7,
+the hint (c) item itself (§D item 7 below); D27 edits bullets 1 and 3,
+adding "with a hint" to bullet 1's indented-comment raise and "a raise
+there gets a hint too" to bullet 3's mid-file document-marker raise (§D
+items 1, 3 below) — the error section proper still does not enumerate
+individual hints.
 
 Recursion measurement method (R-17): at the default recursion limit, bisect
 the largest depth that loads for (1) `k0:\n  k1:\n    …` with no trailing
@@ -164,11 +168,18 @@ outer iteration 8 measured 121 / 58 and 248 / 123 on the planning spike,
 against 496 / 246 for nested dicts); also record the depth where `parse()`
 succeeds but `.as_data()` raises.
 
-Bug-fix item, no D-number (`syml-cjk2.5`, break-testing round 2 lane 3):
-item 27, extending Contract 03 §Bounded rendering (`syml-s9p9.9`/`.14`,
+D34 (`syml-cjk2.5`, refined by `syml-cjk2.19`, break-testing round 2 lane
+3): item 27, extending Contract 03 §Bounded rendering (`syml-s9p9.9`/`.14`,
 already itemized above under recursion measurement's neighbor obligations)
-to a hostile `filename`. No README change — the README never documented
-the bounded-rendering length cap itself, only the hints it now covers.
+to a hostile `filename`, via `_truncated_filename_window(filename,
+width=1024)`: a filename up to 1024 code points passes through whole, and a
+longer one is windowed from its **tail** — `'…'` plus its last 1023 code
+points — so a path's basename always survives. This replaces
+`syml-cjk2.5`'s original 80-code-point head-centered window, which cut the
+basename off any real-world absolute path longer than 80 characters
+(routine for CI runner paths), silently making `str(e)`'s `path:line:col`
+form unclickable. No README change — the README never documented the
+bounded-rendering length cap itself, only the hints it now covers.
 
 Bug-fix item, no D-number (`syml-cjk2.6`, break-testing round 2 lane 3):
 item 28, `load()` on an object with no `read()` method (e.g. `None`, a bare
@@ -195,8 +206,14 @@ in Python subscript form, e.g. `at ['a']['b'][1]`, omitted for a root
 value. `UnrepresentableValueError` gains a public `.path` attribute
 (`tuple[str | int, ...]`, `()` at the root); the `dumps` `TypeError` stays
 a plain builtin `TypeError`, message only, no `.path`, no new subclass
-(Contract 04 §Error text and the data path). No README change — the
-README does not document either error's message shape.
+(Contract 04 §Error text and the data path). The whole message is bounded,
+not only the path clause (`syml-cjk2.18`, refined by `syml-cjk2.25`): a
+hostile mapping key or scalar value (e.g. a multi-megabyte string, or a
+huge non-`str` key/value such as a 300,000-element tuple) is windowed
+through `_truncated_window(..., center=0)` before interpolating, yielding a
+bounded `str(e)` on its own, not only in combination with a long path
+(Contract 04 §Bounded rendering). No README change — the README does not
+document either error's message shape.
 
 D31 (`syml-cjk2.15`, refined by `syml-cjk2.21`, break-testing round 2 lane
 4): item 31, `EncodingError`'s message names the first offending byte and
@@ -204,8 +221,14 @@ says UTF-8 (`Invalid UTF-8 (byte 0x{XX}); save the file as UTF-8`), and
 names the actual codec instead when a caller-supplied text stream in a
 non-UTF-8 codec fails to decode (`Invalid {codec} (byte 0x{XX})`, no
 UTF-8-specific advice), replacing the pre-fix `Invalid encoding` (Contract
-03 §Messages). No README change — the README does not document
-`EncodingError`'s message shape.
+03 §Messages). For a charmap-based codec (`cp1252`, `cp437`, the `latin-*`
+family), the named codec was still wrong — Python's own
+`UnicodeDecodeError.encoding` reports the literal `'charmap'` for all of
+them, not the codec the caller chose — so `load()` now prefers the
+stream's own `encoding` attribute over `err.encoding` when naming the
+codec, falling back to `err.encoding` only for bytes input, which has no
+stream to ask (`syml-cjk2.26`). No README change — the README does not
+document `EncodingError`'s message shape.
 
 D32 (`syml-cjk2.16`, break-testing round 2 lane 4): item 32,
 `DuplicateKeyError`'s message names where the key first appeared —
@@ -221,6 +244,16 @@ minus the BOM offset instead of the raw column, matching the equivalent
 non-BOM document's rendering; `.position` and `.line_text` are unchanged
 (Contract 03 §Placement). No README change — the README does not show a
 BOM-led excerpt example.
+
+D35 (`syml-cjk2.20`, break-testing round 2 lane 1, amending D26): item 34,
+hint (c) (item 25) no longer fires on a URL value: its key alternative
+excludes `://` immediately after the colon
+(`^[a-z][a-z0-9_-]*:(?!//)\S`), on both the failing line and the look-back,
+so a legitimate `scheme://` value (`http://example.com`, and §8's own
+`url: https://example.com:8080/path`) never earns "a key or list marker
+needs a space after it" — advice that would turn a valid value into a key
+(Contract 03 §Hints). README change: "Coming from YAML" bullet 7 (item
+25's README addition) gains the URL-exemption sentence (§D item 7 below).
 
 Bug-fix item, no D-number, appended out of decision order (`syml-cjk2.13`,
 break-testing round 2 lane 4; the JUDGMENT this item resolves, D29): item

@@ -82,6 +82,8 @@ Skimming a YAML file into SYML? Watch for these, in order:
    the whole document, or the whole block it's in, one string. Same
    for `-b` in a list. When it raises instead (because a sibling with a
    proper space already opened the block), the error now includes a hint.
+   A URL value (`http://example.com`) is exempt: the hint never fires on a
+   `scheme://` value.
 8. **`- key:` sets a sibling column.** `- server:\n  host: x` is two
    siblings (`[{'server': '', 'host': 'x'}]`); `- server:\n    host: x`
    nests (`[{'server': {'host': 'x'}}]`). Use a space after `-`: a tab
