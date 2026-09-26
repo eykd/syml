@@ -126,6 +126,25 @@ class TestLoadAcceptsTextAndBinaryStreams:
 
         assert exc_info.value.message == 'Invalid UTF-8 (byte 0xe9); save the file as UTF-8'
 
+    def test_load_falls_back_to_err_encoding_when_stream_encoding_has_embedded_nul(self) -> None:
+        """A stream `.encoding` with an embedded NUL falls back to `err.encoding`, `syml-cjk2.29`.
+
+        `codecs.lookup` raises `ValueError` (not `LookupError`) for a `str`
+        with an embedded NUL byte, so a stream whose `.encoding` contains a
+        NUL must also fall back instead of leaking a builtin `ValueError`.
+        """
+
+        class _NulEncodingHandle:
+            encoding = 'a\x00b'
+
+            def read(self) -> str:
+                raise UnicodeDecodeError('charmap', b'a\x81', 1, 2, 'bad')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(_NulEncodingHandle())  # type: ignore[arg-type]
+
+        assert exc_info.value.message == 'Invalid charmap (byte 0x81)'
+
 
 class TestLoadResolvesFilenameFromFileObj:
     """Contract 06 §`load`: `filename` defaults to `file_obj.name`; an explicit `filename` wins."""

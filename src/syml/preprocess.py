@@ -160,7 +160,7 @@ def _resolve_stream_encoding(stream_encoding: object | None, err_encoding: str) 
     if isinstance(stream_encoding, str):
         try:
             codecs.lookup(stream_encoding)
-        except LookupError:
+        except (LookupError, ValueError):
             return err_encoding
         return stream_encoding
     return err_encoding
