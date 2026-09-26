@@ -150,7 +150,9 @@ def _normalize_line_endings(text: str) -> tuple[str, tuple[int, ...]]:
     return ''.join(chunks), tuple(crlf_indices)
 
 
-def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> EncodingError:
+def encoding_error(
+    err: UnicodeDecodeError, filename: StrPath | None, stream_encoding: str | None = None
+) -> EncodingError:
     """Derive an `EncodingError` from a `UnicodeDecodeError` (Contract 05 §R-04).
 
     `err.start` is a byte offset; this converts it to code-point coordinates
@@ -162,8 +164,18 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     own, non-UTF-8 codec) is named instead and the UTF-8-specific advice is
     dropped, since re-saving as UTF-8 would not fix a codec mismatch.
 
+    `err.encoding` is not reliable for naming that codec: every charmap-based
+    codec (`cp1252`, `cp437`, the `latin-*` family, ...) reports the literal
+    `'charmap'` there, not the codec the caller chose. `stream_encoding` — the
+    caller-supplied stream's own `encoding` attribute, when available — is
+    preferred; `err.encoding` is only the fallback for bytes input, which has
+    no stream to ask.
+
     :param err: The `UnicodeDecodeError` raised while decoding.
     :param filename: The filename to include in the message, if any.
+    :param stream_encoding: The caller-supplied stream's own codec name
+        (e.g. `getattr(file_obj, 'encoding', None)`), preferred over
+        `err.encoding` when naming the failing codec.
     :returns: An `EncodingError` positioned at the first invalid byte.
     """
     prefix = err.object[: err.start].decode(err.encoding, errors='replace')
@@ -174,10 +186,11 @@ def encoding_error(err: UnicodeDecodeError, filename: StrPath | None) -> Encodin
     column = index - last_break_end
     line_text = prefix[last_break_end:]
     bad_byte = err.object[err.start]
-    if codecs.lookup(err.encoding).name == 'utf-8':
+    named_encoding = stream_encoding or err.encoding
+    if codecs.lookup(named_encoding).name == 'utf-8':
         message = f'Invalid UTF-8 (byte 0x{bad_byte:02x}); save the file as UTF-8'
     else:
-        message = f'Invalid {err.encoding} (byte 0x{bad_byte:02x})'
+        message = f'Invalid {named_encoding} (byte 0x{bad_byte:02x})'
     return EncodingError(
         message,
         Pos(index=index, line=line, column=column),

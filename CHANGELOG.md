@@ -329,7 +329,14 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     (e.g. `open(p, encoding='ascii')` on a UTF-8 file) is not itself invalid
     UTF-8, so that case instead says `Invalid {codec} (byte 0x{XX})`, naming
     the actual codec and dropping the "save the file as UTF-8" advice (D31,
-    syml-cjk2.21, break-testing round 2 lane 4).
+    syml-cjk2.21, break-testing round 2 lane 4). For a charmap-based codec
+    (`cp1252`, `cp437`, the `latin-*` family, ...), that named codec was
+    still wrong — Python's own `UnicodeDecodeError.encoding` reports the
+    literal `'charmap'` for all of them, not the codec the caller chose —
+    so `load()` now prefers the stream's own `encoding` attribute when
+    naming the codec, falling back to `err.encoding` only for bytes input,
+    which has no stream to ask (D31, syml-cjk2.26, break-testing round 2
+    lane 4).
 32. **`DuplicateKeyError`'s message now names where the key first
     appeared.** Until this fix, `Duplicate key 'a'` gave no way to find the
     earlier occurrence in a long file — the exception already carried

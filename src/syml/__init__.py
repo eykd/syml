@@ -54,7 +54,8 @@ def load(file_obj: IO[str] | IO[bytes], filename: StrPath | None = None) -> Syml
     try:
         raw = read()
     except UnicodeDecodeError as err:
-        raise encoding_error(err, filename) from err
+        stream_encoding = getattr(file_obj, 'encoding', None)
+        raise encoding_error(err, filename, stream_encoding) from err
     except ValueError as err:
         message = f'load() could not read file_obj: {err}'
         raise TypeError(message) from err

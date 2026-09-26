@@ -58,6 +58,21 @@ class TestLoadAcceptsTextAndBinaryStreams:
         with pytest.raises(EncodingError):
             syml.load(handle)
 
+    def test_load_from_a_charmap_text_stream_names_its_own_codec_not_charmap(self) -> None:
+        """A charmap-based codec (e.g. `cp1252`) is named by its own `encoding`, not `'charmap'`.
+
+        Every charmap-based codec (`cp1252`, `cp437`, the `latin-*` family, ...)
+        raises `UnicodeDecodeError` with `err.encoding == 'charmap'`, so `load`
+        must prefer the stream's own `encoding` attribute over `err.encoding`
+        when naming the codec (Contract 03 §`EncodingError`).
+        """
+        handle = io.TextIOWrapper(io.BytesIO(b'a: \x81'), encoding='cp1252')
+
+        with pytest.raises(EncodingError) as exc_info:
+            syml.load(handle)
+
+        assert exc_info.value.message == 'Invalid cp1252 (byte 0x81)'
+
 
 class TestLoadResolvesFilenameFromFileObj:
     """Contract 06 §`load`: `filename` defaults to `file_obj.name`; an explicit `filename` wins."""
