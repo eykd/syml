@@ -17,7 +17,8 @@ item 29 the 32-marker guard's trailing-dash fix, item 30 the 2026-09-25 D30
 `DuplicateKeyError` message addition, item 33 the 2026-09-25 D33
 `ParseError.__str__` BOM-offset fix, item 34 the 2026-09-25 D35 refinement
 of hint (c) to exclude `scheme://` values, and item 35 the 2026-09-25 D29
-`dumps` message-wording fix (see `SYML-SPEC-REVIEW.md`); items 1-18 cover
+`dumps` message-wording fix, and item 36 the 2026-09-26 packaging fixes
+(see `SYML-SPEC-REVIEW.md`); items 1-18 cover
 everything else changed in this one 1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
@@ -389,6 +390,15 @@ Items 19-24 record the 2026-09-24 D20-D25 language revision
     `begins with a blank line` and `ends with a trailing newline`, naming
     which end caused the refusal (D29, syml-cjk2.13, break-testing round 2
     lane 4).
+36. **Packaging: `syml` ships a `py.typed` marker, and its metadata is
+    PyPI-uploadable.** The package is fully type-annotated, but without
+    `py.typed` (PEP 561) mypy and pyright ignored its hints and treated
+    `syml` as untyped; the wheel now includes it. The
+    `License :: OSI Approved :: MIT License` classifier is dropped: the
+    metadata already declares `License-Expression: MIT`, and PyPI rejects an
+    upload that carries both (PEP 639). The classifiers now list Python
+    3.13 and 3.14 alongside 3.12, each verified by installing the wheel and
+    the sdist into a clean environment (syml-6h0t).
 
 Recursion measurement method (item 13): at CPython's default recursion
 limit, bisect the largest depth that loads for (1) `k0:\n  k1:\n    …`

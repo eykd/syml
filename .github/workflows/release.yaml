@@ -1,9 +1,11 @@
 name: Release
 
 # Publishes to PyPI via trusted publishing (OIDC) when an unprefixed version
-# tag (e.g. `1.0.0`) is pushed. The build job re-runs every CI gate so a tag
-# never publishes from a red tree; the publish job needs the `pypi` GitHub
-# environment, which is the trusted publisher registered on pypi.org.
+# tag (e.g. `1.0.0`) is pushed. The build job checks the tag matches
+# pyproject's version, re-runs every CI gate, and smoke-installs the built
+# artifacts, so a tag never publishes from a red tree or a broken build.
+# The publish job needs the `pypi` GitHub environment, which is the trusted
+# publisher registered on pypi.org.
 on:
   push:
     tags:
@@ -22,6 +24,15 @@ jobs:
           python-version: "3.12"
       - name: Set up just
         uses: extractions/setup-just@v2
+      - name: Tag matches the package version
+        # The version is the literal in pyproject.toml, not derived from the
+        # tag; a mismatched tag would publish the wrong (or a duplicate) version.
+        run: |
+          version=$(uv version --short)
+          if [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject.toml version $version"
+            exit 1
+          fi
       - name: Install dependencies
         run: uv sync --all-groups
       - name: Lint with ruff
@@ -38,6 +49,12 @@ jobs:
           PYTHONDONTWRITEBYTECODE: 1
       - name: Build sdist and wheel
         run: uv build
+      - name: Smoke-test the built artifacts
+        # Installs the wheel and sdist into fresh venvs before anything
+        # uploads them; also rejects metadata PyPI would refuse (PEP 639).
+        run: just smoke-install dist
+        env:
+          SMOKE_PYTHONS: "3.12"
       - uses: actions/upload-artifact@v4
         with:
           name: dist

@@ -267,6 +267,15 @@ end caused the refusal, replacing one shared pre-fix message (Contract 04
 §Unrepresentable set, items 5 and 6). No README change — the README does
 not quote either message.
 
+Packaging item, no D-number (`syml-6h0t`, the 2026-09-26 install-test pass
+on the built artifacts): item 36, `src/syml/py.typed` ships in the wheel
+(PEP 561), the `License :: OSI Approved :: MIT License` classifier is
+removed because PyPI rejects it alongside `License-Expression` (PEP 639),
+and the Python 3.13 and 3.14 classifiers are added after the wheel and
+sdist install and pass the smoke check on both. Guarded by
+`scripts/smoke-install.sh` (`just smoke-install`), which the release
+workflow runs before upload. No README change.
+
 ## D. `README.md` (release leaf)
 
 1. **"Coming from YAML"** section, in this order, each with the SYML spelling
