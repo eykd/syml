@@ -72,12 +72,7 @@ def then_grammars_match(grammar_comparison: tuple[Grammar, Grammar]) -> None:
     assert code_grammar.default_rule.name == 'document'
 
 
-# --- Shared "it is read" step: SYML-SPEC-REVIEW.md and README.md scenarios ---
-
-
-@given('SYML-SPEC-REVIEW.md', target_fixture='doc_text')
-def given_spec_review() -> str:
-    return (_REPO_ROOT / 'SYML-SPEC-REVIEW.md').read_text(encoding='utf-8')
+# --- Shared "it is read" step: README.md scenario ---
 
 
 @given('the README', target_fixture='doc_text')
@@ -88,32 +83,6 @@ def given_the_readme() -> str:
 @when('it is read', target_fixture='doc_text')
 def when_doc_read(doc_text: str) -> str:
     return doc_text
-
-
-@then(
-    'decisions D20 through D25 record the key pattern, text context, paragraph breaks, '
-    'column-0-only comments, tab as separator, and strict indentation, each with the '
-    'alternative not taken and a breaking-change note'
-)
-def then_review_records_d20_through_d25(doc_text: str) -> None:
-    for decision in ('D20', 'D21', 'D22', 'D23', 'D24', 'D25'):
-        start = doc_text.index(f'| {decision} |')
-        row = doc_text[start : doc_text.index('\n', start)]
-        assert 'Breaking change' in row or 'breaking change' in row.lower() or 'Supersedes' in row
-
-
-@then('decisions D5, D12, D13, D15, and D19 are annotated in place as superseded')
-def then_old_decisions_annotated_superseded(doc_text: str) -> None:
-    for decision, superseder in (
-        ('D5', 'D24'),
-        ('D12', 'D22'),
-        ('D13', 'D21'),
-        ('D15', 'D20'),
-        ('D19', 'D20'),
-    ):
-        start = doc_text.index(f'| {decision} |')
-        row = doc_text[start : doc_text.index('\n', start)]
-        assert f'Superseded by {superseder}' in row
 
 
 @then(

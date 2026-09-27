@@ -143,17 +143,16 @@ If no relevant solutions are found, omit the `## Applied Learnings` section.
    - Output one markdown file per contract to `/contracts/`.
 
 3. **Spec conformance check**:
-   - `SYML-SPECIFICATION.md` (v1.1) deliberately breaks compatibility with the
-     shipped parser, and `SYML-SPEC-REVIEW.md` is the verified list of the
-     gaps (B-/M-numbered findings behind v1.1). Before planning any behavior
-     change, read `SYML-SPEC-REVIEW.md` and record, in a
-     `## Spec Conformance` section of plan.md, which gap this feature closes —
-     or state explicitly that it closes none.
-   - If the feature touches an open spec question noted in
-     `SYML-SPEC-REVIEW.md`, settle it in research.md before Phase 1 finishes;
-     do not leave it for implementation.
-   - Reference the relevant decision records (D1–D17) from
-     `SYML-SPEC-REVIEW.md` where they constrain the design.
+   - `syml` 1.0.0 conforms to `SYML-SPECIFICATION.md`. Before planning any
+     behavior change, record, in a `## Spec Conformance` section of plan.md,
+     which spec section the change touches and whether it changes the spec —
+     or state explicitly that it touches none.
+   - If the feature touches an open spec question, settle it in research.md
+     (as a new D-numbered decision) before Phase 1 finishes; do not leave it
+     for implementation.
+   - Reference the relevant earlier decision records (D1–D35, in the removed
+     `SYML-SPEC-REVIEW.md`: `git show a66f5ee:SYML-SPEC-REVIEW.md`) where
+     they constrain the design.
 
 **Output**: data-model.md, /contracts/\*, quickstart.md
 
