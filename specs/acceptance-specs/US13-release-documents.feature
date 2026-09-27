@@ -1,7 +1,6 @@
 Feature: The documents describe exactly what ships, and 1.0.0 is tagged
-  The specification, the review document's decision table, the changelog,
-  and the README agree with the code, and the 1.0.0 tag is pushed. See
-  spec.md User Story 4.
+  The specification, the changelog, and the README agree with the code, and
+  the 1.0.0 tag is pushed. See spec.md User Story 4.
 
   Scenario: Every specification example produces exactly its stated output
     Given the revised SYML-SPECIFICATION.md
@@ -12,12 +11,6 @@ Feature: The documents describe exactly what ships, and 1.0.0 is tagged
     Given the grammar printed in specification section 4.1
     When it is compared with the grammar the parser declares
     Then the two are the same rule set
-
-  Scenario: The review document records the new decisions and their supersessions
-    Given SYML-SPEC-REVIEW.md
-    When it is read
-    Then decisions D20 through D25 record the key pattern, text context, paragraph breaks, column-0-only comments, tab as separator, and strict indentation, each with the alternative not taken and a breaking-change note
-    And decisions D5, D12, D13, D15, and D19 are annotated in place as superseded
 
   Scenario: The changelog's 1.0.0 entry describes what master does
     Given CHANGELOG.md's 1.0.0 entry

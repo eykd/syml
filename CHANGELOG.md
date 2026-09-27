@@ -17,8 +17,8 @@ item 29 the 32-marker guard's trailing-dash fix, item 30 the 2026-09-25 D30
 `DuplicateKeyError` message addition, item 33 the 2026-09-25 D33
 `ParseError.__str__` BOM-offset fix, item 34 the 2026-09-25 D35 refinement
 of hint (c) to exclude `scheme://` values, and item 35 the 2026-09-25 D29
-`dumps` message-wording fix, and item 36 the 2026-09-26 packaging fixes
-(see `SYML-SPEC-REVIEW.md`); items 1-18 cover
+`dumps` message-wording fix, and item 36 the 2026-09-26 packaging fixes;
+items 1-18 cover
 everything else changed in this one 1.0.0 release.
 
 1. Absent values: `None` → `""`, at every depth.
@@ -158,8 +158,7 @@ everything else changed in this one 1.0.0 release.
     `{'k': 'v\r'}`), and one leading U+FEFF is stripped rather than
     joining the first key (`\ufeffkey: v` was `{'\ufeffkey': 'v'}`).
 
-Items 19-24 record the 2026-09-24 D20-D25 language revision
-(`SYML-SPEC-REVIEW.md`). Each "was" below compares directly against
+Items 19-24 record the 2026-09-24 D20-D25 language revision. Each "was" below compares directly against
 0.6.2, the same baseline as items 1-18; none of this ever shipped to a
 0.6.2 user as an intermediate release.
 

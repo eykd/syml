@@ -158,7 +158,7 @@ literal content, see above); any line whose leading whitespace contains a
 tab; a non-empty, whitespace-only line; a multi-line value whose first or
 last line is empty; a mapping key that does not match `[a-z][a-z0-9_-]*`;
 an empty list or empty mapping at any depth; and a root scalar with any
-line beginning with `#` or `//` (see the specification's §11.2.1–§11.2.3).
+line beginning with `#` or `//` (see the [specification](https://github.com/eykd/syml/blob/master/SYML-SPECIFICATION.md)'s §11.2.1–§11.2.3).
 
 `dump` writes through the file object's own codec and does not check it, so
 always open the handle with `encoding='utf-8'` — SYML documents are UTF-8.

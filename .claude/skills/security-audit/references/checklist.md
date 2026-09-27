@@ -46,7 +46,7 @@ See [metadata-validation.md](metadata-validation.md) for implementation detail.
 
 ## Parser Correctness as a Security Boundary
 
-- [ ] Grammar changes are checked against `SYML-SPEC-REVIEW.md` before
+- [ ] Grammar changes are checked against `SYML-SPECIFICATION.md` and its recorded decisions before
       "fixing" behavior — silent behavior drift is itself a risk for
       downstream consumers who parse untrusted config
 - [ ] `as_data()` never partially returns a mix of parsed and unparsed
@@ -107,4 +107,4 @@ See [metadata-validation.md](metadata-validation.md) for implementation detail.
 ### Low (Track for Fix)
 
 - Missing regression test for a fixed crash
-- Minor inconsistency between spec and implementation noted in `SYML-SPEC-REVIEW.md`
+- Minor inconsistency between spec and implementation noted in the feature's `research.md`

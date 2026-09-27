@@ -76,7 +76,9 @@ either exercised or explicitly justified as unreachable.
 ### IV. Spec vs Implementation Discipline
 
 Any behavior change — in either direction — MUST cite a design decision
-(D1–D17) or a B-/M-numbered finding from `SYML-SPEC-REVIEW.md`, or an FR-NNN
+(D1–D35, recorded in the since-removed `SYML-SPEC-REVIEW.md`: read it with
+`git show a66f5ee:SYML-SPEC-REVIEW.md`; new decisions go in the feature's
+`research.md`) or a B-/M-numbered finding from that record, or an FR-NNN
 requirement from the current feature's plan. An open spec question MUST be
 settled (recorded as a decision) before implementing against it, except that
 a specification edit MAY land in the same commit as the behavior change that

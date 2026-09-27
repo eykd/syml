@@ -41,7 +41,7 @@ Two renderings exist on every node: `as_data()` returns plain `str`/`list`/`dict
 
 ## Spec vs. implementation
 
-`syml` 1.0.0 is the conforming reference implementation of `SYML-SPECIFICATION.md` (Version 1.0). `SYML-SPEC-REVIEW.md` records the design decisions (D1–D25) and B-/M-numbered findings behind that conformance work. Cite one of those decisions/findings or an FR-NNN requirement from the current feature's plan before changing behavior in either direction; an open spec question may be settled by a spec edit landing in the same commit as the behavior change that exposed it.
+`syml` 1.0.0 is the conforming reference implementation of `SYML-SPECIFICATION.md` (Version 1.0). The design decisions (D1–D35) and B-/M-numbered findings behind that conformance work were recorded in `SYML-SPEC-REVIEW.md`, removed from the tree before the 1.0.0 tag; read it with `git show a66f5ee:SYML-SPEC-REVIEW.md`, and record new decisions in the current feature's `research.md`. Cite one of those decisions/findings or an FR-NNN requirement from the current feature's plan before changing behavior in either direction; an open spec question may be settled by a spec edit landing in the same commit as the behavior change that exposed it.
 
 ## Conventions
 
