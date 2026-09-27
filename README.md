@@ -102,7 +102,7 @@ Skimming a YAML file into SYML? Watch for these, in order:
 ========
 
 `syml.parse` returns a tree whose leaves carry `Source` objects instead of
-plain `str` (see [`syml.basetypes.Source`](src/syml/basetypes.py)). Three
+plain `str` (see [`syml.basetypes.Source`](https://github.com/eykd/syml/blob/master/src/syml/basetypes.py)). Three
 facts distinguish it from `str`:
 
 - **`Source` is not a `str`.** It compares equal to a `str` with the same
@@ -163,5 +163,5 @@ line beginning with `#` or `//` (see the [specification](https://github.com/eykd
 `dump` writes through the file object's own codec and does not check it, so
 always open the handle with `encoding='utf-8'` — SYML documents are UTF-8.
 
-Upgrading from 0.6.2? See [CHANGELOG.md](CHANGELOG.md) for every user-visible
+Upgrading from 0.6.2? See [CHANGELOG.md](https://github.com/eykd/syml/blob/master/CHANGELOG.md) for every user-visible
 change.
